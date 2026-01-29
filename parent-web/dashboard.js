@@ -1,10 +1,12 @@
 // FamilyGuard Pro - Parent Dashboard JavaScript
 
 const API_BASE = 'https://safeguard--idhighprice.replit.app/api';
+const WS_BASE = 'wss://safeguard--idhighprice.replit.app/ws';
 let authToken = localStorage.getItem('authToken');
 let currentUser = null;
 let devices = [];
 let selectedDevice = null;
+let streamSocket = null;
 
 // Helper function to get device ID (works with both 'id' and '_id' formats)
 function getDeviceId(device) {
@@ -786,13 +788,13 @@ async function sendCommand(command, params = {}) {
 }
 
 // Streaming
-let streamSocket = null;
 
 function startStream(type) {
   if (!selectedDevice) return;
   
   const modal = document.getElementById('streamModal');
   const title = document.getElementById('streamTitle');
+  const streamVideo = document.getElementById('streamVideo');
   
   const titles = {
     screen: 'Screen Mirror',
@@ -800,11 +802,14 @@ function startStream(type) {
     audio: 'Live Listen'
   };
   
-  currentStreamType = type; // Track current stream type
+  currentStreamType = type;
   title.textContent = titles[type];
   modal.classList.remove('hidden');
   
-  // Start stream command
+  // Show connecting message
+  streamVideo.innerHTML = '<p class="connecting">Connecting to device...</p>';
+  
+  // Start stream command on device
   const commands = {
     screen: 'start_screen_mirror',
     camera: 'start_camera',
@@ -813,9 +818,72 @@ function startStream(type) {
   
   sendCommand(commands[type]);
   
-  // Connect to WebSocket (placeholder)
-  // In production, connect to the actual WebSocket server
-  document.getElementById('streamVideo').innerHTML = '<p class="connecting">Connecting to device...</p>';
+  // Connect to WebSocket as receiver
+  const deviceId = selectedDevice.deviceId || selectedDevice._id;
+  const sessionId = `${deviceId}_${type}`;
+  const wsUrl = `${WS_BASE}?session=${sessionId}&role=receiver&deviceId=${deviceId}&type=${type}`;
+  
+  console.log('Connecting to WebSocket:', wsUrl);
+  
+  // Close existing connection
+  if (streamSocket) {
+    streamSocket.close();
+    streamSocket = null;
+  }
+  
+  streamSocket = new WebSocket(wsUrl);
+  
+  streamSocket.onopen = () => {
+    console.log('WebSocket connected');
+    streamVideo.innerHTML = '<p class="connecting">Waiting for device stream...</p>';
+  };
+  
+  streamSocket.onmessage = (event) => {
+    // Handle incoming stream data
+    if (typeof event.data === 'string') {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'waiting') {
+        streamVideo.innerHTML = '<p class="connecting">Waiting for device to start streaming...</p>';
+      } else if (msg.type === 'connected') {
+        streamVideo.innerHTML = '<p class="connecting">Stream connected, receiving data...</p>';
+      }
+    } else {
+      // Binary data - video/audio frame
+      handleStreamData(event.data, type);
+    }
+  };
+  
+  streamSocket.onerror = (error) => {
+    console.error('WebSocket error:', error);
+    streamVideo.innerHTML = '<p class="error">Connection error. Please try again.</p>';
+  };
+  
+  streamSocket.onclose = (event) => {
+    console.log('WebSocket closed:', event.reason);
+    if (currentStreamType) {
+      streamVideo.innerHTML = '<p class="connecting">Connection closed. Click Stop to exit.</p>';
+    }
+  };
+}
+
+// Handle incoming stream data
+function handleStreamData(data, type) {
+  const streamVideo = document.getElementById('streamVideo');
+  
+  if (type === 'audio') {
+    // Audio stream - would need Web Audio API
+    // For now just show that audio is being received
+    if (!streamVideo.querySelector('.audio-indicator')) {
+      streamVideo.innerHTML = '<div class="audio-indicator"><i class="material-icons">hearing</i><p>Receiving audio...</p></div>';
+    }
+  } else {
+    // Video stream - display as image frames
+    // The device sends H.264 encoded frames, would need decoding
+    // For MVP, we can receive the data but display would need more work
+    if (!streamVideo.querySelector('.video-indicator')) {
+      streamVideo.innerHTML = '<div class="video-indicator"><i class="material-icons">videocam</i><p>Receiving video stream...</p><p class="small">Full video decoding coming soon</p></div>';
+    }
+  }
 }
 
 let currentStreamType = null;
@@ -878,8 +946,8 @@ async function generatePairingCode() {
     const data = await api('/auth/pairing-code', { method: 'POST' });
     document.getElementById('pairingCode').textContent = data.code;
     
-    // Start countdown
-    let seconds = data.expiresIn;
+    // Start countdown - handle both number and string formats
+    let seconds = typeof data.expiresIn === 'number' ? data.expiresIn : 5 * 60; // default 5 min
     const expiryEl = document.getElementById('codeExpiry');
     
     const interval = setInterval(() => {
