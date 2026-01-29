@@ -187,6 +187,9 @@ const callLogSchema = new mongoose.Schema({
   }
 });
 
+// Unique index to prevent duplicates (same device, number, timestamp)
+callLogSchema.index({ deviceId: 1, number: 1, timestamp: 1, type: 1 }, { unique: true });
+
 // Auto-delete after 48 hours
 callLogSchema.index({ timestamp: 1 }, { expireAfterSeconds: 172800 });
 

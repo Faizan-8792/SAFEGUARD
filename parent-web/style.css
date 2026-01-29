@@ -750,7 +750,18 @@ body {
 
 .call-item .call-info h4 {
   font-size: 16px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+}
+
+.call-item .call-info .call-number {
+  font-size: 13px;
+  color: var(--primary);
+  margin-bottom: 2px;
+}
+
+.call-item .call-info .call-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .call-item .call-info p {

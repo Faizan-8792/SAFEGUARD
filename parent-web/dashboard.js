@@ -433,20 +433,29 @@ async function loadCallHistory() {
       return;
     }
     
-    container.innerHTML = data.callLogs.map(call => `
-      <div class="call-item">
-        <div class="call-icon ${call.type}">
-          <i class="fas fa-phone${call.type === 'outgoing' ? '-alt' : call.type === 'missed' ? '-slash' : ''}"></i>
+    container.innerHTML = data.callLogs.map(call => {
+      const durationMins = Math.floor((call.duration || 0) / 60);
+      const durationSecs = (call.duration || 0) % 60;
+      const durationStr = durationMins > 0 ? `${durationMins}m ${durationSecs}s` : `${durationSecs}s`;
+      const callTypeIcon = call.type === 'outgoing' ? 'fa-phone-alt' : call.type === 'missed' ? 'fa-phone-slash' : 'fa-phone';
+      const callTypeColor = call.type === 'missed' ? 'missed' : call.type === 'outgoing' ? 'outgoing' : 'incoming';
+      
+      return `
+        <div class="call-item">
+          <div class="call-icon ${callTypeColor}">
+            <i class="fas ${callTypeIcon}"></i>
+          </div>
+          <div class="call-info">
+            <h4>${call.name || 'Unknown'}</h4>
+            <p class="call-number">${call.number}</p>
+            <p class="call-meta">${call.type.charAt(0).toUpperCase() + call.type.slice(1)} · ${durationStr}</p>
+          </div>
+          <div class="call-time">
+            <span class="time">${formatTime(call.timestamp)}</span>
+          </div>
         </div>
-        <div class="call-info">
-          <h4>${call.name || call.number}</h4>
-          <p>${call.type} · ${formatDuration((call.duration || 0) / 60)}</p>
-        </div>
-        <div class="call-time">
-          <span class="time">${formatTime(call.timestamp)}</span>
-        </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
   } catch (error) {
     console.error('Failed to load call history:', error);
     document.getElementById('callsList').innerHTML = '<p class="empty-state">Failed to load call logs</p>';
