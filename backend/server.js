@@ -29,15 +29,35 @@ const wss = new WebSocket.Server({ server, path: '/ws' });
 let firebaseInitialized = false;
 if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
   try {
-    // Handle private key format - convert escaped \n to actual newlines
+    // Handle private key format - support multiple formats
     let privateKey = process.env.FIREBASE_PRIVATE_KEY;
-    // Replace literal \n sequences with actual newlines
-    privateKey = privateKey.replace(/\\n/g, '\n');
-    // Also handle double-escaped \\n
-    privateKey = privateKey.replace(/\\\\n/g, '\n');
     
-    console.log('Firebase private key length:', privateKey.length);
-    console.log('Firebase private key starts with:', privateKey.substring(0, 31));
+    // Log original for debugging
+    console.log('Original private key length:', privateKey.length);
+    
+    // Method 1: If it contains literal backslash-n sequences, replace them
+    if (privateKey.includes('\\n')) {
+      privateKey = privateKey.split('\\n').join('\n');
+    }
+    
+    // Method 2: If it's JSON stringified (has quotes), parse it
+    if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+      try {
+        privateKey = JSON.parse(privateKey);
+      } catch (e) {}
+    }
+    
+    // Ensure proper PEM format
+    if (!privateKey.includes('\n') && privateKey.includes('-----BEGIN')) {
+      // Key might be all on one line, need to add newlines
+      privateKey = privateKey
+        .replace('-----BEGIN PRIVATE KEY-----', '-----BEGIN PRIVATE KEY-----\n')
+        .replace('-----END PRIVATE KEY-----', '\n-----END PRIVATE KEY-----');
+    }
+    
+    console.log('Processed private key length:', privateKey.length);
+    console.log('Private key starts with:', privateKey.substring(0, 35));
+    console.log('Private key has newlines:', privateKey.includes('\n'));
     
     admin.initializeApp({
       credential: admin.credential.cert({
@@ -50,9 +70,13 @@ if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && proc
     console.log('✅ Firebase Admin initialized successfully');
   } catch (err) {
     console.error('❌ Firebase init error:', err.message);
+    console.error('Stack:', err.stack);
   }
 } else {
   console.warn('⚠️ Firebase credentials not set - push notifications disabled');
+  console.log('FIREBASE_PROJECT_ID:', process.env.FIREBASE_PROJECT_ID ? 'SET' : 'NOT SET');
+  console.log('FIREBASE_CLIENT_EMAIL:', process.env.FIREBASE_CLIENT_EMAIL ? 'SET' : 'NOT SET');
+  console.log('FIREBASE_PRIVATE_KEY:', process.env.FIREBASE_PRIVATE_KEY ? 'SET' : 'NOT SET');
 }
 
 // Export for use in routes
