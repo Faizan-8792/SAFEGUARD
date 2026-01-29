@@ -788,7 +788,6 @@ async function sendCommand(command, params = {}) {
 }
 
 // Streaming
-let streamSocket = null;
 
 function startStream(type) {
   if (!selectedDevice) return;
