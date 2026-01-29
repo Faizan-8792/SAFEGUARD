@@ -339,7 +339,116 @@ router.post('/location', verifyDevice, async (req, res) => {
   }
 });
 
-// Sync all data (bulk)
+// Sync all data with deviceId in path (used by Android app)
+router.post('/:deviceId', async (req, res) => {
+  try {
+    const deviceIdParam = req.params.deviceId;
+    console.log(`[/:deviceId] Received sync request for device: ${deviceIdParam}`);
+    
+    // Find device by MongoDB _id or Android deviceId
+    let device = null;
+    if (mongoose.Types.ObjectId.isValid(deviceIdParam)) {
+      device = await Device.findById(deviceIdParam);
+    }
+    if (!device) {
+      device = await Device.findOne({ deviceId: deviceIdParam });
+    }
+    
+    if (!device) {
+      console.log(`[/:deviceId] Device NOT FOUND: ${deviceIdParam}`);
+      return res.status(404).json({ error: 'Device not found', success: false });
+    }
+    
+    const { battery, screenTime, location, notifications, callLogs, apps } = req.body;
+    
+    console.log(`[/:deviceId] Device found: ${device.name} (${device._id})`);
+    console.log(`[/:deviceId] Battery: ${battery}, ScreenTime: ${screenTime}`);
+    console.log(`[/:deviceId] Location: ${JSON.stringify(location)}`);
+    console.log(`[/:deviceId] Apps count: ${apps?.length || 0}`);
+
+    // Update device status
+    device.isOnline = true;
+    device.lastSeen = new Date();
+    if (battery !== undefined) device.battery = battery;
+    if (screenTime !== undefined) device.screenTime = screenTime;
+
+    // Update location
+    if (location && location.latitude && location.longitude) {
+      device.location = {
+        ...location,
+        timestamp: new Date()
+      };
+
+      await LocationHistory.create({
+        deviceId: device.deviceId,
+        ...location
+      });
+    }
+
+    await device.save();
+
+    // Sync notifications
+    if (notifications && notifications.length > 0) {
+      const notifDocs = notifications.map(n => ({
+        deviceId: device.deviceId,
+        ...n,
+        timestamp: n.timestamp || new Date()
+      }));
+      await Notification.insertMany(notifDocs, { ordered: false }).catch(() => {});
+    }
+
+    // Sync call logs
+    if (callLogs && callLogs.length > 0) {
+      const callDocs = callLogs.map(c => ({
+        deviceId: device.deviceId,
+        ...c,
+        timestamp: c.timestamp || new Date()
+      }));
+      await CallLog.insertMany(callDocs, { ordered: false }).catch(() => {});
+    }
+
+    // Sync app usage
+    if (apps && apps.length > 0) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const operations = apps.map(app => ({
+        updateOne: {
+          filter: {
+            deviceId: device.deviceId,
+            packageName: app.packageName,
+            date: { $gte: today }
+          },
+          update: {
+            $set: {
+              appName: app.appName,
+              usageTime: app.usageTime,
+              openCount: app.openCount || 1
+            },
+            $setOnInsert: { date: new Date() }
+          },
+          upsert: true
+        }
+      }));
+
+      await AppUsage.bulkWrite(operations).catch(() => {});
+    }
+
+    console.log(`[/:deviceId] SUCCESS - Data synced for device: ${device.name}`);
+    
+    res.json({
+      success: true,
+      message: 'Data synced successfully',
+      settings: device.settings,
+      blockedApps: device.blockedApps
+    });
+  } catch (error) {
+    console.error('[/:deviceId] ERROR:', error);
+    res.status(500).json({ error: 'Sync failed', success: false });
+  }
+});
+
+// Sync all data (bulk) - with X-Device-ID header
 router.post('/sync', verifyDevice, async (req, res) => {
   try {
     const { battery, screenTime, location, notifications, callLogs, apps } = req.body;

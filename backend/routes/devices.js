@@ -129,18 +129,36 @@ router.put('/:deviceId/settings', protect, async (req, res) => {
 router.post('/:deviceId/command', protect, async (req, res) => {
   try {
     const { command, params } = req.body;
+    const deviceIdParam = req.params.deviceId;
     
-    const device = await Device.findOne({
-      _id: req.params.deviceId,
-      owner: req.user._id
-    });
+    // Try finding by MongoDB _id first, then by Android deviceId
+    let device = null;
+    try {
+      device = await Device.findOne({
+        _id: deviceIdParam,
+        owner: req.user._id
+      });
+    } catch (e) {
+      // Not a valid ObjectId, try by deviceId
+    }
+    
+    if (!device) {
+      device = await Device.findOne({
+        deviceId: deviceIdParam,
+        owner: req.user._id
+      });
+    }
 
     if (!device) {
       return res.status(404).json({ error: 'Device not found' });
     }
 
     if (!device.fcmToken) {
-      return res.status(400).json({ error: 'Device not registered for push notifications' });
+      console.log(`Device ${device.name} (${device.deviceId}) has no FCM token registered`);
+      return res.status(400).json({ 
+        error: 'Device not registered for push notifications',
+        hint: 'The device app needs to sync with the server to register its FCM token'
+      });
     }
 
     // Valid commands
@@ -614,6 +632,79 @@ router.post('/:deviceId/photos/sync', protect, async (req, res) => {
   } catch (error) {
     console.error('Failed to request photo sync:', error);
     res.status(500).json({ error: 'Failed to send sync request', details: error.message });
+  }
+});
+
+// Update FCM token for a device (called by Android app)
+router.put('/:deviceId/fcm-token', async (req, res) => {
+  try {
+    const { fcmToken } = req.body;
+    const deviceId = req.params.deviceId;
+    
+    if (!fcmToken) {
+      return res.status(400).json({ error: 'FCM token is required' });
+    }
+    
+    // Find device by deviceId (Android device ID) or MongoDB _id
+    let device = await Device.findOne({ deviceId: deviceId });
+    if (!device) {
+      device = await Device.findById(deviceId);
+    }
+    
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    device.fcmToken = fcmToken;
+    device.lastSeen = new Date();
+    device.isOnline = true;
+    await device.save();
+    
+    console.log(`FCM token updated for device: ${device.name} (${device.deviceId})`);
+    
+    res.json({
+      success: true,
+      message: 'FCM token updated'
+    });
+  } catch (error) {
+    console.error('Failed to update FCM token:', error);
+    res.status(500).json({ error: 'Failed to update FCM token' });
+  }
+});
+
+// Also support POST for FCM token (backwards compatibility)
+router.post('/:deviceId/fcm-token', async (req, res) => {
+  try {
+    const { fcmToken } = req.body;
+    const deviceId = req.params.deviceId;
+    
+    if (!fcmToken) {
+      return res.status(400).json({ error: 'FCM token is required' });
+    }
+    
+    let device = await Device.findOne({ deviceId: deviceId });
+    if (!device) {
+      device = await Device.findById(deviceId);
+    }
+    
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    device.fcmToken = fcmToken;
+    device.lastSeen = new Date();
+    device.isOnline = true;
+    await device.save();
+    
+    console.log(`FCM token updated for device: ${device.name} (${device.deviceId})`);
+    
+    res.json({
+      success: true,
+      message: 'FCM token updated'
+    });
+  } catch (error) {
+    console.error('Failed to update FCM token:', error);
+    res.status(500).json({ error: 'Failed to update FCM token' });
   }
 });
 

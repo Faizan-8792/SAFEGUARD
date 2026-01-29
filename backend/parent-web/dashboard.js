@@ -24,6 +24,10 @@ const settingsPage = document.getElementById('settingsPage');
 const deviceSelector = document.getElementById('deviceSelector');
 const sidebar = document.getElementById('sidebar');
 
+// Auto-refresh interval (30 seconds)
+let autoRefreshInterval = null;
+const AUTO_REFRESH_MS = 30000;
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   if (authToken) {
@@ -34,6 +38,36 @@ document.addEventListener('DOMContentLoaded', () => {
   
   setupEventListeners();
 });
+
+// Start auto-refresh
+function startAutoRefresh() {
+  if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+  autoRefreshInterval = setInterval(() => {
+    if (selectedDevice && !document.hidden) {
+      console.log('Auto-refreshing data...');
+      refreshDataSilent();
+    }
+  }, AUTO_REFRESH_MS);
+}
+
+// Stop auto-refresh
+function stopAutoRefresh() {
+  if (autoRefreshInterval) {
+    clearInterval(autoRefreshInterval);
+    autoRefreshInterval = null;
+  }
+}
+
+// Refresh data without alerts
+async function refreshDataSilent() {
+  if (!selectedDevice) return;
+  
+  try {
+    await loadDashboard();
+  } catch (error) {
+    console.error('Silent refresh failed:', error);
+  }
+}
 
 // Event Listeners
 function setupEventListeners() {
@@ -283,12 +317,14 @@ function showLoginPage() {
   loginPage.classList.remove('hidden');
   document.querySelector('.sidebar').style.display = 'none';
   document.querySelector('.header').style.display = 'none';
+  stopAutoRefresh();
 }
 
 function showDashboard() {
   document.querySelector('.sidebar').style.display = 'flex';
   document.querySelector('.header').style.display = 'flex';
   navigateTo('dashboard');
+  startAutoRefresh();
 }
 
 // Dashboard
@@ -781,8 +817,8 @@ async function removeDevice() {
   }
 }
 
-// Commands
-async function sendCommand(command, params = {}) {
+// Commands - use WebSocket fallback when FCM is not available
+async function sendCommand(command, params = {}, silent = false) {
   if (!selectedDevice) return;
   
   try {
@@ -790,16 +826,49 @@ async function sendCommand(command, params = {}) {
       method: 'POST',
       body: JSON.stringify({ command, params })
     });
-    alert(`Command '${command}' sent successfully`);
+    if (!silent) {
+      console.log(`Command '${command}' sent via FCM`);
+    }
   } catch (error) {
-    alert('Failed to send command: ' + error.message);
+    console.warn('FCM command failed, trying WebSocket fallback:', error.message);
+    
+    // Try WebSocket fallback
+    try {
+      const deviceId = selectedDevice.deviceId || getDeviceId(selectedDevice);
+      const wsUrl = `${WS_BASE}?session=${deviceId}_command&role=parent&deviceId=${deviceId}&type=command`;
+      
+      const cmdSocket = new WebSocket(wsUrl);
+      cmdSocket.onopen = () => {
+        cmdSocket.send(JSON.stringify({
+          type: 'command',
+          command,
+          params
+        }));
+        if (!silent) {
+          console.log(`Command '${command}' sent via WebSocket`);
+        }
+        setTimeout(() => cmdSocket.close(), 2000);
+      };
+      cmdSocket.onerror = () => {
+        if (!silent) {
+          alert('Device is offline or not connected. Command queued for when device comes online.');
+        }
+      };
+    } catch (wsError) {
+      if (!silent) {
+        alert('Failed to send command: ' + error.message);
+      }
+    }
   }
 }
 
 // Streaming
 
 function startStream(type) {
-  if (!selectedDevice) return;
+  if (!selectedDevice) {
+    alert('Please select a device first');
+    return;
+  }
   
   const modal = document.getElementById('streamModal');
   const title = document.getElementById('streamTitle');
@@ -818,17 +887,17 @@ function startStream(type) {
   // Show connecting message
   streamVideo.innerHTML = '<p class="connecting">Connecting to device...</p>';
   
-  // Start stream command on device
+  // Start stream command on device (silent - don't show alerts)
   const commands = {
     screen: 'start_screen_mirror',
     camera: 'start_camera',
     audio: 'start_live_listen'
   };
   
-  sendCommand(commands[type]);
+  sendCommand(commands[type], {}, true);
   
-  // Connect to WebSocket as receiver
-  const deviceId = selectedDevice.deviceId || selectedDevice._id;
+  // Connect to WebSocket as receiver - use Android deviceId
+  const deviceId = selectedDevice.deviceId || selectedDevice.id;
   const sessionId = `${deviceId}_${type}`;
   const wsUrl = `${WS_BASE}?session=${sessionId}&role=receiver&deviceId=${deviceId}&type=${type}`;
   
