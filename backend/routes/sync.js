@@ -49,11 +49,59 @@ router.get('/debug/:id', async (req, res) => {
         name: device.name,
         owner: device.owner,
         lastSeen: device.lastSeen,
-        battery: device.battery
+        battery: device.battery,
+        fcmToken: device.fcmToken || null,
+        hasFcmToken: !!device.fcmToken
       }
     });
   } catch (error) {
     console.error('[DEBUG] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin endpoint to manually set FCM token (for testing/debugging)
+router.post('/admin/set-fcm-token/:id', async (req, res) => {
+  try {
+    const { fcmToken } = req.body;
+    const id = req.params.id;
+    
+    if (!fcmToken) {
+      return res.status(400).json({ error: 'fcmToken is required in request body' });
+    }
+    
+    let device = null;
+    
+    // Try MongoDB _id first
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      device = await Device.findById(id);
+    }
+    
+    // Try deviceId (Android ID)
+    if (!device) {
+      device = await Device.findOne({ deviceId: id });
+    }
+    
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    device.fcmToken = fcmToken;
+    await device.save();
+    
+    console.log(`[Admin] FCM token set for device ${device.name}: ${fcmToken.substring(0, 30)}...`);
+    
+    res.json({
+      success: true,
+      message: `FCM token set for device ${device.name}`,
+      device: {
+        id: device._id.toString(),
+        name: device.name,
+        hasFcmToken: true
+      }
+    });
+  } catch (error) {
+    console.error('[Admin] Error setting FCM token:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -128,10 +176,20 @@ router.post('/heartbeat', verifyDevice, async (req, res) => {
 router.post('/fcm-token', verifyDevice, async (req, res) => {
   try {
     const { fcmToken } = req.body;
+    console.log(`[FCM Token] Received token update for device ${req.device.name}`);
+    console.log(`[FCM Token] Token: ${fcmToken ? fcmToken.substring(0, 30) + '...' : 'EMPTY'}`);
+    
+    if (!fcmToken) {
+      console.log('[FCM Token] ERROR: No token provided');
+      return res.status(400).json({ error: 'FCM token is required' });
+    }
+    
     req.device.fcmToken = fcmToken;
     await req.device.save();
+    console.log(`[FCM Token] ✅ Token saved successfully for device ${req.device.name}`);
     res.json({ success: true });
   } catch (error) {
+    console.error('[FCM Token] Error:', error);
     res.status(500).json({ error: 'Failed to update FCM token' });
   }
 });
