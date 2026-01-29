@@ -1,0 +1,12 @@
+# This file should NOT be checked into version control
+# It contains local machine-specific paths
+
+# SDK Location (update to your Android SDK path)
+# Windows example:
+# sdk.dir=C:\\Users\\YourUsername\\AppData\\Local\\Android\\Sdk
+
+# macOS example:
+# sdk.dir=/Users/YourUsername/Library/Android/sdk
+
+# Linux example:
+# sdk.dir=/home/YourUsername/Android/Sdk

@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FamilyGuard Pro - Parent Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>FamilyGuard Pro</span>
+                </div>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item active" data-page="dashboard">
+                    <i class="fas fa-home"></i>
+                    <span>Dashboard</span>
+                </li>
+                <li class="nav-item" data-page="notifications">
+                    <i class="fas fa-bell"></i>
+                    <span>Notifications</span>
+                    <span class="badge" id="notifBadge">0</span>
+                </li>
+                <li class="nav-item" data-page="calls">
+                    <i class="fas fa-phone"></i>
+                    <span>Call History</span>
+                </li>
+                <li class="nav-item" data-page="gallery">
+                    <i class="fas fa-images"></i>
+                    <span>Gallery</span>
+                </li>
+                <li class="nav-item" data-page="location">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span>Location</span>
+                </li>
+                <li class="nav-item" data-page="apps">
+                    <i class="fas fa-th-large"></i>
+                    <span>App Usage</span>
+                </li>
+                <li class="nav-item" data-page="settings">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </li>
+            </ul>
+            <div class="sidebar-footer">
+                <button class="btn-logout" id="btnLogout">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <button class="btn-menu" id="btnMenu">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <div class="device-selector">
+                    <select id="deviceSelector">
+                        <option value="">Select Device</option>
+                    </select>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-icon" id="btnRefresh" title="Refresh">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <div class="user-menu">
+                        <span id="userName">User</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Login Page -->
+            <div class="page" id="loginPage">
+                <div class="login-container">
+                    <div class="login-card">
+                        <div class="login-header">
+                            <i class="fas fa-shield-alt"></i>
+                            <h1>FamilyGuard Pro</h1>
+                            <p>Parent Dashboard</p>
+                        </div>
+                        <form id="loginForm">
+                            <div class="form-group">
+                                <label for="email">Email</label>
+                                <input type="email" id="email" placeholder="Enter your email" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="password">Password</label>
+                                <input type="password" id="password" placeholder="Enter your password" required>
+                            </div>
+                            <button type="submit" class="btn-primary btn-full">Login</button>
+                        </form>
+                        <p class="login-footer">
+                            Don't have an account? <a href="#" id="showRegister">Register</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Page -->
+            <div class="page hidden" id="dashboardPage">
+                <div class="page-header">
+                    <h1>Dashboard</h1>
+                    <button class="btn-primary" id="btnAddDevice">
+                        <i class="fas fa-plus"></i> Add Device
+                    </button>
+                </div>
+
+                <!-- Device Status Card -->
+                <div class="device-status-card" id="deviceStatusCard">
+                    <div class="device-info">
+                        <div class="device-icon">
+                            <i class="fas fa-mobile-alt"></i>
+                            <span class="status-dot online" id="statusDot"></span>
+                        </div>
+                        <div class="device-details">
+                            <h2 id="deviceName">Child's Phone</h2>
+                            <p id="deviceModel">Samsung Galaxy S21</p>
+                            <p class="last-seen" id="lastSeen">Last seen: Just now</p>
+                        </div>
+                    </div>
+                    <div class="device-stats">
+                        <div class="stat">
+                            <i class="fas fa-battery-three-quarters"></i>
+                            <span id="batteryLevel">85%</span>
+                            <label>Battery</label>
+                        </div>
+                        <div class="stat">
+                            <i class="fas fa-clock"></i>
+                            <span id="screenTime">3h 45m</span>
+                            <label>Screen Time</label>
+                        </div>
+                        <div class="stat">
+                            <i class="fas fa-map-marker-alt"></i>
+                            <span id="locationStatus">Active</span>
+                            <label>Location</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="section">
+                    <h3>Live Monitoring</h3>
+                    <div class="action-grid">
+                        <button class="action-card" id="btnScreenMirror">
+                            <i class="fas fa-desktop"></i>
+                            <span>Screen Mirror</span>
+                        </button>
+                        <button class="action-card" id="btnCamera">
+                            <i class="fas fa-camera"></i>
+                            <span>Remote Camera</span>
+                        </button>
+                        <button class="action-card" id="btnLiveListen">
+                            <i class="fas fa-microphone"></i>
+                            <span>Live Listen</span>
+                        </button>
+                        <button class="action-card" id="btnViewLocation">
+                            <i class="fas fa-location-arrow"></i>
+                            <span>View Location</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Danger Actions -->
+                <div class="section">
+                    <h3>Quick Actions</h3>
+                    <div class="action-grid">
+                        <button class="action-card" id="btnOpenApp">
+                            <i class="fas fa-external-link-alt"></i>
+                            <span>Open App</span>
+                        </button>
+                        <button class="action-card danger" id="btnDeleteCallLogs">
+                            <i class="fas fa-trash"></i>
+                            <span>Delete Call Logs</span>
+                        </button>
+                        <button class="action-card" id="btnLockDevice">
+                            <i class="fas fa-lock"></i>
+                            <span>Lock Device</span>
+                        </button>
+                        <button class="action-card" id="btnRingDevice">
+                            <i class="fas fa-bell"></i>
+                            <span>Ring Device</span>
+                        </button>
+                        <button class="action-card" id="btnSyncNow">
+                            <i class="fas fa-sync"></i>
+                            <span>Sync Now</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="section">
+                    <div class="section-header">
+                        <h3>Recent Notifications</h3>
+                        <a href="#" class="view-all" data-page="notifications">View All</a>
+                    </div>
+                    <div class="activity-list" id="recentNotifications">
+                        <p class="empty-state">No recent notifications</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notifications Page -->
+            <div class="page hidden" id="notificationsPage">
+                <div class="page-header">
+                    <h1>Notifications</h1>
+                    <div class="filter-chips">
+                        <button class="chip active" data-filter="all">All</button>
+                        <button class="chip" data-filter="com.whatsapp">WhatsApp</button>
+                        <button class="chip" data-filter="com.instagram.android">Instagram</button>
+                        <button class="chip" data-filter="org.telegram.messenger">Telegram</button>
+                        <button class="chip" data-filter="com.facebook.orca">Messenger</button>
+                    </div>
+                </div>
+                <div class="notifications-list" id="notificationsList">
+                    <p class="empty-state">No notifications found</p>
+                </div>
+                <button class="btn-load-more" id="loadMoreNotif">Load More</button>
+            </div>
+
+            <!-- Call History Page -->
+            <div class="page hidden" id="callsPage">
+                <div class="page-header">
+                    <h1>Call History</h1>
+                    <button class="btn-danger" id="btnDeleteAllCalls">
+                        <i class="fas fa-trash"></i> Delete All
+                    </button>
+                </div>
+                <div class="call-stats">
+                    <div class="stat-card">
+                        <span class="stat-value" id="totalCalls">0</span>
+                        <span class="stat-label">Total</span>
+                    </div>
+                    <div class="stat-card incoming">
+                        <span class="stat-value" id="incomingCalls">0</span>
+                        <span class="stat-label">Incoming</span>
+                    </div>
+                    <div class="stat-card outgoing">
+                        <span class="stat-value" id="outgoingCalls">0</span>
+                        <span class="stat-label">Outgoing</span>
+                    </div>
+                    <div class="stat-card missed">
+                        <span class="stat-value" id="missedCalls">0</span>
+                        <span class="stat-label">Missed</span>
+                    </div>
+                </div>
+                <div class="calls-list" id="callsList">
+                    <p class="empty-state">No call logs found</p>
+                </div>
+            </div>
+
+            <!-- Location Page -->
+            <div class="page hidden" id="locationPage">
+                <div class="page-header">
+                    <h1>Location</h1>
+                    <button class="btn-primary" id="btnRefreshLocation">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+                <div class="location-container">
+                    <div class="map-container" id="mapContainer">
+                        <p class="map-placeholder">Map will be displayed here</p>
+                    </div>
+                    <div class="location-info">
+                        <h3>Current Location</h3>
+                        <p id="currentAddress">Loading...</p>
+                        <div class="location-details">
+                            <div class="detail">
+                                <label>Latitude</label>
+                                <span id="latitude">--</span>
+                            </div>
+                            <div class="detail">
+                                <label>Longitude</label>
+                                <span id="longitude">--</span>
+                            </div>
+                            <div class="detail">
+                                <label>Accuracy</label>
+                                <span id="accuracy">--</span>
+                            </div>
+                            <div class="detail">
+                                <label>Last Update</label>
+                                <span id="locationTime">--</span>
+                            </div>
+                        </div>
+                        <a href="#" class="btn-secondary" id="btnOpenMaps" target="_blank">
+                            <i class="fas fa-external-link-alt"></i> Open in Google Maps
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gallery Page -->
+            <div class="page hidden" id="galleryPage">
+                <div class="page-header">
+                    <h1>Gallery</h1>
+                    <button class="btn-primary" id="btnSyncPhotos">
+                        <i class="fas fa-sync-alt"></i> Sync Photos
+                    </button>
+                </div>
+                <div class="gallery-info">
+                    <p><i class="fas fa-info-circle"></i> Showing photos from the last 24 hours</p>
+                    <span id="photoCount">0 photos</span>
+                </div>
+                <div class="gallery-grid" id="galleryGrid">
+                    <p class="empty-state">No photos found. Tap "Sync Photos" to fetch recent photos from the device.</p>
+                </div>
+            </div>
+
+            <!-- Photo Viewer Modal -->
+            <div class="modal hidden" id="photoModal">
+                <div class="modal-content photo-modal">
+                    <div class="modal-header">
+                        <h2 id="photoFileName">Photo</h2>
+                        <button class="btn-close" id="closePhotoModal">&times;</button>
+                    </div>
+                    <div class="photo-viewer">
+                        <img id="fullPhotoImage" src="" alt="Photo">
+                    </div>
+                    <div class="photo-info">
+                        <p id="photoDate">Date: --</p>
+                        <p id="photoSize">Size: --</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- App Usage Page -->
+            <div class="page hidden" id="appsPage">
+                <div class="page-header">
+                    <h1>App Usage</h1>
+                </div>
+                <div class="section">
+                    <h3>Blocked Apps</h3>
+                    <div class="blocked-apps" id="blockedApps">
+                        <p class="empty-state">No apps blocked</p>
+                    </div>
+                    <button class="btn-secondary" id="btnManageBlocked">
+                        <i class="fas fa-plus"></i> Manage Blocked Apps
+                    </button>
+                </div>
+                <div class="section">
+                    <h3>Today's Usage</h3>
+                    <div class="app-usage-list" id="appUsageList">
+                        <p class="empty-state">No usage data</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Page -->
+            <div class="page hidden" id="settingsPage">
+                <div class="page-header">
+                    <h1>Settings</h1>
+                </div>
+
+                <!-- Security PIN Section -->
+                <div class="settings-section">
+                    <h3><i class="fas fa-lock"></i> Security PIN</h3>
+                    <p class="section-desc">Set a PIN to protect device operations like unpair</p>
+                    <div class="pin-status" id="pinStatus">
+                        <span class="pin-badge no-pin">No PIN Set</span>
+                    </div>
+                    <div class="pin-actions">
+                        <button class="btn-secondary" id="btnSetPin">
+                            <i class="fas fa-key"></i> Set PIN
+                        </button>
+                        <button class="btn-secondary hidden" id="btnChangePin">
+                            <i class="fas fa-edit"></i> Change PIN
+                        </button>
+                        <button class="btn-danger hidden" id="btnRemovePin">
+                            <i class="fas fa-trash"></i> Remove PIN
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Permissions Status Section -->
+                <div class="settings-section">
+                    <h3><i class="fas fa-shield-alt"></i> Device Permissions</h3>
+                    <p class="section-desc">Permissions granted by the child device</p>
+                    <div class="permissions-grid" id="permissionsGrid">
+                        <div class="permission-item" data-permission="location">
+                            <i class="fas fa-map-marker-alt"></i>
+                            <span>Location</span>
+                            <span class="permission-status pending">Unknown</span>
+                        </div>
+                        <div class="permission-item" data-permission="backgroundLocation">
+                            <i class="fas fa-route"></i>
+                            <span>Background Location</span>
+                            <span class="permission-status pending">Unknown</span>
+                        </div>
+                        <div class="permission-item" data-permission="camera">
+                            <i class="fas fa-camera"></i>
+                            <span>Camera</span>
+                            <span class="permission-status pending">Unknown</span>
+                        </div>
+                        <div class="permission-item" data-permission="microphone">
+                            <i class="fas fa-microphone"></i>
+                            <span>Microphone</span>
+                            <span class="permission-status pending">Unknown</span>
+                        </div>
+                        <div class="permission-item" data-permission="callLog">
+                            <i class="fas fa-phone"></i>
+                            <span>Call Log</span>
+                            <span class="permission-status pending">Unknown</span>
+                        </div>
+                        <div class="permission-item" data-permission="notifications">
+                            <i class="fas fa-bell"></i>
+                            <span>Notifications</span>
+                            <span class="permission-status pending">Unknown</span>
+                        </div>
+                        <div class="permission-item" data-permission="usageStats">
+                            <i class="fas fa-chart-bar"></i>
+                            <span>Usage Stats</span>
+                            <span class="permission-status pending">Unknown</span>
+                        </div>
+                        <div class="permission-item" data-permission="overlay">
+                            <i class="fas fa-layer-group"></i>
+                            <span>Display Overlay</span>
+                            <span class="permission-status pending">Unknown</span>
+                        </div>
+                        <div class="permission-item" data-permission="batteryOptimization">
+                            <i class="fas fa-battery-full"></i>
+                            <span>Battery Optimization</span>
+                            <span class="permission-status pending">Unknown</span>
+                        </div>
+                        <div class="permission-item" data-permission="deviceAdmin">
+                            <i class="fas fa-user-shield"></i>
+                            <span>Device Admin</span>
+                            <span class="permission-status pending">Unknown</span>
+                        </div>
+                        <div class="permission-item" data-permission="accessibility">
+                            <i class="fas fa-universal-access"></i>
+                            <span>Accessibility</span>
+                            <span class="permission-status pending">Unknown</span>
+                        </div>
+                        <div class="permission-item" data-permission="storage">
+                            <i class="fas fa-folder"></i>
+                            <span>Storage</span>
+                            <span class="permission-status pending">Unknown</span>
+                        </div>
+                    </div>
+                    <p class="permissions-updated" id="permissionsLastUpdated">Last updated: Never</p>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Device Controls</h3>
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span>Screen Mirror</span>
+                            <small>Allow remote screen viewing</small>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" id="toggleScreenMirror" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span>Remote Camera</span>
+                            <small>Allow remote camera access</small>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" id="toggleCamera" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span>Live Listen</span>
+                            <small>Allow microphone streaming</small>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" id="toggleLiveListen" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span>Call Recording</span>
+                            <small>Record phone calls</small>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" id="toggleCallRecord" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span>Location Tracking</span>
+                            <small>Track device location</small>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" id="toggleLocation" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <h3>Danger Zone</h3>
+                    <button class="btn-danger" id="btnUninstallApp">
+                        <i class="fas fa-trash-alt"></i> Uninstall App from Device
+                    </button>
+                    <button class="btn-danger" id="btnRemoveDevice">
+                        <i class="fas fa-trash"></i> Remove Device
+                    </button>
+                </div>
+            </div>
+
+            <!-- Streaming Modal -->
+            <div class="modal hidden" id="streamModal">
+                <div class="modal-content stream-modal">
+                    <div class="modal-header">
+                        <h2 id="streamTitle">Live Stream</h2>
+                        <button class="btn-close" id="closeStream">&times;</button>
+                    </div>
+                    <div class="stream-container">
+                        <div class="stream-video" id="streamVideo">
+                            <p class="connecting">Connecting...</p>
+                        </div>
+                        <div class="stream-controls">
+                            <button class="btn-icon" id="btnSwitchCamera">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                            <button class="btn-icon danger" id="btnStopStream">
+                                <i class="fas fa-stop"></i>
+                            </button>
+                            <button class="btn-icon" id="btnMuteStream">
+                                <i class="fas fa-volume-up"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pairing Modal -->
+            <div class="modal hidden" id="pairingModal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>Add New Device</h2>
+                        <button class="btn-close" id="closePairing">&times;</button>
+                    </div>
+                    <div class="pairing-content">
+                        <p>Share this code with the child device to pair:</p>
+                        <div class="pairing-code" id="pairingCode">------</div>
+                        <p class="code-expiry">Code expires in <span id="codeExpiry">5:00</span></p>
+                        <button class="btn-secondary" id="btnNewCode">Generate New Code</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PIN Modal -->
+            <div class="modal hidden" id="pinModal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 id="pinModalTitle">Set Security PIN</h2>
+                        <button class="btn-close" id="closePinModal">&times;</button>
+                    </div>
+                    <div class="pin-form">
+                        <div class="form-group hidden" id="currentPinGroup">
+                            <label for="currentPin">Current PIN</label>
+                            <input type="password" id="currentPin" maxlength="8" placeholder="Enter current PIN" pattern="[0-9]*" inputmode="numeric">
+                        </div>
+                        <div class="form-group" id="newPinGroup">
+                            <label for="newPin">New PIN (4-8 digits)</label>
+                            <input type="password" id="newPin" maxlength="8" placeholder="Enter new PIN" pattern="[0-9]*" inputmode="numeric">
+                        </div>
+                        <div class="form-group" id="confirmPinGroup">
+                            <label for="confirmPin">Confirm PIN</label>
+                            <input type="password" id="confirmPin" maxlength="8" placeholder="Confirm PIN" pattern="[0-9]*" inputmode="numeric">
+                        </div>
+                        <p class="pin-error hidden" id="pinError"></p>
+                        <div class="modal-actions">
+                            <button class="btn-secondary" id="btnCancelPin">Cancel</button>
+                            <button class="btn-primary" id="btnSavePin">Save PIN</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>
