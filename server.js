@@ -22,8 +22,24 @@ app.set('trust proxy', 1);
 
 const server = http.createServer(app);
 
-// WebSocket server for streaming
-const wss = new WebSocket.Server({ server, path: '/ws' });
+// WebSocket server for streaming - handle both /ws and //ws paths
+const wss = new WebSocket.Server({ noServer: true });
+
+// Handle WebSocket upgrade requests
+server.on('upgrade', (request, socket, head) => {
+  const pathname = request.url.split('?')[0];
+  console.log(`[WS Upgrade] Received upgrade request for path: ${pathname}`);
+  
+  // Accept both /ws and //ws paths (some clients send double slash)
+  if (pathname === '/ws' || pathname === '//ws') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    console.log(`[WS Upgrade] Rejecting connection for unknown path: ${pathname}`);
+    socket.destroy();
+  }
+});
 
 // Initialize Firebase Admin SDK
 let firebaseInitialized = false;
