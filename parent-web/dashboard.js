@@ -943,35 +943,127 @@ async function removeDevice() {
 }
 
 // ========== BLOCKED APPS MANAGEMENT ==========
-function showBlockedAppsModal() {
+// Store apps data for blocking
+let installedApps = [];
+let blockedAppsSet = new Set();
+
+async function showBlockedAppsModal() {
   if (!selectedDevice) {
     alert('Please select a device first');
     return;
   }
   
-  // Get installed apps from the device
-  const appInput = prompt('Enter the package name of the app to block:\n\nExamples:\n- com.instagram.android\n- com.whatsapp\n- com.snapchat.android\n- org.telegram.messenger');
-  
-  if (appInput && appInput.trim()) {
-    blockApp(appInput.trim());
+  try {
+    // Get apps data from server
+    const data = await api(`/devices/${getDeviceId(selectedDevice)}/apps`);
+    installedApps = data.usage || [];
+    blockedAppsSet = new Set(data.blockedApps || []);
+    
+    // Create modal if not exists
+    let modal = document.getElementById('blockedAppsModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'blockedAppsModal';
+      modal.className = 'modal';
+      document.body.appendChild(modal);
+    }
+    
+    // Sort apps - blocked first, then by name
+    const sortedApps = [...installedApps].sort((a, b) => {
+      const aBlocked = blockedAppsSet.has(a._id);
+      const bBlocked = blockedAppsSet.has(b._id);
+      if (aBlocked && !bBlocked) return -1;
+      if (!aBlocked && bBlocked) return 1;
+      return (a.appName || a._id).localeCompare(b.appName || b._id);
+    });
+    
+    modal.innerHTML = `
+      <div class="modal-content modal-large">
+        <div class="modal-header">
+          <h2><i class="fas fa-ban"></i> Manage Blocked Apps</h2>
+          <button class="close-btn" onclick="closeBlockedAppsModal()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-desc">Select apps to block. Blocked apps will be restricted on the child's device.</p>
+          <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" id="appSearchInput" placeholder="Search apps..." oninput="filterApps(this.value)">
+          </div>
+          <div class="apps-list" id="appsListContainer">
+            ${sortedApps.length > 0 ? sortedApps.map(app => `
+              <div class="app-block-item ${blockedAppsSet.has(app._id) ? 'blocked' : ''}" data-package="${app._id}" data-name="${(app.appName || app._id).toLowerCase()}">
+                <div class="app-block-icon">
+                  <i class="fas fa-mobile-alt"></i>
+                </div>
+                <div class="app-block-info">
+                  <h4>${app.appName || app._id}</h4>
+                  <small>${app._id}</small>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" ${blockedAppsSet.has(app._id) ? 'checked' : ''} onchange="toggleAppBlock('${app._id}', this.checked)">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            `).join('') : '<p class="empty-state">No apps found. Wait for device to sync.</p>'}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <span class="blocked-count" id="blockedCountText">${blockedAppsSet.size} app(s) blocked</span>
+          <button class="btn secondary" onclick="closeBlockedAppsModal()">Close</button>
+        </div>
+      </div>
+    `;
+    
+    modal.classList.remove('hidden');
+  } catch (error) {
+    alert('Failed to load apps: ' + error.message);
   }
 }
 
-async function blockApp(packageName) {
+function closeBlockedAppsModal() {
+  const modal = document.getElementById('blockedAppsModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function filterApps(searchTerm) {
+  const items = document.querySelectorAll('.app-block-item');
+  const term = searchTerm.toLowerCase();
+  
+  items.forEach(item => {
+    const name = item.dataset.name;
+    const pkg = item.dataset.package.toLowerCase();
+    if (name.includes(term) || pkg.includes(term)) {
+      item.style.display = 'flex';
+    } else {
+      item.style.display = 'none';
+    }
+  });
+}
+
+async function toggleAppBlock(packageName, shouldBlock) {
   if (!selectedDevice) return;
   
   try {
-    // Get current blocked apps
-    const data = await api(`/devices/${getDeviceId(selectedDevice)}/apps`);
-    const currentBlocked = data.blockedApps || [];
-    
-    if (currentBlocked.includes(packageName)) {
-      alert('This app is already blocked');
-      return;
+    if (shouldBlock) {
+      blockedAppsSet.add(packageName);
+    } else {
+      blockedAppsSet.delete(packageName);
     }
     
-    // Add new app to blocked list
-    const newBlocked = [...currentBlocked, packageName];
+    const newBlocked = Array.from(blockedAppsSet);
+    
+    // Update UI immediately
+    const item = document.querySelector(`.app-block-item[data-package="${packageName}"]`);
+    if (item) {
+      if (shouldBlock) {
+        item.classList.add('blocked');
+      } else {
+        item.classList.remove('blocked');
+      }
+    }
+    
+    // Update count
+    document.getElementById('blockedCountText').textContent = `${blockedAppsSet.size} app(s) blocked`;
     
     // Update on server
     await api(`/devices/${getDeviceId(selectedDevice)}/settings`, {
@@ -979,35 +1071,29 @@ async function blockApp(packageName) {
       body: JSON.stringify({ blockedApps: newBlocked })
     });
     
-    // Send command to device to update blocked apps
+    // Send command to device
     await sendCommand('update_blocked_apps', { apps: newBlocked }, true);
     
-    alert(`App "${packageName}" blocked successfully`);
+    // Refresh app usage in background
     loadAppUsage();
   } catch (error) {
-    alert('Failed to block app: ' + error.message);
+    // Revert UI on error
+    if (shouldBlock) {
+      blockedAppsSet.delete(packageName);
+    } else {
+      blockedAppsSet.add(packageName);
+    }
+    alert('Failed to update: ' + error.message);
   }
 }
 
+async function blockApp(packageName) {
+  await toggleAppBlock(packageName, true);
+}
+
 async function unblockApp(packageName) {
-  if (!selectedDevice) return;
-  
-  if (!confirm(`Unblock "${packageName}"?`)) return;
-  
-  try {
-    const data = await api(`/devices/${getDeviceId(selectedDevice)}/apps`);
-    const currentBlocked = data.blockedApps || [];
-    const newBlocked = currentBlocked.filter(app => app !== packageName);
-    
-    await api(`/devices/${getDeviceId(selectedDevice)}/settings`, {
-      method: 'PUT',
-      body: JSON.stringify({ blockedApps: newBlocked })
-    });
-    
-    await sendCommand('update_blocked_apps', { apps: newBlocked }, true);
-    
-    alert(`App "${packageName}" unblocked`);
-    loadAppUsage();
+  if (!confirm(`Unblock this app?`)) return;
+  await toggleAppBlock(packageName, false);
   } catch (error) {
     alert('Failed to unblock app: ' + error.message);
   }

@@ -378,9 +378,19 @@ router.post('/location', verifyDevice, async (req, res) => {
 });
 
 // Sync all data with deviceId in path (used by Android app)
-router.post('/:deviceId', async (req, res) => {
+// NOTE: This route must skip reserved paths like 'photos', 'sms', 'permissions', etc.
+router.post('/:deviceId', async (req, res, next) => {
+  const deviceIdParam = req.params.deviceId;
+  
+  // Skip if deviceIdParam matches a known route
+  const reservedPaths = ['photos', 'sms', 'permissions', 'sync', 'command-ack', 
+                         'heartbeat', 'fcm-token', 'notifications', 'notification',
+                         'call-logs', 'app-usage', 'location', 'admin', 'debug'];
+  if (reservedPaths.includes(deviceIdParam.toLowerCase())) {
+    return next('route');
+  }
+  
   try {
-    const deviceIdParam = req.params.deviceId;
     console.log(`[/:deviceId] Received sync request for device: ${deviceIdParam}`);
     
     // Find device by MongoDB _id or Android deviceId

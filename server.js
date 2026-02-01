@@ -367,12 +367,27 @@ wss.on('connection', (ws, req) => {
 
   if (role === 'sender') {
     // Child device sending stream
-    streamSessions.set(sessionKey, { sender: ws, receivers: new Set() });
+    // Check if session already exists (receiver might be waiting)
+    let session = streamSessions.get(sessionKey);
+    if (session) {
+      // Session exists, add sender to it
+      session.sender = ws;
+      // Notify waiting receivers
+      session.receivers.forEach(receiver => {
+        if (receiver.readyState === WebSocket.OPEN) {
+          receiver.send(JSON.stringify({ type: 'stream_started', message: 'Stream started' }));
+        }
+      });
+    } else {
+      // Create new session
+      session = { sender: ws, receivers: new Set() };
+      streamSessions.set(sessionKey, session);
+    }
     
     ws.on('message', (data) => {
-      const session = streamSessions.get(sessionKey);
-      if (session && session.receivers.size > 0) {
-        session.receivers.forEach(receiver => {
+      const currentSession = streamSessions.get(sessionKey);
+      if (currentSession && currentSession.receivers.size > 0) {
+        currentSession.receivers.forEach(receiver => {
           if (receiver.readyState === WebSocket.OPEN) {
             receiver.send(data);
           }
@@ -381,33 +396,45 @@ wss.on('connection', (ws, req) => {
     });
 
     ws.on('close', () => {
-      const session = streamSessions.get(sessionKey);
-      if (session) {
-        session.receivers.forEach(receiver => {
-          receiver.close(1000, 'Stream ended');
+      const currentSession = streamSessions.get(sessionKey);
+      if (currentSession) {
+        currentSession.sender = null;
+        // Notify receivers that stream ended
+        currentSession.receivers.forEach(receiver => {
+          if (receiver.readyState === WebSocket.OPEN) {
+            receiver.send(JSON.stringify({ type: 'stream_ended', message: 'Stream ended' }));
+          }
         });
-        streamSessions.delete(sessionKey);
+        // Only delete if no receivers
+        if (currentSession.receivers.size === 0) {
+          streamSessions.delete(sessionKey);
+        }
       }
       console.log(`Sender disconnected: ${sessionKey}`);
     });
 
   } else if (role === 'receiver') {
     // Parent device receiving stream
-    const session = streamSessions.get(sessionKey);
+    let session = streamSessions.get(sessionKey);
     if (session) {
       session.receivers.add(ws);
-      ws.send(JSON.stringify({ type: 'connected', message: 'Stream connected' }));
+      if (session.sender) {
+        ws.send(JSON.stringify({ type: 'connected', message: 'Stream connected' }));
+      } else {
+        ws.send(JSON.stringify({ type: 'waiting', message: 'Waiting for device to start streaming' }));
+      }
     } else {
-      ws.send(JSON.stringify({ type: 'waiting', message: 'Waiting for stream' }));
       // Create session to wait for sender
-      streamSessions.set(sessionKey, { sender: null, receivers: new Set([ws]) });
+      session = { sender: null, receivers: new Set([ws]) };
+      streamSessions.set(sessionKey, session);
+      ws.send(JSON.stringify({ type: 'waiting', message: 'Waiting for device to start streaming' }));
     }
 
     ws.on('close', () => {
-      const session = streamSessions.get(sessionKey);
-      if (session) {
-        session.receivers.delete(ws);
-        if (session.receivers.size === 0 && !session.sender) {
+      const currentSession = streamSessions.get(sessionKey);
+      if (currentSession) {
+        currentSession.receivers.delete(ws);
+        if (currentSession.receivers.size === 0 && !currentSession.sender) {
           streamSessions.delete(sessionKey);
         }
       }

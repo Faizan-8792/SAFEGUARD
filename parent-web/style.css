@@ -1318,32 +1318,46 @@ body {
 
 .permissions-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
   margin-top: 16px;
 }
 
 .permission-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--surface-light);
-  border-radius: 8px;
+  gap: 14px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, var(--surface-light), rgba(99, 102, 241, 0.05));
+  border-radius: 12px;
   border: 1px solid var(--border);
   position: relative;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.permission-item i {
-  font-size: 18px;
+.permission-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.2);
+  border-color: var(--primary);
+}
+
+.permission-item i:first-child {
+  font-size: 22px;
   color: var(--primary);
-  width: 24px;
-  text-align: center;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(99, 102, 241, 0.15);
+  border-radius: 8px;
 }
 
 .permission-item span:first-of-type {
   flex: 1;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .btn-request-perm {
@@ -1351,19 +1365,21 @@ body {
   color: white;
   border: none;
   border-radius: 50%;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
   margin-left: 8px;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
 }
 
 .btn-request-perm:hover {
   background: var(--primary-dark);
-  transform: scale(1.1);
+  transform: scale(1.15);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
 }
 
 .btn-request-perm i {
@@ -1372,10 +1388,21 @@ body {
   width: auto;
 }
 
+.permission-item.granted {
+  background: linear-gradient(135deg, var(--surface-light), rgba(34, 197, 94, 0.08));
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.permission-item.granted i:first-child {
+  color: var(--success);
+  background: rgba(34, 197, 94, 0.15);
+}
+
 .permission-item.granted .btn-request-perm {
   background: var(--success);
-  opacity: 0.5;
+  opacity: 0.6;
   pointer-events: none;
+  box-shadow: none;
 }
 
 .permission-label {
@@ -1385,36 +1412,37 @@ body {
 }
 
 .permission-status {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 12px;
   border-radius: 20px;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .permission-status.granted {
-  background: rgba(34, 197, 94, 0.15);
+  background: rgba(34, 197, 94, 0.2);
   color: var(--success);
 }
 
 .permission-status.denied {
-  background: rgba(239, 68, 68, 0.15);
+  background: rgba(239, 68, 68, 0.2);
   color: var(--error);
 }
 
 .permission-status.pending {
-  background: rgba(107, 114, 128, 0.15);
+  background: rgba(107, 114, 128, 0.2);
   color: var(--text-hint);
 }
 
 #permissionsLastUpdated {
-  margin-top: 12px;
+  margin-top: 16px;
   font-size: 12px;
   color: var(--text-hint);
 }
 
 .permissions-updated {
-  margin-top: 12px;
+  margin-top: 16px;
   font-size: 12px;
   color: var(--text-hint);
 }
@@ -1615,5 +1643,353 @@ body {
   
   .gallery-item {
     border-radius: 8px;
+  }
+}
+
+/* ========== Blocked Apps Modal ========== */
+.modal-large {
+  max-width: 600px;
+  width: 95%;
+}
+
+.modal-desc {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface-light);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.search-box i {
+  color: var(--text-hint);
+  font-size: 16px;
+}
+
+.search-box input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+}
+
+.search-box input::placeholder {
+  color: var(--text-hint);
+}
+
+.apps-list {
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.apps-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.apps-list::-webkit-scrollbar-track {
+  background: var(--surface-light);
+  border-radius: 3px;
+}
+
+.apps-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.app-block-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--surface-light);
+  border-radius: 12px;
+  margin-bottom: 10px;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.app-block-item:hover {
+  border-color: var(--border);
+}
+
+.app-block-item.blocked {
+  background: linear-gradient(135deg, var(--surface-light), rgba(239, 68, 68, 0.1));
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.app-block-icon {
+  width: 44px;
+  height: 44px;
+  background: rgba(99, 102, 241, 0.15);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-block-icon i {
+  font-size: 20px;
+  color: var(--primary);
+}
+
+.app-block-item.blocked .app-block-icon {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.app-block-item.blocked .app-block-icon i {
+  color: var(--error);
+}
+
+.app-block-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-block-info h4 {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-block-info small {
+  font-size: 11px;
+  color: var(--text-hint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  width: 48px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--border);
+  transition: 0.3s;
+  border-radius: 26px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: var(--error);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(22px);
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.blocked-count {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ========== RESPONSIVE DESIGN ========== */
+@media (max-width: 1024px) {
+  .permissions-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+  
+  .quick-actions {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  
+  .stat-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+    position: fixed;
+  }
+  
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  
+  .main-content {
+    margin-left: 0;
+  }
+  
+  .btn-menu {
+    display: block;
+  }
+  
+  .header {
+    padding: 12px 16px;
+  }
+  
+  .device-selector select {
+    min-width: 140px;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+  
+  .page {
+    padding: 16px;
+  }
+  
+  .page-header h1 {
+    font-size: 20px;
+  }
+  
+  .quick-actions {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  
+  .quick-action-btn {
+    padding: 16px;
+  }
+  
+  .quick-action-btn i {
+    font-size: 20px;
+  }
+  
+  .quick-action-btn span {
+    font-size: 11px;
+  }
+  
+  .stat-cards {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .permissions-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .permission-item {
+    padding: 14px 16px;
+  }
+  
+  .modal-content {
+    margin: 10px;
+    max-height: 95vh;
+  }
+  
+  .modal-large {
+    width: calc(100% - 20px);
+  }
+  
+  .apps-list {
+    max-height: 300px;
+  }
+  
+  .stream-modal {
+    padding: 12px;
+  }
+  
+  .stream-viewer {
+    height: 250px;
+  }
+  
+  .notification-card {
+    padding: 14px;
+  }
+  
+  .call-item {
+    padding: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header-actions {
+    gap: 8px;
+  }
+  
+  .user-menu span {
+    display: none;
+  }
+  
+  .quick-actions {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  
+  .quick-action-btn {
+    padding: 14px 10px;
+    gap: 6px;
+  }
+  
+  .quick-action-btn i {
+    font-size: 18px;
+  }
+  
+  .page-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  
+  .page-header .actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .app-block-item {
+    padding: 12px;
+  }
+  
+  .app-block-icon {
+    width: 38px;
+    height: 38px;
+  }
+  
+  .app-block-icon i {
+    font-size: 16px;
   }
 }
