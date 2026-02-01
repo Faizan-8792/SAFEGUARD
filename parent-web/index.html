@@ -585,21 +585,27 @@
                         <h2 id="streamTitle">Live Stream</h2>
                         <button class="btn-close" id="closeStream">&times;</button>
                     </div>
-                    <div class="stream-container">
+                    <div class="stream-container" id="streamContainer">
                         <div class="stream-video" id="streamVideo">
                             <p class="connecting">Connecting...</p>
                         </div>
-                        <div class="stream-controls">
-                            <button class="btn-icon" id="btnSwitchCamera">
-                                <i class="fas fa-sync-alt"></i>
-                            </button>
-                            <button class="btn-icon danger" id="btnStopStream">
-                                <i class="fas fa-stop"></i>
-                            </button>
-                            <button class="btn-icon" id="btnMuteStream">
-                                <i class="fas fa-volume-up"></i>
-                            </button>
-                        </div>
+                    </div>
+                    <div class="stream-controls-bar" id="streamControlsBar">
+                        <button class="stream-ctrl-btn" id="btnSwitchCamera" title="Switch Camera">
+                            <i class="fas fa-camera-rotate"></i>
+                        </button>
+                        <button class="stream-ctrl-btn" id="btnFullscreenStream" title="Fullscreen">
+                            <i class="fas fa-expand"></i>
+                        </button>
+                        <button class="stream-ctrl-btn danger" id="btnStopStream" title="Stop">
+                            <i class="fas fa-stop"></i>
+                        </button>
+                        <button class="stream-ctrl-btn" id="btnMuteStream" title="Mute/Unmute">
+                            <i class="fas fa-volume-up"></i>
+                        </button>
+                        <button class="stream-ctrl-btn" id="btnPipMode" title="Picture-in-Picture">
+                            <i class="fas fa-window-restore"></i>
+                        </button>
                     </div>
                 </div>
             </div>

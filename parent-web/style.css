@@ -1194,74 +1194,67 @@ body {
 
 /* Stream Modal */
 .stream-modal {
-  max-width: 900px;
-  width: 95%;
+  max-width: 95vw;
+  width: 900px;
+  max-height: 95vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.stream-modal .modal-header {
+  flex-shrink: 0;
 }
 
 .stream-container {
   padding: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #000;
+  border-radius: 0 0 12px 12px;
+  overflow: hidden;
 }
 
 .stream-video {
-  background: black;
-  min-height: 450px;
-  max-height: 70vh;
+  background: #000;
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   overflow: hidden;
+  min-height: 300px;
 }
 
 .stream-video .connecting,
 .stream-video .error {
-  color: var(--text-secondary);
+  color: #aaa;
   text-align: center;
   padding: 20px;
+  font-size: 16px;
 }
 
 .stream-video .error {
   color: var(--error);
 }
 
-/* Video Player Container */
-.video-player-container {
-  width: 100%;
-  height: 100%;
-  position: relative;
+/* Stream Controls Bar */
+.stream-controls-bar {
   display: flex;
-  align-items: center;
   justify-content: center;
-  background: black;
+  gap: 12px;
+  padding: 12px 20px;
+  background: linear-gradient(to top, rgba(0,0,0,0.9), rgba(0,0,0,0.7));
+  flex-shrink: 0;
 }
 
-.video-player-container video {
-  width: 100%;
-  height: 100%;
-  max-height: 65vh;
-  object-fit: contain;
-  background: black;
-}
-
-.video-controls {
-  position: absolute;
-  bottom: 15px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 15px;
-  padding: 10px 20px;
-  background: rgba(0, 0, 0, 0.7);
-  border-radius: 30px;
-  z-index: 10;
-}
-
-.video-control-btn {
-  width: 44px;
-  height: 44px;
+.stream-ctrl-btn {
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.3);
   color: white;
   cursor: pointer;
   display: flex;
@@ -1270,23 +1263,72 @@ body {
   transition: all 0.2s ease;
 }
 
-.video-control-btn:hover {
+.stream-ctrl-btn:hover {
   background: var(--primary);
+  border-color: var(--primary);
   transform: scale(1.1);
 }
 
-.video-control-btn i {
-  font-size: 18px;
+.stream-ctrl-btn.danger {
+  background: rgba(244, 67, 54, 0.3);
+  border-color: #f44336;
 }
 
-.video-play-btn {
+.stream-ctrl-btn.danger:hover {
+  background: #f44336;
+}
+
+.stream-ctrl-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.stream-ctrl-btn i {
+  font-size: 20px;
+}
+
+/* Video Element Styling */
+.stream-video video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+/* Fullscreen mode */
+.stream-modal.fullscreen {
+  max-width: 100vw;
+  max-height: 100vh;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+  margin: 0;
+}
+
+.stream-modal.fullscreen .modal-header {
+  display: none;
+}
+
+.stream-modal.fullscreen .stream-container {
+  border-radius: 0;
+  height: 100vh;
+}
+
+.stream-modal.fullscreen .stream-video {
+  min-height: 100%;
+}
+
+.stream-modal.fullscreen .stream-controls-bar {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  padding: 15px 30px;
-  font-size: 16px;
-  z-index: 15;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.stream-modal.fullscreen:hover .stream-controls-bar {
+  opacity: 1;
 }
 
 /* Audio Indicator Styles */

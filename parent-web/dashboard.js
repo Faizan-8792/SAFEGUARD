@@ -170,6 +170,10 @@ function setupEventListeners() {
   // Stream modal
   document.getElementById('closeStream').addEventListener('click', stopStream);
   document.getElementById('btnStopStream').addEventListener('click', stopStream);
+  document.getElementById('btnSwitchCamera')?.addEventListener('click', () => sendCommand('switch_camera'));
+  document.getElementById('btnMuteStream')?.addEventListener('click', toggleStreamMute);
+  document.getElementById('btnFullscreenStream')?.addEventListener('click', toggleStreamFullscreen);
+  document.getElementById('btnPipMode')?.addEventListener('click', togglePictureInPicture);
   
   // Request all permissions button
   document.getElementById('btnRequestAllPermissions')?.addEventListener('click', requestAllMissingPermissions);
@@ -1640,59 +1644,92 @@ function displayWebRTCVideo(stream) {
   const streamType = currentStreamType;
   streamVideo.innerHTML = '';
   
-  // Create video container with proper layout
-  const videoContainer = document.createElement('div');
-  videoContainer.className = 'video-player-container';
-  videoContainer.innerHTML = `
-    <video id="rtcVideo" autoplay playsinline></video>
-    <div class="video-controls">
-      <button class="video-control-btn" id="btnFullscreen" title="Fullscreen">
-        <i class="fas fa-expand"></i>
-      </button>
-      ${streamType === 'camera' ? `
-        <button class="video-control-btn" id="btnRotateCamera" title="Switch Camera">
-          <i class="fas fa-sync-alt"></i>
-        </button>
-      ` : ''}
-      <button class="video-control-btn" id="btnToggleSound" title="Toggle Sound">
-        <i class="fas fa-volume-up"></i>
-      </button>
-    </div>
-  `;
-  
-  streamVideo.appendChild(videoContainer);
-  
-  const video = document.getElementById('rtcVideo');
+  // Create video element directly
+  const video = document.createElement('video');
+  video.id = 'streamVideoElement';
+  video.autoplay = true;
+  video.playsInline = true;
+  video.muted = false;
   video.srcObject = stream;
+  
+  streamVideo.appendChild(video);
+  
+  // Show appropriate controls based on stream type
+  updateStreamControls(streamType);
   
   // Play video
   video.play().catch(e => {
     console.error('[WebRTC] Error playing video:', e);
     const playBtn = document.createElement('button');
-    playBtn.textContent = 'Click to Play';
-    playBtn.className = 'btn btn-primary video-play-btn';
-    playBtn.onclick = () => video.play();
-    videoContainer.appendChild(playBtn);
+    playBtn.textContent = '▶ Click to Play';
+    playBtn.className = 'btn btn-primary';
+    playBtn.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10;';
+    playBtn.onclick = () => { video.play(); playBtn.remove(); };
+    streamVideo.appendChild(playBtn);
   });
+}
+
+function updateStreamControls(streamType) {
+  // Show/hide switch camera button based on stream type
+  const switchCameraBtn = document.getElementById('btnSwitchCamera');
+  if (switchCameraBtn) {
+    switchCameraBtn.style.display = streamType === 'camera' ? 'flex' : 'none';
+  }
+}
+
+function toggleStreamMute() {
+  const video = document.getElementById('streamVideoElement');
+  const audio = document.querySelector('#streamVideo audio');
+  const btn = document.getElementById('btnMuteStream');
   
-  // Add control event listeners
-  document.getElementById('btnFullscreen')?.addEventListener('click', () => {
-    if (video.requestFullscreen) {
-      video.requestFullscreen();
-    } else if (video.webkitRequestFullscreen) {
-      video.webkitRequestFullscreen();
-    }
-  });
-  
-  document.getElementById('btnRotateCamera')?.addEventListener('click', () => {
-    sendCommand('switch_camera');
-  });
-  
-  document.getElementById('btnToggleSound')?.addEventListener('click', (e) => {
+  if (video) {
     video.muted = !video.muted;
-    e.target.closest('button').querySelector('i').className = 
-      video.muted ? 'fas fa-volume-mute' : 'fas fa-volume-up';
-  });
+    btn.querySelector('i').className = video.muted ? 'fas fa-volume-mute' : 'fas fa-volume-up';
+    btn.classList.toggle('active', video.muted);
+  } else if (audio) {
+    audio.muted = !audio.muted;
+    btn.querySelector('i').className = audio.muted ? 'fas fa-volume-mute' : 'fas fa-volume-up';
+    btn.classList.toggle('active', audio.muted);
+  }
+}
+
+function toggleStreamFullscreen() {
+  const modal = document.querySelector('.stream-modal');
+  const btn = document.getElementById('btnFullscreenStream');
+  
+  if (modal.classList.contains('fullscreen')) {
+    modal.classList.remove('fullscreen');
+    btn.querySelector('i').className = 'fas fa-expand';
+    if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+  } else {
+    modal.classList.add('fullscreen');
+    btn.querySelector('i').className = 'fas fa-compress';
+    const container = document.getElementById('streamContainer');
+    if (container.requestFullscreen) {
+      container.requestFullscreen().catch(() => {});
+    }
+  }
+}
+
+async function togglePictureInPicture() {
+  const video = document.getElementById('streamVideoElement');
+  const btn = document.getElementById('btnPipMode');
+  
+  if (!video) return;
+  
+  try {
+    if (document.pictureInPictureElement) {
+      await document.exitPictureInPicture();
+      btn.classList.remove('active');
+    } else if (document.pictureInPictureEnabled) {
+      await video.requestPictureInPicture();
+      btn.classList.add('active');
+    }
+  } catch (e) {
+    console.error('[PiP] Error:', e);
+  }
 }
 
 function displayWebRTCAudio(stream) {
