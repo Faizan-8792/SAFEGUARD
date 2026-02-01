@@ -153,6 +153,10 @@ function setupEventListeners() {
   document.getElementById('btnRingDevice').addEventListener('click', ringDevice);
   document.getElementById('btnSyncNow').addEventListener('click', syncNow);
   
+  // Screenshot
+  document.getElementById('btnScreenshot')?.addEventListener('click', captureScreenshot);
+  document.getElementById('btnRefreshScreenshot')?.addEventListener('click', loadLatestScreenshot);
+  
   // Call history
   document.getElementById('btnDeleteAllCalls').addEventListener('click', deleteCallLogs);
   
@@ -2525,6 +2529,90 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnRemovePin) btnRemovePin.addEventListener('click', () => showPinModal('remove'));
   if (btnSavePin) btnSavePin.addEventListener('click', handlePinSave);
   if (btnCancelPin) btnCancelPin.addEventListener('click', hidePinModal);
+  if (closePinModal) closePinModal.addEventListener('click', hidePinModal);
+});
+
+// ============ SCREENSHOT FUNCTIONS ============
+
+async function captureScreenshot() {
+  if (!selectedDevice) {
+    alert('Please select a device first');
+    return;
+  }
+  
+  const btn = document.getElementById('btnScreenshot');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Capturing...</span>';
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    await api(`/devices/${deviceId}/screenshot/capture`, {
+      method: 'POST'
+    });
+    
+    // Wait a few seconds then fetch the screenshot
+    setTimeout(() => {
+      loadLatestScreenshot();
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-camera-retro"></i><span>Screenshot</span>';
+    }, 4000);
+    
+  } catch (error) {
+    console.error('Screenshot error:', error);
+    alert('Failed to capture screenshot: ' + error.message);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-camera-retro"></i><span>Screenshot</span>';
+  }
+}
+
+async function loadLatestScreenshot() {
+  if (!selectedDevice) return;
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    const data = await api(`/devices/${deviceId}/screenshot`);
+    
+    if (data.screenshot) {
+      displayScreenshot(data.screenshot);
+    }
+  } catch (error) {
+    console.log('No screenshot available:', error.message);
+  }
+}
+
+function displayScreenshot(screenshot) {
+  const section = document.getElementById('screenshotSection');
+  const preview = document.getElementById('screenshotPreview');
+  
+  if (!section || !preview) return;
+  
+  section.classList.remove('hidden');
+  
+  const timestamp = screenshot.capturedAt ? new Date(screenshot.capturedAt).toLocaleString() : 'Unknown';
+  
+  preview.innerHTML = `
+    <img src="data:image/jpeg;base64,${screenshot.imageData}" 
+         alt="Screenshot" 
+         onclick="openScreenshotFullscreen(this.src)">
+    <p class="timestamp">Captured: ${timestamp}</p>
+  `;
+}
+
+function openScreenshotFullscreen(src) {
+  // Create fullscreen modal
+  const modal = document.createElement('div');
+  modal.className = 'screenshot-fullscreen-modal';
+  modal.innerHTML = `
+    <div class="screenshot-fullscreen-content">
+      <button class="btn-close" onclick="this.parentElement.parentElement.remove()">&times;</button>
+      <img src="${src}" alt="Screenshot Fullscreen">
+    </div>
+  `;
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.remove();
+  };
+  document.body.appendChild(modal);
+}
   if (closePinModal) closePinModal.addEventListener('click', hidePinModal);
 });
 

