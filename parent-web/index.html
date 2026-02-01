@@ -32,6 +32,10 @@
                     <i class="fas fa-phone"></i>
                     <span>Call History</span>
                 </li>
+                <li class="nav-item" data-page="sms">
+                    <i class="fas fa-sms"></i>
+                    <span>SMS Messages</span>
+                </li>
                 <li class="nav-item" data-page="gallery">
                     <i class="fas fa-images"></i>
                     <span>Gallery</span>
@@ -257,6 +261,36 @@
                 <div class="calls-list" id="callsList">
                     <p class="empty-state">No call logs found</p>
                 </div>
+            </div>
+
+            <!-- SMS Messages Page -->
+            <div class="page hidden" id="smsPage">
+                <div class="page-header">
+                    <h1>SMS Messages</h1>
+                    <div class="filter-chips">
+                        <button class="chip active" data-sms-filter="all">All</button>
+                        <button class="chip" data-sms-filter="inbox">Inbox</button>
+                        <button class="chip" data-sms-filter="sent">Sent</button>
+                    </div>
+                </div>
+                <div class="sms-stats">
+                    <div class="stat-card">
+                        <span class="stat-value" id="totalSms">0</span>
+                        <span class="stat-label">Total</span>
+                    </div>
+                    <div class="stat-card incoming">
+                        <span class="stat-value" id="inboxSms">0</span>
+                        <span class="stat-label">Inbox</span>
+                    </div>
+                    <div class="stat-card outgoing">
+                        <span class="stat-value" id="sentSms">0</span>
+                        <span class="stat-label">Sent</span>
+                    </div>
+                </div>
+                <div class="sms-list" id="smsList">
+                    <p class="empty-state">No SMS messages found</p>
+                </div>
+                <button class="btn-load-more hidden" id="loadMoreSms">Load More</button>
             </div>
 
             <!-- Location Page -->

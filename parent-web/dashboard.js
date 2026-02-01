@@ -1,7 +1,7 @@
 // FamilyGuard Pro - Parent Dashboard JavaScript
 
-const API_BASE = 'https://safeguard--idhighprice.replit.app/api';
-const WS_BASE = 'wss://safeguard--idhighprice.replit.app/ws';
+const API_BASE = 'https://familyguard-backend-c2c9hkc8dwgzepdq.centralindia-01.azurewebsites.net/api';
+const WS_BASE = 'wss://familyguard-backend-c2c9hkc8dwgzepdq.centralindia-01.azurewebsites.net/ws';
 let authToken = localStorage.getItem('authToken');
 let currentUser = null;
 let devices = [];
@@ -138,13 +138,27 @@ function setupEventListeners() {
   // Request all permissions button
   document.getElementById('btnRequestAllPermissions')?.addEventListener('click', requestAllMissingPermissions);
   
-  // Filter chips
-  document.querySelectorAll('.chip').forEach(chip => {
+  // Filter chips for notifications
+  document.querySelectorAll('.chip[data-filter]').forEach(chip => {
     chip.addEventListener('click', () => {
-      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      document.querySelectorAll('.chip[data-filter]').forEach(c => c.classList.remove('active'));
       chip.classList.add('active');
       loadNotifications(chip.dataset.filter);
     });
+  });
+  
+  // Filter chips for SMS
+  document.querySelectorAll('.chip[data-sms-filter]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.chip[data-sms-filter]').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      loadSmsMessages(chip.dataset.smsFilter);
+    });
+  });
+  
+  // Load more SMS
+  document.getElementById('loadMoreSms')?.addEventListener('click', () => {
+    loadSmsMessages(currentSmsFilter, smsPage + 1);
   });
   
   // Settings toggles
@@ -311,6 +325,9 @@ function navigateTo(page) {
         break;
       case 'calls':
         loadCallHistory();
+        break;
+      case 'sms':
+        loadSmsMessages();
         break;
       case 'gallery':
         loadGallery();
@@ -531,6 +548,94 @@ async function deleteCallLogs() {
   } catch (error) {
     alert('Failed to delete call logs: ' + error.message);
   }
+}
+
+// SMS Messages
+let currentSmsFilter = 'all';
+let smsPage = 1;
+
+async function loadSmsMessages(filter = currentSmsFilter, page = 1) {
+  if (!selectedDevice) {
+    document.getElementById('smsList').innerHTML = '<p class="empty-state">Select a device to view SMS messages</p>';
+    return;
+  }
+  
+  currentSmsFilter = filter;
+  smsPage = page;
+  
+  try {
+    const typeParam = filter === 'all' ? '' : `&type=${filter}`;
+    const data = await api(`/devices/${getDeviceId(selectedDevice)}/sms?page=${page}&limit=50${typeParam}`);
+    
+    // Update stats
+    document.getElementById('totalSms').textContent = data.total || 0;
+    
+    const container = document.getElementById('smsList');
+    
+    if (!data.sms || data.sms.length === 0) {
+      container.innerHTML = `
+        <p class="empty-state">
+          <i class="fas fa-sms" style="font-size: 32px; margin-bottom: 12px;"></i><br>
+          No SMS messages found.<br>
+          <small>SMS messages will appear here when the child device syncs.</small>
+        </p>`;
+      document.getElementById('loadMoreSms').classList.add('hidden');
+      return;
+    }
+    
+    // Count inbox and sent
+    let inboxCount = 0;
+    let sentCount = 0;
+    data.sms.forEach(sms => {
+      if (sms.type === 'inbox') inboxCount++;
+      else if (sms.type === 'sent') sentCount++;
+    });
+    
+    document.getElementById('inboxSms').textContent = inboxCount;
+    document.getElementById('sentSms').textContent = sentCount;
+    
+    container.innerHTML = data.sms.map(sms => {
+      const typeIcon = sms.type === 'sent' ? 'fa-paper-plane' : 'fa-inbox';
+      const typeColor = sms.type === 'sent' ? 'outgoing' : 'incoming';
+      const readClass = sms.read ? '' : 'unread';
+      
+      return `
+        <div class="sms-item ${readClass}">
+          <div class="sms-icon ${typeColor}">
+            <i class="fas ${typeIcon}"></i>
+          </div>
+          <div class="sms-info">
+            <h4>${sms.contactName || sms.address || 'Unknown'}</h4>
+            <p class="sms-number">${sms.address}</p>
+            <p class="sms-body">${escapeHtml(sms.body || '')}</p>
+          </div>
+          <div class="sms-time">
+            <span class="time">${formatTime(sms.date)}</span>
+            <span class="sms-type">${sms.type}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+    
+    // Show/hide load more button
+    const loadMoreBtn = document.getElementById('loadMoreSms');
+    if (data.page < data.pages) {
+      loadMoreBtn.classList.remove('hidden');
+    } else {
+      loadMoreBtn.classList.add('hidden');
+    }
+    
+  } catch (error) {
+    console.error('Failed to load SMS messages:', error);
+    document.getElementById('smsList').innerHTML = '<p class="empty-state">Failed to load SMS messages</p>';
+  }
+}
+
+// Escape HTML for safe display
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 // Location
