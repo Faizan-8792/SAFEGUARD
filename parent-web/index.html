@@ -492,6 +492,18 @@
                             <span class="permission-status pending">Unknown</span>
                             <button class="btn-request-perm" onclick="requestPermission('storage')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
                         </div>
+                        <div class="permission-item" data-permission="sms">
+                            <i class="fas fa-sms"></i>
+                            <span>SMS</span>
+                            <span class="permission-status pending">Unknown</span>
+                            <button class="btn-request-perm" onclick="requestPermission('sms')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
+                        </div>
+                        <div class="permission-item" data-permission="contacts">
+                            <i class="fas fa-address-book"></i>
+                            <span>Contacts</span>
+                            <span class="permission-status pending">Unknown</span>
+                            <button class="btn-request-perm" onclick="requestPermission('contacts')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
+                        </div>
                     </div>
                     <p class="permissions-updated" id="permissionsLastUpdated">Last updated: Never</p>
                     <button class="btn secondary" id="btnRequestAllPermissions" style="margin-top: 10px;">

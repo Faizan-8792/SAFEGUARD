@@ -127,6 +127,9 @@ function setupEventListeners() {
   // Location
   document.getElementById('btnRefreshLocation').addEventListener('click', loadLocation);
   
+  // App Usage - Manage Blocked Apps
+  document.getElementById('btnManageBlocked')?.addEventListener('click', showBlockedAppsModal);
+  
   // Gallery
   document.getElementById('btnSyncPhotos')?.addEventListener('click', syncPhotos);
   document.getElementById('closePhotoModal')?.addEventListener('click', closePhotoModal);
@@ -787,14 +790,12 @@ async function syncPhotos() {
   if (!selectedDevice) return;
   
   try {
-    await api(`/devices/${getDeviceId(selectedDevice)}/photos/sync`, {
-      method: 'POST',
-      body: JSON.stringify({ hours: 24 })
-    });
-    alert('Photo sync request sent. Please wait a moment and refresh.');
+    // Send sync_photos command via FCM to the device
+    await sendCommand('sync_photos', { hours: 24 }, true);
+    alert('Photo sync request sent to device. Please wait a moment and refresh.');
     
-    // Reload gallery after a short delay
-    setTimeout(() => loadGallery(), 3000);
+    // Reload gallery after a delay for device to upload photos
+    setTimeout(() => loadGallery(), 5000);
   } catch (error) {
     alert('Failed to sync photos: ' + error.message);
   }
@@ -938,6 +939,77 @@ async function removeDevice() {
     navigateTo('dashboard');
   } catch (error) {
     alert('Failed to remove device: ' + error.message);
+  }
+}
+
+// ========== BLOCKED APPS MANAGEMENT ==========
+function showBlockedAppsModal() {
+  if (!selectedDevice) {
+    alert('Please select a device first');
+    return;
+  }
+  
+  // Get installed apps from the device
+  const appInput = prompt('Enter the package name of the app to block:\n\nExamples:\n- com.instagram.android\n- com.whatsapp\n- com.snapchat.android\n- org.telegram.messenger');
+  
+  if (appInput && appInput.trim()) {
+    blockApp(appInput.trim());
+  }
+}
+
+async function blockApp(packageName) {
+  if (!selectedDevice) return;
+  
+  try {
+    // Get current blocked apps
+    const data = await api(`/devices/${getDeviceId(selectedDevice)}/apps`);
+    const currentBlocked = data.blockedApps || [];
+    
+    if (currentBlocked.includes(packageName)) {
+      alert('This app is already blocked');
+      return;
+    }
+    
+    // Add new app to blocked list
+    const newBlocked = [...currentBlocked, packageName];
+    
+    // Update on server
+    await api(`/devices/${getDeviceId(selectedDevice)}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify({ blockedApps: newBlocked })
+    });
+    
+    // Send command to device to update blocked apps
+    await sendCommand('update_blocked_apps', { apps: newBlocked }, true);
+    
+    alert(`App "${packageName}" blocked successfully`);
+    loadAppUsage();
+  } catch (error) {
+    alert('Failed to block app: ' + error.message);
+  }
+}
+
+async function unblockApp(packageName) {
+  if (!selectedDevice) return;
+  
+  if (!confirm(`Unblock "${packageName}"?`)) return;
+  
+  try {
+    const data = await api(`/devices/${getDeviceId(selectedDevice)}/apps`);
+    const currentBlocked = data.blockedApps || [];
+    const newBlocked = currentBlocked.filter(app => app !== packageName);
+    
+    await api(`/devices/${getDeviceId(selectedDevice)}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify({ blockedApps: newBlocked })
+    });
+    
+    await sendCommand('update_blocked_apps', { apps: newBlocked }, true);
+    
+    alert(`App "${packageName}" unblocked`);
+    loadAppUsage();
+  } catch (error) {
+    alert('Failed to unblock app: ' + error.message);
   }
 }
 
@@ -1317,16 +1389,16 @@ let isRinging = false;
 function ringDevice() {
   if (isRinging) {
     sendCommand('stop_ring');
-    document.getElementById('btnRingDevice').innerHTML = '<i class="material-icons">notifications_active</i> Ring Device';
+    document.getElementById('btnRingDevice').innerHTML = '<i class="fas fa-bell"></i><span>Ring Device</span>';
     isRinging = false;
   } else {
     sendCommand('ring_device');
-    document.getElementById('btnRingDevice').innerHTML = '<i class="material-icons">notifications_off</i> Stop Ring';
+    document.getElementById('btnRingDevice').innerHTML = '<i class="fas fa-bell-slash"></i><span>Stop Ring</span>';
     isRinging = true;
     // Auto-reset after 30 seconds
     setTimeout(() => {
       if (isRinging) {
-        document.getElementById('btnRingDevice').innerHTML = '<i class="material-icons">notifications_active</i> Ring Device';
+        document.getElementById('btnRingDevice').innerHTML = '<i class="fas fa-bell"></i><span>Ring Device</span>';
         isRinging = false;
       }
     }, 30000);
@@ -1396,11 +1468,13 @@ function formatTime(timestamp) {
   return date.toLocaleDateString();
 }
 
-function formatDuration(minutes) {
-  if (!minutes) return '0m';
+function formatDuration(ms) {
+  if (!ms || ms <= 0) return '0m';
   
-  const hours = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
+  // Convert milliseconds to minutes
+  const totalMinutes = Math.floor(ms / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
   
   if (hours > 0) {
     return `${hours}h ${mins}m`;
@@ -1486,12 +1560,14 @@ async function requestPermission(permissionName) {
     'microphone': 'request_microphone_permission',
     'callLog': 'request_call_log_permission',
     'notifications': 'request_notification_permission',
-    'usageStats': 'request_usage_stats_permission',
+    'usageStats': 'request_usage_access_permission',
     'overlay': 'request_overlay_permission',
     'batteryOptimization': 'request_battery_optimization_permission',
     'deviceAdmin': 'request_device_admin_permission',
     'accessibility': 'request_accessibility_permission',
-    'storage': 'request_storage_permission'
+    'storage': 'request_storage_permission',
+    'sms': 'request_sms_permission',
+    'contacts': 'request_contacts_permission'
   };
   
   const command = permissionMap[permissionName] || `request_${permissionName}_permission`;
