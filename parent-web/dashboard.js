@@ -142,12 +142,28 @@ async function api(endpoint, options = {}) {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Request failed');
+      // Extract error message properly - handle both string and object errors
+      let errorMessage = 'Request failed';
+      if (typeof data.error === 'string') {
+        errorMessage = data.error;
+      } else if (data.error && data.error.message) {
+        errorMessage = data.error.message;
+      } else if (data.message) {
+        errorMessage = data.message;
+      } else if (typeof data === 'string') {
+        errorMessage = data;
+      }
+      
+      const error = new Error(errorMessage);
+      error.code = data.code || data.error?.code;
+      error.status = response.status;
+      error.hint = data.hint;
+      throw error;
     }
     
     return data;
   } catch (error) {
-    console.error('API Error:', error);
+    console.error('API Error:', error.message || error);
     throw error;
   }
 }
@@ -790,9 +806,17 @@ async function sendCommand(command, params = {}) {
       method: 'POST',
       body: JSON.stringify({ command, params })
     });
-    alert(`Command '${command}' sent successfully`);
+    // Don't show alert for streaming commands - they're initiated automatically
+    if (!command.includes('start_') && !command.includes('stop_')) {
+      alert(`Command '${command}' sent successfully`);
+    }
   } catch (error) {
-    alert('Failed to send command: ' + error.message);
+    let errorMsg = error.message;
+    // Add hint for FCM token errors
+    if (error.message.includes('not registered for push notifications')) {
+      errorMsg = 'Device is not connected. Please ensure the FamilyGuard app is running on the child device and has an active internet connection. The app needs to sync with the server first.';
+    }
+    alert('Failed to send command: ' + errorMsg);
   }
 }
 
@@ -800,6 +824,12 @@ async function sendCommand(command, params = {}) {
 
 function startStream(type) {
   if (!selectedDevice) return;
+  
+  // Check if device is online
+  if (!selectedDevice.isOnline) {
+    alert('Device is offline. Please ensure the FamilyGuard app is running on the child device.');
+    return;
+  }
   
   const modal = document.getElementById('streamModal');
   const title = document.getElementById('streamTitle');
