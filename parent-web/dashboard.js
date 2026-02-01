@@ -1134,18 +1134,53 @@ function handleStreamData(data, type) {
   
   if (type === 'audio') {
     // Audio stream - would need Web Audio API
-    // For now just show that audio is being received
     if (!streamVideo.querySelector('.audio-indicator')) {
       streamVideo.innerHTML = '<div class="audio-indicator"><i class="material-icons">hearing</i><p>Receiving audio...</p></div>';
     }
   } else {
-    // Video stream - display as image frames
-    // The device sends H.264 encoded frames, would need decoding
-    // For MVP, we can receive the data but display would need more work
-    if (!streamVideo.querySelector('.video-indicator')) {
-      streamVideo.innerHTML = '<div class="video-indicator"><i class="material-icons">videocam</i><p>Receiving video stream...</p><p class="small">Full video decoding coming soon</p></div>';
+    // Video/Camera stream - handle JPEG frames or JSON messages
+    if (typeof data === 'string') {
+      try {
+        const msg = JSON.parse(data);
+        if (msg.type === 'camera_frame' && msg.frame) {
+          // Display JPEG frame as image
+          displayVideoFrame(msg.frame);
+        } else if (msg.type === 'stream_started') {
+          streamVideo.innerHTML = '<p class="connecting">Stream started, waiting for frames...</p>';
+        } else if (msg.type === 'error') {
+          streamVideo.innerHTML = `<p class="error">Error: ${msg.error}</p>`;
+        }
+      } catch (e) {
+        // Not JSON, might be raw data
+        console.log('Non-JSON message received');
+      }
+    } else if (data instanceof Blob) {
+      // Binary data - convert to image
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result.split(',')[1];
+        displayVideoFrame(base64);
+      };
+      reader.readAsDataURL(data);
     }
   }
+}
+
+// Display a video frame from base64 JPEG
+function displayVideoFrame(base64Data) {
+  const streamVideo = document.getElementById('streamVideo');
+  
+  // Create or update image element
+  let img = streamVideo.querySelector('.stream-image');
+  if (!img) {
+    streamVideo.innerHTML = '';
+    img = document.createElement('img');
+    img.className = 'stream-image';
+    img.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain;';
+    streamVideo.appendChild(img);
+  }
+  
+  img.src = 'data:image/jpeg;base64,' + base64Data;
 }
 
 let currentStreamType = null;
