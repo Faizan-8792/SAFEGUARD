@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+*.log
+
+# Android
+.gradle/
+.idea/
+app/build/
+build/
+*.apk
+*.aab
+local.properties
+apktool.jar
+apk_decompiled/
+
+# Duplicate backend files at root (these should only be in backend/)
+/server.js
+/package.json
+/package-lock.json
+/models/
+/routes/
+/parent-web/
+/utils/
+
+# IDE
+*.iml
+.DS_Store
+Thumbs.db
