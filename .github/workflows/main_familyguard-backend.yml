@@ -58,7 +58,7 @@ jobs:
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'familyguard-backend'
+          app-name: 'familyguard-backend-c2c9hkc8dwgzepd'
           slot-name: 'Production'
           package: .
           
