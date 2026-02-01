@@ -176,12 +176,28 @@ async function api(endpoint, options = {}) {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Request failed');
+      // Extract error message properly - handle both string and object errors
+      let errorMessage = 'Request failed';
+      if (typeof data.error === 'string') {
+        errorMessage = data.error;
+      } else if (data.error && data.error.message) {
+        errorMessage = data.error.message;
+      } else if (data.message) {
+        errorMessage = data.message;
+      } else if (typeof data === 'string') {
+        errorMessage = data;
+      }
+      
+      const error = new Error(errorMessage);
+      error.code = data.code || data.error?.code;
+      error.status = response.status;
+      error.hint = data.hint;
+      throw error;
     }
     
     return data;
   } catch (error) {
-    console.error('API Error:', error);
+    console.error('API Error:', error.message || error);
     throw error;
   }
 }
