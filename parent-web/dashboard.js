@@ -882,11 +882,28 @@ async function sendCommand(command, params = {}, silent = false) {
 }
 
 // Streaming
+let streamTimeout = null;
+let streamAttempts = 0;
+const MAX_STREAM_ATTEMPTS = 3;
+const STREAM_TIMEOUT_MS = 15000; // 15 seconds
 
 function startStream(type) {
   if (!selectedDevice) {
     alert('Please select a device first');
     return;
+  }
+  
+  // Check if device has required permissions before streaming
+  const permissions = selectedDevice.permissions || {};
+  const missingPermissions = [];
+  
+  if (type === 'camera') {
+    if (!permissions.camera) missingPermissions.push('Camera');
+  } else if (type === 'audio') {
+    if (!permissions.microphone) missingPermissions.push('Microphone');
+  } else if (type === 'screen') {
+    // Screen mirror requires MediaProjection which needs user interaction on device
+    // Can't be requested remotely
   }
   
   const modal = document.getElementById('streamModal');
@@ -900,6 +917,7 @@ function startStream(type) {
   };
   
   currentStreamType = type;
+  streamAttempts = 0;
   title.textContent = titles[type];
   modal.classList.remove('hidden');
   
@@ -928,11 +946,42 @@ function startStream(type) {
     streamSocket = null;
   }
   
+  // Clear any existing timeout
+  if (streamTimeout) {
+    clearTimeout(streamTimeout);
+    streamTimeout = null;
+  }
+  
   streamSocket = new WebSocket(wsUrl);
+  let streamStarted = false;
   
   streamSocket.onopen = () => {
     console.log('WebSocket connected');
     streamVideo.innerHTML = '<p class="connecting">Waiting for device stream...</p>';
+    
+    // Set timeout for stream to start
+    streamTimeout = setTimeout(() => {
+      if (!streamStarted) {
+        streamAttempts++;
+        if (streamAttempts >= MAX_STREAM_ATTEMPTS) {
+          showStreamError(type, permissions);
+        } else {
+          // Retry
+          streamVideo.innerHTML = `<p class="connecting">Retrying... (Attempt ${streamAttempts + 1}/${MAX_STREAM_ATTEMPTS})</p>`;
+          sendCommand(commands[type], {}, true);
+          
+          // Reset timeout for next attempt
+          streamTimeout = setTimeout(() => {
+            if (!streamStarted) {
+              streamAttempts++;
+              if (streamAttempts >= MAX_STREAM_ATTEMPTS) {
+                showStreamError(type, permissions);
+              }
+            }
+          }, STREAM_TIMEOUT_MS);
+        }
+      }
+    }, STREAM_TIMEOUT_MS);
   };
   
   streamSocket.onmessage = (event) => {
@@ -941,26 +990,142 @@ function startStream(type) {
       const msg = JSON.parse(event.data);
       if (msg.type === 'waiting') {
         streamVideo.innerHTML = '<p class="connecting">Waiting for device to start streaming...</p>';
-      } else if (msg.type === 'connected') {
+      } else if (msg.type === 'connected' || msg.type === 'stream_started') {
+        streamStarted = true;
+        if (streamTimeout) {
+          clearTimeout(streamTimeout);
+          streamTimeout = null;
+        }
         streamVideo.innerHTML = '<p class="connecting">Stream connected, receiving data...</p>';
+      } else if (msg.type === 'error') {
+        streamStarted = true; // Prevent timeout error from showing
+        if (streamTimeout) {
+          clearTimeout(streamTimeout);
+          streamTimeout = null;
+        }
+        showStreamErrorMessage(msg.message || msg.error || 'Unknown error', type, permissions);
+      } else if (msg.type === 'permission_denied' || msg.type === 'permission_required') {
+        streamStarted = true;
+        if (streamTimeout) {
+          clearTimeout(streamTimeout);
+          streamTimeout = null;
+        }
+        showStreamError(type, permissions, msg.permission || msg.message);
       }
     } else {
-      // Binary data - video/audio frame
+      // Binary data - video/audio frame - stream is working!
+      streamStarted = true;
+      if (streamTimeout) {
+        clearTimeout(streamTimeout);
+        streamTimeout = null;
+      }
       handleStreamData(event.data, type);
     }
   };
   
   streamSocket.onerror = (error) => {
     console.error('WebSocket error:', error);
+    if (streamTimeout) {
+      clearTimeout(streamTimeout);
+      streamTimeout = null;
+    }
     streamVideo.innerHTML = '<p class="error">Connection error. Please try again.</p>';
   };
   
   streamSocket.onclose = (event) => {
     console.log('WebSocket closed:', event.reason);
-    if (currentStreamType) {
+    if (streamTimeout) {
+      clearTimeout(streamTimeout);
+      streamTimeout = null;
+    }
+    if (currentStreamType && !streamStarted) {
+      showStreamError(type, permissions);
+    } else if (currentStreamType) {
       streamVideo.innerHTML = '<p class="connecting">Connection closed. Click Stop to exit.</p>';
     }
   };
+}
+
+function showStreamError(type, permissions, specificError = null) {
+  const streamVideo = document.getElementById('streamVideo');
+  let errorMessage = '';
+  let suggestion = '';
+  
+  // Determine the exact cause
+  if (specificError) {
+    errorMessage = specificError;
+  } else if (type === 'camera') {
+    if (!permissions.camera) {
+      errorMessage = 'Camera permission not granted on child device';
+      suggestion = 'Click "Request Permission" to ask for camera access.';
+    } else {
+      errorMessage = 'Device not responding to camera stream request';
+      suggestion = 'The device might be locked, app might be killed, or camera is in use by another app.';
+    }
+  } else if (type === 'audio') {
+    if (!permissions.microphone) {
+      errorMessage = 'Microphone permission not granted on child device';
+      suggestion = 'Click "Request Permission" to ask for microphone access.';
+    } else {
+      errorMessage = 'Device not responding to audio stream request';
+      suggestion = 'The device might be locked, app might be killed, or microphone is in use.';
+    }
+  } else if (type === 'screen') {
+    errorMessage = 'Screen mirroring requires user interaction';
+    suggestion = 'MediaProjection permission must be granted directly on the device. The child device user needs to tap "Allow" when prompted.';
+  } else {
+    errorMessage = 'Stream failed to start after multiple attempts';
+    suggestion = 'Check if the device is online and the app is running.';
+  }
+  
+  const permissionBtn = (type === 'camera' && !permissions.camera) 
+    ? `<button class="btn btn-primary" onclick="requestPermissionFromStream('camera')">Request Camera Permission</button>`
+    : (type === 'audio' && !permissions.microphone)
+    ? `<button class="btn btn-primary" onclick="requestPermissionFromStream('microphone')">Request Microphone Permission</button>`
+    : '';
+  
+  streamVideo.innerHTML = `
+    <div class="stream-error-detail">
+      <i class="material-icons error-icon">error_outline</i>
+      <h3>Stream Failed</h3>
+      <p class="error-message">${errorMessage}</p>
+      <p class="error-suggestion">${suggestion}</p>
+      <div class="error-actions">
+        ${permissionBtn}
+        <button class="btn btn-secondary" onclick="retryStream('${type}')">Retry</button>
+      </div>
+      <div class="error-debug">
+        <small>Device Online: ${selectedDevice?.isOnline ? 'Yes' : 'No'}</small><br>
+        <small>Last Seen: ${selectedDevice?.lastSeen ? formatTime(selectedDevice.lastSeen) : 'Unknown'}</small><br>
+        <small>Camera Permission: ${permissions.camera ? 'Yes' : 'No'}</small><br>
+        <small>Microphone Permission: ${permissions.microphone ? 'Yes' : 'No'}</small>
+      </div>
+    </div>
+  `;
+}
+
+function showStreamErrorMessage(message, type, permissions) {
+  const streamVideo = document.getElementById('streamVideo');
+  streamVideo.innerHTML = `
+    <div class="stream-error-detail">
+      <i class="material-icons error-icon">error_outline</i>
+      <h3>Stream Error</h3>
+      <p class="error-message">${message}</p>
+      <div class="error-actions">
+        <button class="btn btn-secondary" onclick="retryStream('${type}')">Retry</button>
+      </div>
+    </div>
+  `;
+}
+
+function requestPermissionFromStream(permissionType) {
+  requestPermission(permissionType);
+  stopStream();
+}
+
+function retryStream(type) {
+  stopStream();
+  setTimeout(() => startStream(type), 500);
 }
 
 // Handle incoming stream data

@@ -1090,6 +1090,58 @@ body {
   color: var(--text-secondary);
 }
 
+/* Stream Error Styles */
+.stream-error-detail {
+  text-align: center;
+  padding: 30px;
+  max-width: 400px;
+}
+
+.stream-error-detail .error-icon {
+  font-size: 64px;
+  color: var(--error);
+  margin-bottom: 16px;
+}
+
+.stream-error-detail h3 {
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  font-size: 20px;
+}
+
+.stream-error-detail .error-message {
+  color: var(--error);
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+
+.stream-error-detail .error-suggestion {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.stream-error-detail .error-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.stream-error-detail .error-debug {
+  background: var(--surface-light);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: left;
+}
+
+.stream-error-detail .error-debug small {
+  color: var(--text-hint);
+  line-height: 1.8;
+}
+
 .stream-controls {
   display: flex;
   justify-content: center;
