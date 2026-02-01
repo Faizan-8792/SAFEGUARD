@@ -150,6 +150,12 @@ const notificationSchema = new mongoose.Schema({
   }
 });
 
+// Unique index to prevent duplicate notifications (same device, package, title, content, similar timestamp)
+notificationSchema.index({ deviceId: 1, packageName: 1, title: 1, content: 1 }, { 
+  unique: true,
+  partialFilterExpression: { title: { $exists: true } }
+});
+
 // Auto-delete after 48 hours
 notificationSchema.index({ timestamp: 1 }, { expireAfterSeconds: 172800 });
 
