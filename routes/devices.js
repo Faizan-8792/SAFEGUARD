@@ -229,6 +229,7 @@ router.post('/:deviceId/command', protect, async (req, res) => {
       'stop_webrtc_screen',
       'start_webrtc_audio',
       'stop_webrtc_audio',
+      'switch_camera',
       'sync_data',
       'delete_call_logs',
       'lock_device',

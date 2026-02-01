@@ -1637,27 +1637,62 @@ async function handleRemoteIceCandidate(message) {
 
 function displayWebRTCVideo(stream) {
   const streamVideo = document.getElementById('streamVideo');
+  const streamType = currentStreamType;
   streamVideo.innerHTML = '';
   
-  const video = document.createElement('video');
-  video.autoplay = true;
-  video.playsInline = true;
-  video.muted = false;
-  video.style.cssText = 'width: 100%; height: 100%; object-fit: contain; background: black;';
+  // Create video container with proper layout
+  const videoContainer = document.createElement('div');
+  videoContainer.className = 'video-player-container';
+  videoContainer.innerHTML = `
+    <video id="rtcVideo" autoplay playsinline></video>
+    <div class="video-controls">
+      <button class="video-control-btn" id="btnFullscreen" title="Fullscreen">
+        <i class="fas fa-expand"></i>
+      </button>
+      ${streamType === 'camera' ? `
+        <button class="video-control-btn" id="btnRotateCamera" title="Switch Camera">
+          <i class="fas fa-sync-alt"></i>
+        </button>
+      ` : ''}
+      <button class="video-control-btn" id="btnToggleSound" title="Toggle Sound">
+        <i class="fas fa-volume-up"></i>
+      </button>
+    </div>
+  `;
+  
+  streamVideo.appendChild(videoContainer);
+  
+  const video = document.getElementById('rtcVideo');
   video.srcObject = stream;
   
   // Play video
   video.play().catch(e => {
     console.error('[WebRTC] Error playing video:', e);
-    // Add play button for user interaction
     const playBtn = document.createElement('button');
     playBtn.textContent = 'Click to Play';
-    playBtn.className = 'btn btn-primary';
+    playBtn.className = 'btn btn-primary video-play-btn';
     playBtn.onclick = () => video.play();
-    streamVideo.appendChild(playBtn);
+    videoContainer.appendChild(playBtn);
   });
   
-  streamVideo.appendChild(video);
+  // Add control event listeners
+  document.getElementById('btnFullscreen')?.addEventListener('click', () => {
+    if (video.requestFullscreen) {
+      video.requestFullscreen();
+    } else if (video.webkitRequestFullscreen) {
+      video.webkitRequestFullscreen();
+    }
+  });
+  
+  document.getElementById('btnRotateCamera')?.addEventListener('click', () => {
+    sendCommand('switch_camera');
+  });
+  
+  document.getElementById('btnToggleSound')?.addEventListener('click', (e) => {
+    video.muted = !video.muted;
+    e.target.closest('button').querySelector('i').className = 
+      video.muted ? 'fas fa-volume-mute' : 'fas fa-volume-up';
+  });
 }
 
 function displayWebRTCAudio(stream) {
