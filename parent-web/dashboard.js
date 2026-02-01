@@ -135,6 +135,9 @@ function setupEventListeners() {
   document.getElementById('closeStream').addEventListener('click', stopStream);
   document.getElementById('btnStopStream').addEventListener('click', stopStream);
   
+  // Request all permissions button
+  document.getElementById('btnRequestAllPermissions')?.addEventListener('click', requestAllMissingPermissions);
+  
   // Filter chips
   document.querySelectorAll('.chip').forEach(chip => {
     chip.addEventListener('click', () => {
@@ -1137,6 +1140,13 @@ async function loadPermissions() {
         statusEl.className = `permission-status ${isGranted ? 'granted' : 'denied'}`;
       }
       
+      // Update the permission item class for styling the button
+      if (isGranted) {
+        el.classList.add('granted');
+      } else {
+        el.classList.remove('granted');
+      }
+      
       totalCount++;
       if (isGranted) grantedCount++;
     });
@@ -1154,6 +1164,53 @@ async function loadPermissions() {
     console.log(`Permissions: ${grantedCount}/${totalCount} granted`);
   } catch (error) {
     console.error('Failed to load permissions:', error);
+  }
+}
+
+// Request a specific permission from child device
+async function requestPermission(permissionName) {
+  if (!selectedDevice) {
+    alert('Please select a device first');
+    return;
+  }
+  
+  const permissionMap = {
+    'location': 'request_location_permission',
+    'backgroundLocation': 'request_background_location_permission',
+    'camera': 'request_camera_permission',
+    'microphone': 'request_microphone_permission',
+    'callLog': 'request_call_log_permission',
+    'notifications': 'request_notification_permission',
+    'usageStats': 'request_usage_stats_permission',
+    'overlay': 'request_overlay_permission',
+    'batteryOptimization': 'request_battery_optimization_permission',
+    'deviceAdmin': 'request_device_admin_permission',
+    'accessibility': 'request_accessibility_permission',
+    'storage': 'request_storage_permission'
+  };
+  
+  const command = permissionMap[permissionName] || `request_${permissionName}_permission`;
+  
+  try {
+    await sendCommand(command, { permission: permissionName });
+    alert(`Permission request sent to device. The user will be prompted to grant "${permissionName}" permission.`);
+  } catch (error) {
+    alert('Failed to send permission request: ' + error.message);
+  }
+}
+
+// Request all missing permissions
+async function requestAllMissingPermissions() {
+  if (!selectedDevice) {
+    alert('Please select a device first');
+    return;
+  }
+  
+  try {
+    await sendCommand('request_all_permissions');
+    alert('Request sent to device. The user will be guided through granting all missing permissions.');
+  } catch (error) {
+    alert('Failed to send request: ' + error.message);
   }
 }
 

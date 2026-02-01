@@ -390,64 +390,79 @@
                             <i class="fas fa-map-marker-alt"></i>
                             <span>Location</span>
                             <span class="permission-status pending">Unknown</span>
+                            <button class="btn-request-perm" onclick="requestPermission('location')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
                         </div>
                         <div class="permission-item" data-permission="backgroundLocation">
                             <i class="fas fa-route"></i>
                             <span>Background Location</span>
                             <span class="permission-status pending">Unknown</span>
+                            <button class="btn-request-perm" onclick="requestPermission('backgroundLocation')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
                         </div>
                         <div class="permission-item" data-permission="camera">
                             <i class="fas fa-camera"></i>
                             <span>Camera</span>
                             <span class="permission-status pending">Unknown</span>
+                            <button class="btn-request-perm" onclick="requestPermission('camera')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
                         </div>
                         <div class="permission-item" data-permission="microphone">
                             <i class="fas fa-microphone"></i>
                             <span>Microphone</span>
                             <span class="permission-status pending">Unknown</span>
+                            <button class="btn-request-perm" onclick="requestPermission('microphone')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
                         </div>
                         <div class="permission-item" data-permission="callLog">
                             <i class="fas fa-phone"></i>
                             <span>Call Log</span>
                             <span class="permission-status pending">Unknown</span>
+                            <button class="btn-request-perm" onclick="requestPermission('callLog')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
                         </div>
                         <div class="permission-item" data-permission="notifications">
                             <i class="fas fa-bell"></i>
                             <span>Notifications</span>
                             <span class="permission-status pending">Unknown</span>
+                            <button class="btn-request-perm" onclick="requestPermission('notifications')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
                         </div>
                         <div class="permission-item" data-permission="usageStats">
                             <i class="fas fa-chart-bar"></i>
                             <span>Usage Stats</span>
                             <span class="permission-status pending">Unknown</span>
+                            <button class="btn-request-perm" onclick="requestPermission('usageStats')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
                         </div>
                         <div class="permission-item" data-permission="overlay">
                             <i class="fas fa-layer-group"></i>
                             <span>Display Overlay</span>
                             <span class="permission-status pending">Unknown</span>
+                            <button class="btn-request-perm" onclick="requestPermission('overlay')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
                         </div>
                         <div class="permission-item" data-permission="batteryOptimization">
                             <i class="fas fa-battery-full"></i>
                             <span>Battery Optimization</span>
                             <span class="permission-status pending">Unknown</span>
+                            <button class="btn-request-perm" onclick="requestPermission('batteryOptimization')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
                         </div>
                         <div class="permission-item" data-permission="deviceAdmin">
                             <i class="fas fa-user-shield"></i>
                             <span>Device Admin</span>
                             <span class="permission-status pending">Unknown</span>
+                            <button class="btn-request-perm" onclick="requestPermission('deviceAdmin')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
                         </div>
                         <div class="permission-item" data-permission="accessibility">
                             <i class="fas fa-universal-access"></i>
                             <span>Accessibility</span>
                             <span class="permission-status pending">Unknown</span>
+                            <button class="btn-request-perm" onclick="requestPermission('accessibility')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
                         </div>
                         <div class="permission-item" data-permission="storage">
                             <i class="fas fa-folder"></i>
                             <span>Storage</span>
                             <span class="permission-status pending">Unknown</span>
+                            <button class="btn-request-perm" onclick="requestPermission('storage')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
                         </div>
                     </div>
                     <p class="permissions-updated" id="permissionsLastUpdated">Last updated: Never</p>
+                    <button class="btn secondary" id="btnRequestAllPermissions" style="margin-top: 10px;">
+                        <i class="fas fa-sync"></i> Request All Missing Permissions
+                    </button>
                 </div>
 
                 <div class="settings-section">
