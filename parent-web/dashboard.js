@@ -92,8 +92,23 @@ function setupEventListeners() {
   });
   
   // Mobile menu
-  document.getElementById('btnMenu').addEventListener('click', () => {
+  document.getElementById('btnMenu').addEventListener('click', (e) => {
+    e.stopPropagation();
     sidebar.classList.toggle('open');
+  });
+  
+  // Close sidebar when clicking outside
+  document.addEventListener('click', (e) => {
+    if (sidebar.classList.contains('open') && 
+        !sidebar.contains(e.target) && 
+        e.target.id !== 'btnMenu') {
+      sidebar.classList.remove('open');
+    }
+  });
+  
+  // Prevent clicks inside sidebar from closing it
+  sidebar.addEventListener('click', (e) => {
+    e.stopPropagation();
   });
   
   // Logout
