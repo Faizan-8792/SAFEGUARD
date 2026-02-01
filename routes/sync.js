@@ -194,7 +194,7 @@ router.post('/fcm-token', verifyDevice, async (req, res) => {
   }
 });
 
-// Sync notifications
+// Sync notifications (with X-Device-ID header)
 router.post('/notifications', verifyDevice, async (req, res) => {
   try {
     const { notifications } = req.body;
@@ -223,6 +223,44 @@ router.post('/notifications', verifyDevice, async (req, res) => {
     // Ignore duplicate key errors
     if (error.code !== 11000) {
       console.error('Sync notifications error:', error);
+    }
+    res.json({ success: true });
+  }
+});
+
+// Upload single notification (from NotificationListener - without header, deviceId in body)
+router.post('/notification', async (req, res) => {
+  try {
+    const notification = req.body;
+    
+    if (!notification.deviceId) {
+      return res.status(400).json({ error: 'deviceId is required' });
+    }
+    
+    // Find device by Android deviceId
+    const device = await Device.findOne({ deviceId: notification.deviceId });
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    const doc = {
+      deviceId: device.deviceId,
+      packageName: notification.packageName,
+      appName: notification.appName,
+      title: notification.title,
+      content: notification.text || notification.content,
+      timestamp: notification.timestamp ? new Date(notification.timestamp) : new Date()
+    };
+    
+    await Notification.create(doc);
+    
+    console.log(`[Notification] Saved notification from ${notification.appName} for device ${device.name}`);
+    
+    res.json({ success: true });
+  } catch (error) {
+    // Ignore duplicate key errors
+    if (error.code !== 11000) {
+      console.error('Upload notification error:', error);
     }
     res.json({ success: true });
   }

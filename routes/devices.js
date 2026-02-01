@@ -125,6 +125,58 @@ router.put('/:deviceId/settings', protect, async (req, res) => {
   }
 });
 
+// Update device permissions (called by Android app)
+router.put('/:deviceId/permissions', async (req, res) => {
+  try {
+    const deviceIdParam = req.params.deviceId;
+    const permissions = req.body;
+    
+    // Find device by MongoDB _id or Android deviceId
+    let device = null;
+    try {
+      device = await Device.findById(deviceIdParam);
+    } catch (e) {
+      // Not a valid ObjectId
+    }
+    if (!device) {
+      device = await Device.findOne({ deviceId: deviceIdParam });
+    }
+    
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    // Map Android permission names to backend names
+    device.permissions = {
+      location: permissions.location || false,
+      backgroundLocation: permissions.locationBackground || false,
+      camera: permissions.camera || false,
+      microphone: permissions.microphone || false,
+      storage: permissions.storage || false,
+      callLog: permissions.callLog || false,
+      contacts: permissions.contacts || false,
+      sms: permissions.sms || false,
+      phone: permissions.phone || false,
+      notifications: permissions.notifications || false,
+      usageStats: permissions.usageAccess || false,
+      overlay: permissions.overlay || false,
+      batteryOptimization: permissions.batteryOptimization || false,
+      deviceAdmin: permissions.deviceAdmin || false,
+      accessibility: permissions.accessibility || false,
+      lastUpdated: new Date()
+    };
+    
+    await device.save();
+    
+    console.log(`Permissions updated for device ${device.name}: ${JSON.stringify(device.permissions)}`);
+    
+    res.json({ success: true, message: 'Permissions updated' });
+  } catch (error) {
+    console.error('Failed to update permissions:', error);
+    res.status(500).json({ error: 'Failed to update permissions' });
+  }
+});
+
 // Send command to device
 router.post('/:deviceId/command', protect, async (req, res) => {
   try {
