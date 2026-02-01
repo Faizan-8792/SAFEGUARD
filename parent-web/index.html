@@ -342,7 +342,7 @@
                     </button>
                 </div>
                 <div class="gallery-info">
-                    <p><i class="fas fa-info-circle"></i> Showing photos from the last 24 hours</p>
+                    <p><i class="fas fa-info-circle"></i> Showing photos from the last 7 days</p>
                     <span id="photoCount">0 photos</span>
                 </div>
                 <div class="gallery-grid" id="galleryGrid">
@@ -355,7 +355,10 @@
                 <div class="modal-content photo-modal">
                     <div class="modal-header">
                         <h2 id="photoFileName">Photo</h2>
-                        <button class="btn-close" id="closePhotoModal">&times;</button>
+                        <div class="modal-actions">
+                            <button class="btn-icon" id="btnDownloadPhoto" title="Download"><i class="fas fa-download"></i></button>
+                            <button class="btn-close" id="closePhotoModal">&times;</button>
+                        </div>
                     </div>
                     <div class="photo-viewer">
                         <img id="fullPhotoImage" src="" alt="Photo">

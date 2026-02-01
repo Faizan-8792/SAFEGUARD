@@ -134,7 +134,7 @@ function setupEventListeners() {
   document.getElementById('btnDeleteCallLogs').addEventListener('click', deleteCallLogs);
   document.getElementById('btnLockDevice').addEventListener('click', () => sendCommand('lock_device'));
   document.getElementById('btnRingDevice').addEventListener('click', ringDevice);
-  document.getElementById('btnSyncNow').addEventListener('click', () => sendCommand('sync_data'));
+  document.getElementById('btnSyncNow').addEventListener('click', syncNow);
   
   // Call history
   document.getElementById('btnDeleteAllCalls').addEventListener('click', deleteCallLogs);
@@ -148,6 +148,7 @@ function setupEventListeners() {
   // Gallery
   document.getElementById('btnSyncPhotos')?.addEventListener('click', syncPhotos);
   document.getElementById('closePhotoModal')?.addEventListener('click', closePhotoModal);
+  document.getElementById('btnDownloadPhoto')?.addEventListener('click', downloadCurrentPhoto);
   
   // Stream modal
   document.getElementById('closeStream').addEventListener('click', stopStream);
@@ -405,7 +406,9 @@ async function loadDashboard() {
     document.getElementById('deviceModel').textContent = device.model || 'Unknown Model';
     document.getElementById('lastSeen').textContent = `Last seen: ${formatTime(device.lastSeen)}`;
     document.getElementById('batteryLevel').textContent = `${device.batteryLevel || device.battery || 0}%`;
-    document.getElementById('screenTime').textContent = formatDuration(device.screenTime || 0);
+    // screenTime comes in minutes from server, convert to ms for formatDuration
+    const screenTimeMs = (device.screenTime || 0) * 60000;
+    document.getElementById('screenTime').textContent = formatDuration(screenTimeMs);
     document.getElementById('locationStatus').textContent = device.location ? 'Active' : 'Unknown';
     
     const statusDot = document.getElementById('statusDot');
@@ -776,7 +779,7 @@ async function loadGallery() {
   }
   
   try {
-    const data = await api(`/devices/${getDeviceId(selectedDevice)}/photos?hours=24`);
+    const data = await api(`/devices/${getDeviceId(selectedDevice)}/photos?hours=168&limit=100`);
     
     document.getElementById('photoCount').textContent = `${data.total || 0} photos`;
     
@@ -788,8 +791,13 @@ async function loadGallery() {
     }
     
     container.innerHTML = data.photos.map(photo => `
-      <div class="gallery-item" onclick="viewPhoto('${photo.id}')">
-        <img src="data:${photo.mimeType || 'image/jpeg'};base64,${photo.thumbnail}" alt="${photo.fileName}">
+      <div class="gallery-item">
+        <img src="data:${photo.mimeType || 'image/jpeg'};base64,${photo.thumbnail}" alt="${photo.fileName}" onclick="viewPhoto('${photo.id}')">
+        <div class="gallery-item-overlay">
+          <button class="btn-icon" onclick="event.stopPropagation(); downloadPhoto('${photo.id}', '${photo.fileName || 'photo.jpg'}')" title="Download">
+            <i class="fas fa-download"></i>
+          </button>
+        </div>
         <div class="gallery-item-info">
           <span class="photo-time">${formatTime(photo.dateTaken || photo.timestamp)}</span>
         </div>
@@ -816,12 +824,74 @@ async function syncPhotos() {
   }
 }
 
+// Sync Now - trigger immediate data sync from child device
+async function syncNow() {
+  if (!selectedDevice) {
+    alert('Please select a device first');
+    return;
+  }
+  
+  try {
+    // Show loading state
+    const btn = document.getElementById('btnSyncNow');
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Syncing...</span>';
+    btn.disabled = true;
+    
+    // Send sync command to device via FCM
+    await sendCommand('sync_data', {}, true);
+    
+    // Wait a bit for the device to sync data
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    // Refresh the dashboard data
+    await refreshData();
+    
+    // Restore button
+    btn.innerHTML = originalHtml;
+    btn.disabled = false;
+    
+    alert('Sync request sent! Data has been refreshed.');
+  } catch (error) {
+    const btn = document.getElementById('btnSyncNow');
+    btn.innerHTML = '<i class="fas fa-sync"></i><span>Sync Now</span>';
+    btn.disabled = false;
+    alert('Failed to sync: ' + error.message);
+  }
+}
+
+// Download photo from gallery
+async function downloadPhoto(photoId, fileName) {
+  if (!selectedDevice) return;
+  
+  try {
+    const data = await api(`/devices/${getDeviceId(selectedDevice)}/photos/${photoId}`);
+    const photo = data.photo;
+    
+    // Create download link
+    const link = document.createElement('a');
+    link.href = `data:${photo.mimeType || 'image/jpeg'};base64,${photo.image}`;
+    link.download = fileName || 'photo.jpg';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (error) {
+    alert('Failed to download photo: ' + error.message);
+  }
+}
+
+// Store current photo for modal download
+let currentViewedPhoto = null;
+
 async function viewPhoto(photoId) {
   if (!selectedDevice) return;
   
   try {
     const data = await api(`/devices/${getDeviceId(selectedDevice)}/photos/${photoId}`);
     const photo = data.photo;
+    
+    // Store for download button
+    currentViewedPhoto = photo;
     
     document.getElementById('photoFileName').textContent = photo.fileName || 'Photo';
     document.getElementById('fullPhotoImage').src = `data:${photo.mimeType || 'image/jpeg'};base64,${photo.image}`;
@@ -834,8 +904,21 @@ async function viewPhoto(photoId) {
   }
 }
 
+// Download current viewed photo from modal
+function downloadCurrentPhoto() {
+  if (!currentViewedPhoto) return;
+  
+  const link = document.createElement('a');
+  link.href = `data:${currentViewedPhoto.mimeType || 'image/jpeg'};base64,${currentViewedPhoto.image}`;
+  link.download = currentViewedPhoto.fileName || 'photo.jpg';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 function closePhotoModal() {
   document.getElementById('photoModal').classList.add('hidden');
+  currentViewedPhoto = null;
 }
 
 function formatFileSize(bytes) {
