@@ -2,7 +2,24 @@
 
 const API_BASE = 'https://familyguard-backend-c2c9hkc8dwgzepdq.centralindia-01.azurewebsites.net/api';
 const WS_BASE = 'wss://familyguard-backend-c2c9hkc8dwgzepdq.centralindia-01.azurewebsites.net/ws';
-let authToken = localStorage.getItem('authToken');
+
+// Check for token in URL parameter (from Android app) or localStorage
+function getAuthToken() {
+  // Check URL params first (for Android WebView injection)
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlToken = urlParams.get('token');
+  if (urlToken) {
+    // Save to localStorage and clean URL
+    localStorage.setItem('authToken', urlToken);
+    // Remove token from URL without reload
+    window.history.replaceState({}, document.title, window.location.pathname);
+    return urlToken;
+  }
+  // Fall back to localStorage
+  return localStorage.getItem('authToken');
+}
+
+let authToken = getAuthToken();
 let currentUser = null;
 let devices = [];
 let selectedDevice = null;
@@ -283,12 +300,55 @@ async function loadUserData() {
       deviceSelector.value = getDeviceId(selectedDevice);
       showDashboard();
     } else {
+      // No devices - show unpaired state
       showDashboard();
+      showNoDevicesState();
     }
   } catch (error) {
     console.error('Failed to load user data:', error);
     handleLogout();
   }
+}
+
+// Show state when no devices are paired
+function showNoDevicesState() {
+  const mainContent = document.querySelector('.main-content');
+  if (!mainContent) return;
+  
+  // Hide device selector and show helpful message
+  document.getElementById('deviceStatusCard').style.display = 'none';
+  
+  const noDeviceMessage = document.createElement('div');
+  noDeviceMessage.id = 'noDeviceState';
+  noDeviceMessage.innerHTML = `
+    <div class="no-device-container">
+      <div class="no-device-icon">
+        <i class="fas fa-mobile-alt"></i>
+        <i class="fas fa-plus" style="position: absolute; right: -5px; bottom: -5px; font-size: 20px; background: var(--primary); border-radius: 50%; padding: 4px;"></i>
+      </div>
+      <h2>No Devices Paired</h2>
+      <p>You haven't paired any child device yet.</p>
+      <p class="hint">To get started, install FamilyGuard on your child's device and enter the pairing code below.</p>
+      <button class="btn btn-primary btn-lg" onclick="showPairingModal()">
+        <i class="fas fa-link"></i> Pair a Device
+      </button>
+    </div>
+  `;
+  
+  // Insert after the header in dashboard page
+  const dashboardPage = document.getElementById('dashboardPage');
+  const existingNoDevice = document.getElementById('noDeviceState');
+  if (existingNoDevice) existingNoDevice.remove();
+  
+  if (dashboardPage) {
+    dashboardPage.insertBefore(noDeviceMessage, dashboardPage.firstChild);
+  }
+}
+
+// Hide no device state when device is selected
+function hideNoDevicesState() {
+  const noDeviceState = document.getElementById('noDeviceState');
+  if (noDeviceState) noDeviceState.remove();
 }
 
 async function loadDevices() {
@@ -1245,6 +1305,82 @@ let streamAttempts = 0;
 const MAX_STREAM_ATTEMPTS = 3;
 const STREAM_TIMEOUT_MS = 15000; // 15 seconds
 
+// Audio context for live listen
+let audioContext = null;
+let audioQueue = [];
+let isPlayingAudio = false;
+
+function initAudioContext() {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)({
+      sampleRate: 16000
+    });
+  }
+  if (audioContext.state === 'suspended') {
+    audioContext.resume();
+  }
+  return audioContext;
+}
+
+async function playAudioChunk(base64Data) {
+  try {
+    const ctx = initAudioContext();
+    
+    // Decode base64 to raw PCM data
+    const binaryString = atob(base64Data);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    // Convert PCM 16-bit to Float32
+    const pcm16 = new Int16Array(bytes.buffer);
+    const float32 = new Float32Array(pcm16.length);
+    for (let i = 0; i < pcm16.length; i++) {
+      float32[i] = pcm16[i] / 32768.0;
+    }
+    
+    // Create audio buffer
+    const audioBuffer = ctx.createBuffer(1, float32.length, 16000);
+    audioBuffer.getChannelData(0).set(float32);
+    
+    // Queue the buffer
+    audioQueue.push(audioBuffer);
+    
+    // Play if not already playing
+    if (!isPlayingAudio) {
+      playNextAudioBuffer();
+    }
+  } catch (e) {
+    console.error('Error playing audio:', e);
+  }
+}
+
+function playNextAudioBuffer() {
+  if (audioQueue.length === 0) {
+    isPlayingAudio = false;
+    return;
+  }
+  
+  isPlayingAudio = true;
+  const buffer = audioQueue.shift();
+  const source = audioContext.createBufferSource();
+  source.buffer = buffer;
+  source.connect(audioContext.destination);
+  source.onended = playNextAudioBuffer;
+  source.start();
+}
+
+function stopAudioPlayback() {
+  audioQueue = [];
+  isPlayingAudio = false;
+  if (audioContext) {
+    audioContext.close();
+    audioContext = null;
+  }
+}
+
 function startStream(type) {
   if (!selectedDevice) {
     alert('Please select a device first');
@@ -1491,9 +1627,34 @@ function handleStreamData(data, type) {
   const streamVideo = document.getElementById('streamVideo');
   
   if (type === 'audio') {
-    // Audio stream - would need Web Audio API
+    // Audio stream - use Web Audio API to play
     if (!streamVideo.querySelector('.audio-indicator')) {
-      streamVideo.innerHTML = '<div class="audio-indicator"><i class="material-icons">hearing</i><p>Receiving audio...</p></div>';
+      streamVideo.innerHTML = `
+        <div class="audio-indicator active">
+          <i class="material-icons">hearing</i>
+          <p>🎧 Live audio playing...</p>
+          <div class="audio-visualizer">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>`;
+    }
+    
+    // Handle audio data
+    if (typeof data === 'string') {
+      if (data.startsWith('audio:')) {
+        // Base64 audio data from child device
+        const base64Audio = data.substring(6);
+        playAudioChunk(base64Audio);
+      } else {
+        try {
+          const msg = JSON.parse(data);
+          if (msg.type === 'stream_started') {
+            initAudioContext(); // Prepare audio context
+          }
+        } catch (e) {
+          // Might be raw audio data
+        }
+      }
     }
   } else {
     // Video/Camera stream - handle JPEG frames or JSON messages
@@ -1548,6 +1709,9 @@ function stopStream() {
     streamSocket.close();
     streamSocket = null;
   }
+  
+  // Clean up audio playback
+  stopAudioPlayback();
   
   document.getElementById('streamModal').classList.add('hidden');
   
@@ -1626,6 +1790,13 @@ async function generatePairingCode() {
 function handleDeviceChange() {
   const deviceId = deviceSelector.value;
   selectedDevice = devices.find(d => getDeviceId(d) === deviceId) || null;
+  
+  // Hide "no devices" state when a device is selected
+  if (selectedDevice) {
+    hideNoDevicesState();
+    document.getElementById('deviceStatusCard').style.display = 'block';
+  }
+  
   refreshData();
 }
 
