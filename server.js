@@ -471,12 +471,13 @@ app.use((req, res) => {
 });
 
 // Connect to MongoDB and start server
-const PORT = process.env.PORT || 5000;
+const PORT = parseInt(process.env.PORT, 10) || 8080;
 
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/familyguard')
 .then(() => {
   console.log('Connected to MongoDB');
-  server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Starting server on port ${PORT}...`);
+  server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`WebSocket server running on ws://localhost:${PORT}/ws`);
   });
