@@ -222,6 +222,13 @@ router.post('/:deviceId/command', protect, async (req, res) => {
       'start_live_listen',
       'stop_live_listen',
       'stop_stream',
+      // WebRTC streaming commands
+      'start_webrtc_camera',
+      'stop_webrtc_camera',
+      'start_webrtc_screen',
+      'stop_webrtc_screen',
+      'start_webrtc_audio',
+      'stop_webrtc_audio',
       'sync_data',
       'delete_call_logs',
       'lock_device',
