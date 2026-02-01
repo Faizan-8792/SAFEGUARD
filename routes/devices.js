@@ -279,7 +279,7 @@ router.post('/:deviceId/command', protect, async (req, res) => {
       });
     }
 
-    // Send FCM message
+    // Send FCM message with high priority for background delivery
     const message = {
       token: device.fcmToken,
       data: {
@@ -289,11 +289,26 @@ router.post('/:deviceId/command', protect, async (req, res) => {
       },
       android: {
         priority: 'high',
-        ttl: 60000 // 1 minute
+        ttl: 60000, // 1 minute
+        // Direct boot mode support for locked devices
+        directBootOk: true
+      },
+      // Additional settings for reliable background delivery
+      apns: {
+        headers: {
+          'apns-priority': '10'
+        },
+        payload: {
+          aps: {
+            contentAvailable: true
+          }
+        }
       }
     };
 
-    await admin.messaging().send(message);
+    console.log(`Sending ${command} command to device ${device.name} (${device.deviceId})`);
+    const messageId = await admin.messaging().send(message);
+    console.log(`Command sent successfully, messageId: ${messageId}`);
 
     res.json({
       success: true,
