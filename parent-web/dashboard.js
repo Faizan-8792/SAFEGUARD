@@ -1094,9 +1094,6 @@ async function blockApp(packageName) {
 async function unblockApp(packageName) {
   if (!confirm(`Unblock this app?`)) return;
   await toggleAppBlock(packageName, false);
-  } catch (error) {
-    alert('Failed to unblock app: ' + error.message);
-  }
 }
 
 // Commands - use WebSocket fallback when FCM is not available
