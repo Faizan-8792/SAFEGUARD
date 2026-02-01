@@ -138,6 +138,184 @@ app.use('/api/auth', authRoutes);
 app.use('/api/devices', deviceRoutes);
 app.use('/api/sync', syncRoutes);
 
+// ==== ALIAS ROUTES FOR BACKWARD COMPATIBILITY ====
+// These routes redirect old API paths to new correct paths
+// Can be removed once the Android app is updated
+
+// Redirect /api/notifications to /api/sync/notifications  
+app.post('/api/notifications', (req, res, next) => {
+  req.url = '/api/sync/notifications';
+  next('route');
+});
+app.use('/api/notifications', syncRoutes);
+
+// Redirect /api/call-logs/:deviceId to /api/devices/:deviceId/call-logs
+app.get('/api/call-logs/:deviceId', async (req, res) => {
+  const { protect } = require('./routes/auth');
+  protect(req, res, async () => {
+    const device = await Device.findOne({
+      _id: req.params.deviceId,
+      owner: req.user._id
+    });
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    const CallLog = require('./models').CallLog;
+    const logs = await CallLog.find({ deviceId: device.deviceId })
+      .sort({ timestamp: -1 })
+      .limit(100);
+    res.json(logs);
+  });
+});
+
+app.delete('/api/call-logs/:deviceId', async (req, res) => {
+  const { protect } = require('./routes/auth');
+  protect(req, res, async () => {
+    const device = await Device.findOne({
+      _id: req.params.deviceId,
+      owner: req.user._id
+    });
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    const CallLog = require('./models').CallLog;
+    await CallLog.deleteMany({ deviceId: device.deviceId });
+    res.json({ success: true });
+  });
+});
+
+// Redirect /api/app-usage/:deviceId to /api/devices/:deviceId/apps
+app.get('/api/app-usage/:deviceId', async (req, res) => {
+  const { protect } = require('./routes/auth');
+  protect(req, res, async () => {
+    const device = await Device.findOne({
+      _id: req.params.deviceId,
+      owner: req.user._id
+    });
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    const AppUsage = require('./models').AppUsage;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const usage = await AppUsage.aggregate([
+      { $match: { deviceId: device.deviceId, date: { $gte: today } } },
+      { $group: { _id: '$packageName', appName: { $first: '$appName' }, totalTime: { $sum: '$usageTime' }, openCount: { $sum: '$openCount' } } },
+      { $sort: { totalTime: -1 } }
+    ]);
+    res.json({ success: true, blockedApps: device.blockedApps, usage });
+  });
+});
+
+// Redirect /api/location/:deviceId to /api/devices/:deviceId/location
+app.get('/api/location/:deviceId', async (req, res) => {
+  const { protect } = require('./routes/auth');
+  protect(req, res, async () => {
+    const device = await Device.findOne({
+      _id: req.params.deviceId,
+      owner: req.user._id
+    });
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    res.json({ success: true, location: device.location || null });
+  });
+});
+
+// Redirect /api/gallery/:deviceId to /api/devices/:deviceId/photos
+app.get('/api/gallery/:deviceId', async (req, res) => {
+  const { protect } = require('./routes/auth');
+  protect(req, res, async () => {
+    const device = await Device.findOne({
+      _id: req.params.deviceId,
+      owner: req.user._id
+    });
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    const Photo = require('./models').Photo;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const photos = await Photo.find({ deviceId: device.deviceId })
+      .sort({ capturedAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+    res.json({ success: true, photos });
+  });
+});
+
+// Redirect /api/commands to /api/devices/:deviceId/command
+app.post('/api/commands', async (req, res) => {
+  const { deviceId, command, ...params } = req.body;
+  if (!deviceId) {
+    return res.status(400).json({ error: 'deviceId is required' });
+  }
+  // Forward to the proper endpoint
+  req.url = `/api/devices/${deviceId}/command`;
+  req.body = { command, ...params };
+  // Use the device routes
+  const { protect } = require('./routes/auth');
+  protect(req, res, async () => {
+    const device = await Device.findOne({
+      _id: deviceId,
+      owner: req.user._id
+    });
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    // Send FCM command
+    if (!device.fcmToken) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Device not registered for push notifications. Please open the app on the child device.'
+      });
+    }
+    try {
+      await admin.messaging().send({
+        token: device.fcmToken,
+        data: { command, params: JSON.stringify(params || {}) }
+      });
+      res.json({ success: true, message: 'Command sent' });
+    } catch (fcmError) {
+      console.error('FCM error:', fcmError);
+      res.status(500).json({ success: false, error: 'Failed to send command to device' });
+    }
+  });
+});
+
+// Redirect /api/blocked-apps/:deviceId to /api/devices/:deviceId/settings
+app.get('/api/blocked-apps/:deviceId', async (req, res) => {
+  const { protect } = require('./routes/auth');
+  protect(req, res, async () => {
+    const device = await Device.findOne({
+      _id: req.params.deviceId,
+      owner: req.user._id
+    });
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    res.json(device.blockedApps || []);
+  });
+});
+
+app.post('/api/blocked-apps/:deviceId', async (req, res) => {
+  const { protect } = require('./routes/auth');
+  protect(req, res, async () => {
+    const device = await Device.findOne({
+      _id: req.params.deviceId,
+      owner: req.user._id
+    });
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    device.blockedApps = req.body.blockedApps || [];
+    await device.save();
+    res.json({ success: true, blockedApps: device.blockedApps });
+  });
+});
+
+// ==== END ALIAS ROUTES ====
+
 // Debug endpoint to check database status (remove in production)
 app.get('/api/debug/devices', async (req, res) => {
   try {
