@@ -16,14 +16,16 @@ local.properties
 apktool.jar
 apk_decompiled/
 
-# Duplicate backend files at root (these should only be in backend/)
-/server.js
-/package.json
-/package-lock.json
-/models/
-/routes/
-/parent-web/
-/utils/
+# Android app (not needed in GitHub for backend deployment)
+android/
+app/
+gradle/
+gradlew
+gradlew.bat
+build.gradle.kts
+settings.gradle.kts
+gradle.properties
+FIXES_AND_TESTING.md
 
 # IDE
 *.iml
