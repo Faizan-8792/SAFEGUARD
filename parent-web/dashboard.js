@@ -2613,6 +2613,4 @@ function openScreenshotFullscreen(src) {
   };
   document.body.appendChild(modal);
 }
-  if (closePinModal) closePinModal.addEventListener('click', hidePinModal);
-});
 
