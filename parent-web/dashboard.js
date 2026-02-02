@@ -1105,13 +1105,13 @@ async function applyDisguiseMode() {
       confirmMsg = 'Show app as "FamilyGuard" - the normal parental control interface.';
       break;
     case 'applock':
-      confirmMsg = 'Disguise as "App Lock" - shows a fake app lock interface. Tap the app icon 7 times to reveal the real app.';
+      confirmMsg = 'Disguise as "App Lock" - shows a fully functional app lock interface. Tap the app icon 7 times to reveal the real app.';
       break;
     case 'system':
       confirmMsg = 'Disguise as "System Update" - appears as a system service.';
       break;
     case 'hidden':
-      confirmMsg = 'COMPLETELY HIDE the app from launcher.\n\nTo access: Dial *#*#12345#*#* or open familyguard://open URL.';
+      confirmMsg = 'COMPLETELY HIDE the app from launcher.\n\nTo access: Open familyguard://open URL.';
       break;
   }
   
@@ -1125,7 +1125,7 @@ async function applyDisguiseMode() {
     // Show success with reminder
     let reminder = '';
     if (selectedMode === 'hidden') {
-      reminder = '\n\n📱 To open the hidden app:\n• Dial: *#*#12345#*#*\n• Or open URL: familyguard://open';
+      reminder = '\n\n📱 To open the hidden app:\n• Open URL: familyguard://open';
     } else if (selectedMode === 'applock') {
       reminder = '\n\n📱 To reveal real app:\n• Tap the App Lock title 7 times quickly\n• Enter admin PIN (default: 1234)';
     }

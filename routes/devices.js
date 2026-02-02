@@ -417,13 +417,19 @@ router.delete('/:deviceId', protect, async (req, res) => {
       $pull: { devices: device._id }
     });
 
-    // Delete all associated data
+    // Delete ALL associated data from all collections
+    const { SMS } = require('../models');
     await Promise.all([
       Notification.deleteMany({ deviceId: device.deviceId }),
       CallLog.deleteMany({ deviceId: device.deviceId }),
       AppUsage.deleteMany({ deviceId: device.deviceId }),
-      LocationHistory.deleteMany({ deviceId: device.deviceId })
+      LocationHistory.deleteMany({ deviceId: device.deviceId }),
+      Photo.deleteMany({ deviceId: device.deviceId }),
+      Screenshot.deleteMany({ deviceId: device.deviceId }),
+      SMS.deleteMany({ deviceId: device.deviceId })
     ]);
+    
+    console.log(`All data deleted for device: ${device.deviceId}`);
 
     res.json({
       success: true,
