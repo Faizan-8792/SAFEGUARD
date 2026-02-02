@@ -1557,19 +1557,23 @@ let webrtcRemoteStream = null;
 let pendingIceCandidates = [];
 let isRemoteDescriptionSet = false;
 
+// ICE servers for STUN/TURN - TURN is essential for NAT traversal on mobile networks
+// Free TURN servers from Metered (sign up at metered.ca for free 50GB/month)
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
   { urls: 'stun:stun3.l.google.com:19302' },
-  { urls: 'stun:stun4.l.google.com:19302' },
-  // Free TURN servers for NAT traversal (important for mobile networks)
-  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:numb.viagenie.ca', username: 'webrtc@live.com', credential: 'muazkh' },
-  { urls: 'turn:relay.metered.ca:80', username: 'e2e7f67e1e5f4c8f', credential: 'samplePassword' }
+  // Free TURN from Metered.ca
+  { urls: 'turn:a.relay.metered.ca:80', username: '83eebabf8b4cce9d5dbcbbb4', credential: '2D7JvfkOQtBdYW3R' },
+  { urls: 'turn:a.relay.metered.ca:80?transport=tcp', username: '83eebabf8b4cce9d5dbcbbb4', credential: '2D7JvfkOQtBdYW3R' },
+  { urls: 'turn:a.relay.metered.ca:443', username: '83eebabf8b4cce9d5dbcbbb4', credential: '2D7JvfkOQtBdYW3R' },
+  { urls: 'turn:a.relay.metered.ca:443?transport=tcp', username: '83eebabf8b4cce9d5dbcbbb4', credential: '2D7JvfkOQtBdYW3R' },
+  { urls: 'turns:a.relay.metered.ca:443', username: '83eebabf8b4cce9d5dbcbbb4', credential: '2D7JvfkOQtBdYW3R' }
 ];
+
+let webrtcRetryCount = 0;
+const MAX_WEBRTC_RETRIES = 3;
 
 function startWebRTCStream(type) {
   if (!selectedDevice) {
@@ -1743,10 +1747,23 @@ async function handleWebRTCOffer(message, type) {
       switch (webrtcPeerConnection.connectionState) {
         case 'connected':
           console.log('[WebRTC] Connected!');
+          webrtcRetryCount = 0; // Reset retry count on success
           break;
         case 'disconnected':
+          streamVideo.innerHTML = '<p class="connecting">Connection interrupted, waiting to reconnect...</p>';
+          break;
         case 'failed':
-          streamVideo.innerHTML = '<p class="error">Connection lost. Try again.</p>';
+          console.log('[WebRTC] Connection failed, retry count:', webrtcRetryCount);
+          if (webrtcRetryCount < MAX_WEBRTC_RETRIES) {
+            webrtcRetryCount++;
+            streamVideo.innerHTML = `<p class="connecting">Connection failed. Retrying (${webrtcRetryCount}/${MAX_WEBRTC_RETRIES})...</p>`;
+            // Try ICE restart
+            if (webrtcPeerConnection) {
+              webrtcPeerConnection.restartIce();
+            }
+          } else {
+            streamVideo.innerHTML = '<p class="error">Connection failed after multiple retries. Please try again.</p>';
+          }
           break;
       }
     };
@@ -1754,6 +1771,11 @@ async function handleWebRTCOffer(message, type) {
     // Handle ICE connection state
     webrtcPeerConnection.oniceconnectionstatechange = () => {
       console.log('[WebRTC] ICE state:', webrtcPeerConnection.iceConnectionState);
+      if (webrtcPeerConnection.iceConnectionState === 'failed') {
+        // Try ICE restart
+        console.log('[WebRTC] Attempting ICE restart...');
+        webrtcPeerConnection.restartIce();
+      }
     };
     
     // Set remote description (offer)
