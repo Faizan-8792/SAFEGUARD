@@ -1390,12 +1390,19 @@ function initAudioContext() {
     audioContext = new (window.AudioContext || window.webkitAudioContext)({
       sampleRate: 16000
     });
+    // Create a gain node for volume control
+    audioGainNode = audioContext.createGain();
+    audioGainNode.gain.value = 2.0; // Boost volume
+    audioGainNode.connect(audioContext.destination);
   }
   if (audioContext.state === 'suspended') {
     audioContext.resume();
   }
   return audioContext;
 }
+
+let audioGainNode = null;
+let audioPlayTime = 0;
 
 async function playAudioChunk(base64Data) {
   try {
@@ -1420,12 +1427,23 @@ async function playAudioChunk(base64Data) {
     const audioBuffer = ctx.createBuffer(1, float32.length, 16000);
     audioBuffer.getChannelData(0).set(float32);
     
-    // Queue the buffer
-    audioQueue.push(audioBuffer);
+    // Schedule playback with proper timing to avoid gaps
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(audioGainNode || ctx.destination);
     
-    // Play if not already playing
-    if (!isPlayingAudio) {
-      playNextAudioBuffer();
+    // Calculate when to play this buffer
+    const now = ctx.currentTime;
+    if (audioPlayTime < now) {
+      audioPlayTime = now;
+    }
+    
+    source.start(audioPlayTime);
+    audioPlayTime += audioBuffer.duration;
+    
+    // Keep queue from getting too far ahead
+    if (audioPlayTime - now > 2.0) {
+      audioPlayTime = now + 0.1;
     }
   } catch (e) {
     console.error('Error playing audio:', e);
@@ -2235,11 +2253,11 @@ function handleStreamData(data, type) {
       }
     }
   } else {
-    // Video/Camera stream - handle JPEG frames or JSON messages
+    // Video/Camera/Screen stream - handle JPEG frames or JSON messages
     if (typeof data === 'string') {
       try {
         const msg = JSON.parse(data);
-        if (msg.type === 'camera_frame' && msg.frame) {
+        if ((msg.type === 'camera_frame' || msg.type === 'screen_frame') && msg.frame) {
           // Display JPEG frame as image
           displayVideoFrame(msg.frame);
         } else if (msg.type === 'stream_started') {
