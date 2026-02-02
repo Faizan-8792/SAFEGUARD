@@ -32,6 +32,7 @@ function getDeviceId(device) {
 
 // DOM Elements
 const loginPage = document.getElementById('loginPage');
+const registerPage = document.getElementById('registerPage');
 const dashboardPage = document.getElementById('dashboardPage');
 const notificationsPage = document.getElementById('notificationsPage');
 const callsPage = document.getElementById('callsPage');
@@ -90,6 +91,21 @@ async function refreshDataSilent() {
 function setupEventListeners() {
   // Login form
   document.getElementById('loginForm').addEventListener('submit', handleLogin);
+  
+  // Register form
+  document.getElementById('registerForm')?.addEventListener('submit', handleRegister);
+  
+  // Show register page
+  document.getElementById('showRegister')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    showRegisterPage();
+  });
+  
+  // Show login page from register
+  document.getElementById('showLogin')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    showLoginPage();
+  });
   
   // Navigation
   document.querySelectorAll('.nav-item').forEach(item => {
@@ -456,6 +472,66 @@ function showLoginPage() {
   document.querySelector('.sidebar').style.display = 'none';
   document.querySelector('.header').style.display = 'none';
   stopAutoRefresh();
+}
+
+function showRegisterPage() {
+  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+  document.getElementById('registerPage').classList.remove('hidden');
+  document.querySelector('.sidebar').style.display = 'none';
+  document.querySelector('.header').style.display = 'none';
+  stopAutoRefresh();
+}
+
+async function handleRegister(e) {
+  e.preventDefault();
+  
+  const name = document.getElementById('registerName').value.trim();
+  const email = document.getElementById('registerEmail').value.trim();
+  const password = document.getElementById('registerPassword').value;
+  const confirmPassword = document.getElementById('registerConfirmPassword').value;
+  
+  if (!name || !email || !password) {
+    alert('Please fill in all fields');
+    return;
+  }
+  
+  if (password !== confirmPassword) {
+    alert('Passwords do not match');
+    return;
+  }
+  
+  if (password.length < 6) {
+    alert('Password must be at least 6 characters');
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ name, email, password })
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Registration failed');
+    }
+    
+    // Registration successful - save token and redirect
+    authToken = data.token;
+    localStorage.setItem('authToken', authToken);
+    currentUser = data.user;
+    
+    alert('Account created successfully! Welcome to FamilyGuard Pro.');
+    showDashboard();
+    loadDevices();
+  } catch (error) {
+    console.error('Registration error:', error);
+    alert('Registration failed: ' + error.message);
+  }
 }
 
 function showDashboard() {

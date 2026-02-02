@@ -111,6 +111,41 @@
                 </div>
             </div>
 
+            <!-- Register Page -->
+            <div class="page hidden" id="registerPage">
+                <div class="login-container">
+                    <div class="login-card">
+                        <div class="login-header">
+                            <i class="fas fa-user-plus"></i>
+                            <h1>Create Account</h1>
+                            <p>Join FamilyGuard Pro</p>
+                        </div>
+                        <form id="registerForm">
+                            <div class="form-group">
+                                <label for="registerName">Full Name</label>
+                                <input type="text" id="registerName" placeholder="Enter your name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="registerEmail">Email</label>
+                                <input type="email" id="registerEmail" placeholder="Enter your email" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="registerPassword">Password</label>
+                                <input type="password" id="registerPassword" placeholder="Create a password (min 6 chars)" minlength="6" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="registerConfirmPassword">Confirm Password</label>
+                                <input type="password" id="registerConfirmPassword" placeholder="Confirm your password" required>
+                            </div>
+                            <button type="submit" class="btn-primary btn-full">Create Account</button>
+                        </form>
+                        <p class="login-footer">
+                            Already have an account? <a href="#" id="showLogin">Login</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
             <!-- Dashboard Page -->
             <div class="page hidden" id="dashboardPage">
                 <div class="page-header">
