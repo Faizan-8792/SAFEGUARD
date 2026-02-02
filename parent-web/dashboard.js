@@ -156,6 +156,7 @@ function setupEventListeners() {
   // Screenshot
   document.getElementById('btnScreenshot')?.addEventListener('click', captureScreenshot);
   document.getElementById('btnRefreshScreenshot')?.addEventListener('click', loadLatestScreenshot);
+  document.getElementById('btnCaptureScreenshot')?.addEventListener('click', captureScreenshotFromPage);
   
   // Call history
   document.getElementById('btnDeleteAllCalls').addEventListener('click', deleteCallLogs);
@@ -418,6 +419,9 @@ function navigateTo(page) {
         break;
       case 'gallery':
         loadGallery();
+        break;
+      case 'screenshots':
+        loadScreenshots();
         break;
       case 'location':
         loadLocation();
@@ -2612,5 +2616,77 @@ function openScreenshotFullscreen(src) {
     if (e.target === modal) modal.remove();
   };
   document.body.appendChild(modal);
+}
+
+// Screenshots Gallery Page Functions
+async function loadScreenshots() {
+  if (!selectedDevice) {
+    document.getElementById('screenshotsGrid').innerHTML = '<p class="empty-state">Select a device to view screenshots</p>';
+    return;
+  }
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    const data = await api(`/devices/${deviceId}/screenshots?limit=20`);
+    
+    const container = document.getElementById('screenshotsGrid');
+    const countEl = document.getElementById('screenshotCount');
+    
+    if (!data.screenshots || data.screenshots.length === 0) {
+      container.innerHTML = '<p class="empty-state">No screenshots found. Tap "Capture Screenshot" to take a screenshot from the device.</p>';
+      countEl.textContent = '0 screenshots';
+      return;
+    }
+    
+    countEl.textContent = `${data.total} screenshots`;
+    
+    container.innerHTML = data.screenshots.map(screenshot => `
+      <div class="gallery-item screenshot-item" data-id="${screenshot.id}">
+        <img src="data:image/jpeg;base64,${screenshot.imageData}" 
+             alt="Screenshot" 
+             onclick="openScreenshotFullscreen(this.src)"
+             loading="lazy">
+        <div class="gallery-item-info">
+          <span class="date">${formatTime(screenshot.capturedAt)}</span>
+          <span class="dimensions">${screenshot.width || '?'}x${screenshot.height || '?'}</span>
+        </div>
+      </div>
+    `).join('');
+    
+  } catch (error) {
+    console.error('Failed to load screenshots:', error);
+    document.getElementById('screenshotsGrid').innerHTML = '<p class="empty-state">Failed to load screenshots</p>';
+  }
+}
+
+async function captureScreenshotFromPage() {
+  if (!selectedDevice) {
+    alert('Please select a device first');
+    return;
+  }
+  
+  const btn = document.getElementById('btnCaptureScreenshot');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Capturing...';
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    await api(`/devices/${deviceId}/screenshot/capture`, {
+      method: 'POST'
+    });
+    
+    // Wait a few seconds then refresh the list
+    setTimeout(() => {
+      loadScreenshots();
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-camera"></i> Capture Screenshot';
+    }, 5000);
+    
+  } catch (error) {
+    console.error('Screenshot error:', error);
+    alert('Failed to capture screenshot: ' + error.message);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-camera"></i> Capture Screenshot';
+  }
 }
 

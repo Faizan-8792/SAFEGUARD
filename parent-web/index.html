@@ -36,6 +36,10 @@
                     <i class="fas fa-images"></i>
                     <span>Gallery</span>
                 </li>
+                <li class="nav-item" data-page="screenshots">
+                    <i class="fas fa-camera-retro"></i>
+                    <span>Screenshots</span>
+                </li>
                 <li class="nav-item" data-page="location">
                     <i class="fas fa-map-marker-alt"></i>
                     <span>Location</span>
@@ -330,6 +334,23 @@
                 </div>
                 <div class="gallery-grid" id="galleryGrid">
                     <p class="empty-state">No photos found. Tap "Sync Photos" to fetch recent photos from the device.</p>
+                </div>
+            </div>
+
+            <!-- Screenshots Page -->
+            <div class="page hidden" id="screenshotsPage">
+                <div class="page-header">
+                    <h1>Screenshots</h1>
+                    <button class="btn-primary" id="btnCaptureScreenshot">
+                        <i class="fas fa-camera"></i> Capture Screenshot
+                    </button>
+                </div>
+                <div class="gallery-info">
+                    <p><i class="fas fa-info-circle"></i> Screenshots captured from the device (up to 20 stored)</p>
+                    <span id="screenshotCount">0 screenshots</span>
+                </div>
+                <div class="gallery-grid screenshots-grid" id="screenshotsGrid">
+                    <p class="empty-state">No screenshots found. Tap "Capture Screenshot" to take a screenshot from the device.</p>
                 </div>
             </div>
 
