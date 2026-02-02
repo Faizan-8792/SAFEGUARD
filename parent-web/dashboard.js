@@ -2153,30 +2153,56 @@ function startStream(type) {
   streamSocket.onmessage = (event) => {
     // Handle incoming stream data
     if (typeof event.data === 'string') {
-      const msg = JSON.parse(event.data);
-      if (msg.type === 'waiting') {
-        streamVideo.innerHTML = '<p class="connecting">Waiting for device to start streaming...</p>';
-      } else if (msg.type === 'connected' || msg.type === 'stream_started') {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'waiting') {
+          streamVideo.innerHTML = '<p class="connecting">Waiting for device to start streaming...</p>';
+        } else if (msg.type === 'connected' || msg.type === 'stream_started') {
+          streamStarted = true;
+          if (streamTimeout) {
+            clearTimeout(streamTimeout);
+            streamTimeout = null;
+          }
+          streamVideo.innerHTML = '<p class="connecting">Stream connected, receiving data...</p>';
+        } else if (msg.type === 'camera_frame' || msg.type === 'screen_frame') {
+          // Handle JPEG frame data
+          streamStarted = true;
+          if (streamTimeout) {
+            clearTimeout(streamTimeout);
+            streamTimeout = null;
+          }
+          handleStreamData(event.data, type);
+        } else if (msg.type === 'error') {
+          streamStarted = true; // Prevent timeout error from showing
+          if (streamTimeout) {
+            clearTimeout(streamTimeout);
+            streamTimeout = null;
+          }
+          showStreamErrorMessage(msg.message || msg.error || 'Unknown error', type, permissions);
+        } else if (msg.type === 'permission_denied' || msg.type === 'permission_required') {
+          streamStarted = true;
+          if (streamTimeout) {
+            clearTimeout(streamTimeout);
+            streamTimeout = null;
+          }
+          showStreamError(type, permissions, msg.permission || msg.message);
+        } else {
+          // Other message types - might be stream data
+          streamStarted = true;
+          if (streamTimeout) {
+            clearTimeout(streamTimeout);
+            streamTimeout = null;
+          }
+          handleStreamData(event.data, type);
+        }
+      } catch (e) {
+        // Not JSON - might be raw data like "audio:..." prefix
         streamStarted = true;
         if (streamTimeout) {
           clearTimeout(streamTimeout);
           streamTimeout = null;
         }
-        streamVideo.innerHTML = '<p class="connecting">Stream connected, receiving data...</p>';
-      } else if (msg.type === 'error') {
-        streamStarted = true; // Prevent timeout error from showing
-        if (streamTimeout) {
-          clearTimeout(streamTimeout);
-          streamTimeout = null;
-        }
-        showStreamErrorMessage(msg.message || msg.error || 'Unknown error', type, permissions);
-      } else if (msg.type === 'permission_denied' || msg.type === 'permission_required') {
-        streamStarted = true;
-        if (streamTimeout) {
-          clearTimeout(streamTimeout);
-          streamTimeout = null;
-        }
-        showStreamError(type, permissions, msg.permission || msg.message);
+        handleStreamData(event.data, type);
       }
     } else {
       // Binary data - video/audio frame - stream is working!
