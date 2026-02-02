@@ -2409,3 +2409,92 @@ body {
   padding: 14px 28px;
   font-size: 16px;
 }
+
+/* App Disguise Options */
+.disguise-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.disguise-option {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--surface-light);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 2px solid transparent;
+}
+
+.disguise-option:hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.disguise-option:has(input:checked) {
+  border-color: var(--primary);
+  background: rgba(99, 102, 241, 0.15);
+}
+
+.disguise-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  font-size: 20px;
+}
+
+.disguise-option[data-mode="normal"] .disguise-icon {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+}
+
+.disguise-option[data-mode="applock"] .disguise-icon {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: white;
+}
+
+.disguise-option[data-mode="system"] .disguise-icon {
+  background: linear-gradient(135deg, #64748b, #475569);
+  color: white;
+}
+
+.disguise-option[data-mode="hidden"] .disguise-icon {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+}
+
+.disguise-info {
+  flex: 1;
+}
+
+.disguise-info strong {
+  display: block;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.disguise-info small {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.disguise-option input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--primary);
+}
+
+.disguise-note code {
+  background: rgba(99, 102, 241, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+}
+

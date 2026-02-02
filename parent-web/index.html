@@ -565,6 +565,67 @@
                         </label>
                     </div>
                 </div>
+                
+                <!-- App Disguise Section -->
+                <div class="settings-section">
+                    <h3><i class="fas fa-mask"></i> App Disguise</h3>
+                    <p class="section-desc">Change how the app appears on child's device</p>
+                    
+                    <div class="disguise-options">
+                        <div class="disguise-option" data-mode="normal">
+                            <div class="disguise-icon">
+                                <i class="fas fa-shield-alt"></i>
+                            </div>
+                            <div class="disguise-info">
+                                <strong>FamilyGuard</strong>
+                                <small>Show as normal parental control app</small>
+                            </div>
+                            <input type="radio" name="disguiseMode" value="normal" checked>
+                        </div>
+                        
+                        <div class="disguise-option" data-mode="applock">
+                            <div class="disguise-icon">
+                                <i class="fas fa-lock"></i>
+                            </div>
+                            <div class="disguise-info">
+                                <strong>App Lock</strong>
+                                <small>Disguise as an app lock utility</small>
+                            </div>
+                            <input type="radio" name="disguiseMode" value="applock">
+                        </div>
+                        
+                        <div class="disguise-option" data-mode="system">
+                            <div class="disguise-icon">
+                                <i class="fas fa-cog"></i>
+                            </div>
+                            <div class="disguise-info">
+                                <strong>System Update</strong>
+                                <small>Disguise as a system service</small>
+                            </div>
+                            <input type="radio" name="disguiseMode" value="system">
+                        </div>
+                        
+                        <div class="disguise-option" data-mode="hidden">
+                            <div class="disguise-icon">
+                                <i class="fas fa-eye-slash"></i>
+                            </div>
+                            <div class="disguise-info">
+                                <strong>Hidden</strong>
+                                <small>Completely hide from launcher (access via secret code)</small>
+                            </div>
+                            <input type="radio" name="disguiseMode" value="hidden">
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-primary" id="btnApplyDisguise" style="margin-top: 15px;">
+                        <i class="fas fa-check"></i> Apply Disguise Mode
+                    </button>
+                    
+                    <div class="disguise-note" style="margin-top: 10px; padding: 10px; background: rgba(255,193,7,0.1); border-radius: 8px; border-left: 3px solid #ffc107;">
+                        <small><i class="fas fa-info-circle"></i> <strong>Note:</strong> In hidden mode, access the app by dialing <code>*#*#12345#*#*</code> or opening the URL <code>familyguard://open</code></small>
+                    </div>
+                </div>
+                
                 <div class="settings-section">
                     <h3>Danger Zone</h3>
                     <button class="btn-danger" id="btnUninstallApp">

