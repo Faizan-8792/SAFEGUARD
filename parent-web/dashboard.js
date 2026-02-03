@@ -1558,18 +1558,22 @@ let pendingIceCandidates = [];
 let isRemoteDescriptionSet = false;
 
 // ICE servers for STUN/TURN - TURN is essential for NAT traversal on mobile networks
-// Free TURN servers from Metered (sign up at metered.ca for free 50GB/month)
+// Multiple TURN providers for reliability
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
   { urls: 'stun:stun3.l.google.com:19302' },
-  // Free TURN from Metered.ca
+  // Metered.ca TURN servers
   { urls: 'turn:a.relay.metered.ca:80', username: '83eebabf8b4cce9d5dbcbbb4', credential: '2D7JvfkOQtBdYW3R' },
   { urls: 'turn:a.relay.metered.ca:80?transport=tcp', username: '83eebabf8b4cce9d5dbcbbb4', credential: '2D7JvfkOQtBdYW3R' },
   { urls: 'turn:a.relay.metered.ca:443', username: '83eebabf8b4cce9d5dbcbbb4', credential: '2D7JvfkOQtBdYW3R' },
   { urls: 'turn:a.relay.metered.ca:443?transport=tcp', username: '83eebabf8b4cce9d5dbcbbb4', credential: '2D7JvfkOQtBdYW3R' },
-  { urls: 'turns:a.relay.metered.ca:443', username: '83eebabf8b4cce9d5dbcbbb4', credential: '2D7JvfkOQtBdYW3R' }
+  { urls: 'turns:a.relay.metered.ca:443', username: '83eebabf8b4cce9d5dbcbbb4', credential: '2D7JvfkOQtBdYW3R' },
+  // OpenRelay TURN servers (free, no auth required)
+  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
 ];
 
 let webrtcRetryCount = 0;
@@ -1699,8 +1703,15 @@ async function handleWebRTCOffer(message, type) {
     console.log('[WebRTC] Processing offer');
     const streamVideo = document.getElementById('streamVideo');
     
-    // Create peer connection
-    webrtcPeerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    // Create peer connection with full ICE configuration
+    webrtcPeerConnection = new RTCPeerConnection({ 
+      iceServers: ICE_SERVERS,
+      iceCandidatePoolSize: 10,
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require'
+    });
+    
+    console.log('[WebRTC] Peer connection created with', ICE_SERVERS.length, 'ICE servers');
     
     // Handle incoming tracks
     webrtcPeerConnection.ontrack = (event) => {
@@ -1730,14 +1741,24 @@ async function handleWebRTCOffer(message, type) {
     // Handle ICE candidates
     webrtcPeerConnection.onicecandidate = (event) => {
       if (event.candidate) {
-        console.log('[WebRTC] Sending ICE candidate');
+        // Log candidate type for debugging
+        const candidateType = event.candidate.candidate.includes('relay') ? 'RELAY/TURN' : 
+                              event.candidate.candidate.includes('srflx') ? 'SRFLX/STUN' : 'HOST';
+        console.log('[WebRTC] Sending ICE candidate:', candidateType, event.candidate.candidate.substring(0, 80));
         webrtcSignalingSocket?.send(JSON.stringify({
           type: 'ice_candidate',
           candidate: event.candidate.candidate,
           sdpMid: event.candidate.sdpMid,
           sdpMLineIndex: event.candidate.sdpMLineIndex
         }));
+      } else {
+        console.log('[WebRTC] ICE gathering complete');
       }
+    };
+    
+    // Log ICE gathering state
+    webrtcPeerConnection.onicegatheringstatechange = () => {
+      console.log('[WebRTC] ICE gathering state:', webrtcPeerConnection.iceGatheringState);
     };
     
     // Handle connection state changes
