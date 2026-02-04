@@ -673,14 +673,31 @@
                     </div>
                 </div>
                 
-                <div class="settings-section">
-                    <h3>Danger Zone</h3>
-                    <button class="btn-danger" id="btnUninstallApp">
-                        <i class="fas fa-trash-alt"></i> Uninstall App from Device
-                    </button>
-                    <button class="btn-danger" id="btnRemoveDevice">
-                        <i class="fas fa-trash"></i> Remove Device
-                    </button>
+                <div class="settings-section danger-zone">
+                    <h3><i class="fas fa-exclamation-triangle"></i> Danger Zone</h3>
+                    <p class="section-desc">These actions are irreversible. Use with caution.</p>
+                    
+                    <div class="danger-actions">
+                        <div class="danger-action">
+                            <div class="danger-action-info">
+                                <strong><i class="fas fa-trash-alt"></i> Uninstall App</strong>
+                                <small>Remove FamilyGuard from child device. This will disable Device Admin and uninstall the app.</small>
+                            </div>
+                            <button class="btn-danger" id="btnUninstallApp">
+                                Uninstall
+                            </button>
+                        </div>
+                        
+                        <div class="danger-action">
+                            <div class="danger-action-info">
+                                <strong><i class="fas fa-unlink"></i> Remove Device</strong>
+                                <small>Remove this device from your account. Data will be deleted.</small>
+                            </div>
+                            <button class="btn-danger" id="btnRemoveDevice">
+                                Remove
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 

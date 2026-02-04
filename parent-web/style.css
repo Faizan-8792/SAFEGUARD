@@ -2707,3 +2707,59 @@ body {
   }
 }
 
+/* Danger Zone Section */
+.danger-zone {
+  border: 1px solid var(--error);
+  background: rgba(239, 68, 68, 0.05);
+  border-radius: 12px;
+  margin-top: 20px;
+}
+
+.danger-zone h3 {
+  color: var(--error);
+}
+
+.danger-zone h3 i {
+  margin-right: 8px;
+}
+
+.danger-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.danger-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: var(--surface);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.danger-action-info {
+  flex: 1;
+}
+
+.danger-action-info strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+}
+
+.danger-action-info strong i {
+  margin-right: 8px;
+  color: var(--error);
+}
+
+.danger-action-info small {
+  color: var(--text-secondary);
+}
+
+.danger-action .btn-danger {
+  margin-left: 16px;
+  white-space: nowrap;
+}
