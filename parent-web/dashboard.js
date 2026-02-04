@@ -186,6 +186,7 @@ function setupEventListeners() {
   
   // Gallery
   document.getElementById('btnSyncPhotos')?.addEventListener('click', syncPhotos);
+  document.getElementById('btnDeleteAllPhotos')?.addEventListener('click', deleteAllPhotos);
   document.getElementById('closePhotoModal')?.addEventListener('click', closePhotoModal);
   document.getElementById('btnDownloadPhoto')?.addEventListener('click', downloadCurrentPhoto);
   
@@ -1167,6 +1168,31 @@ async function syncPhotos() {
     setTimeout(() => loadGallery(), 5000);
   } catch (error) {
     alert('Failed to sync photos: ' + error.message);
+  }
+}
+
+// Delete all synced photos from server (parent side only - doesn't affect child device)
+async function deleteAllPhotos() {
+  if (!selectedDevice) return;
+  
+  const count = document.getElementById('photoCount')?.textContent || '0 photos';
+  if (!confirm(`Are you sure you want to delete all synced photos from the server?\n\n${count}\n\nThis will only remove photos from the parent dashboard, not from the child device.`)) {
+    return;
+  }
+  
+  try {
+    const response = await api(`/devices/${getDeviceId(selectedDevice)}/photos/delete-all`, {
+      method: 'DELETE'
+    });
+    
+    if (response.success) {
+      alert(`Deleted ${response.deletedCount || 'all'} photos from server.`);
+      loadGallery();
+    } else {
+      alert('Failed to delete photos: ' + (response.error || 'Unknown error'));
+    }
+  } catch (error) {
+    alert('Failed to delete photos: ' + error.message);
   }
 }
 

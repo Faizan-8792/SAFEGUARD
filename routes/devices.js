@@ -771,6 +771,42 @@ router.post('/:deviceId/photos/sync', protect, async (req, res) => {
   }
 });
 
+// Delete all photos for a device (parent side only - frees up DB storage)
+router.delete('/:deviceId/photos/delete-all', protect, async (req, res) => {
+  try {
+    const deviceIdParam = req.params.deviceId;
+    
+    // Find device
+    let device = null;
+    const mongoose = require('mongoose');
+    
+    if (mongoose.Types.ObjectId.isValid(deviceIdParam)) {
+      device = await Device.findOne({ _id: deviceIdParam, owner: req.user._id });
+    }
+    if (!device) {
+      device = await Device.findOne({ deviceId: deviceIdParam, owner: req.user._id });
+    }
+    
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    // Delete all photos for this device
+    const result = await Photo.deleteMany({ deviceId: device.deviceId });
+    
+    console.log(`[Photos] Deleted ${result.deletedCount} photos for device ${device.name}`);
+    
+    res.json({
+      success: true,
+      deletedCount: result.deletedCount,
+      message: `Deleted ${result.deletedCount} photos from server`
+    });
+  } catch (error) {
+    console.error('Failed to delete photos:', error);
+    res.status(500).json({ error: 'Failed to delete photos' });
+  }
+});
+
 // Update FCM token for a device (called by Android app)
 router.put('/:deviceId/fcm-token', async (req, res) => {
   try {

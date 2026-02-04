@@ -221,6 +221,12 @@ body {
   font-weight: 700;
 }
 
+.page-header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
 /* Buttons */
 .btn-primary {
   display: inline-flex;
