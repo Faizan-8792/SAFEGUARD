@@ -55,6 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   
   setupEventListeners();
+  setupWebHistoryListeners();
 });
 
 // Start auto-refresh
@@ -455,6 +456,9 @@ function navigateTo(page) {
         break;
       case 'apps':
         loadAppUsage();
+        break;
+      case 'webhistory':
+        loadWebHistory();
         break;
       case 'settings':
         loadSettings();
@@ -928,6 +932,189 @@ async function loadAppUsage() {
     console.error('Failed to load app usage:', error);
     document.getElementById('appUsageList').innerHTML = '<p class="empty-state">Failed to load app usage</p>';
   }
+}
+
+// ========== WEB HISTORY ==========
+let webHistoryData = [];
+let webHistorySkip = 0;
+const webHistoryLimit = 50;
+let currentBrowserFilter = 'all';
+
+async function loadWebHistory(append = false) {
+  if (!selectedDevice) {
+    document.getElementById('historyList').innerHTML = '<p class="empty-state">Select a device to view web history</p>';
+    return;
+  }
+  
+  if (!append) {
+    webHistorySkip = 0;
+    webHistoryData = [];
+  }
+  
+  try {
+    let url = `/sync/browser-history/${getDeviceId(selectedDevice)}?limit=${webHistoryLimit}&skip=${webHistorySkip}`;
+    if (currentBrowserFilter !== 'all') {
+      url += `&browser=${encodeURIComponent(currentBrowserFilter)}`;
+    }
+    
+    const data = await api(url);
+    
+    if (!append) {
+      webHistoryData = data.history || [];
+    } else {
+      webHistoryData = [...webHistoryData, ...(data.history || [])];
+    }
+    
+    // Update stats
+    document.getElementById('totalVisits').textContent = data.total || 0;
+    
+    // Count unique sites
+    const uniqueUrls = new Set(webHistoryData.map(h => {
+      try {
+        return new URL(h.url).hostname;
+      } catch {
+        return h.url;
+      }
+    }));
+    document.getElementById('uniqueSites').textContent = uniqueUrls.size;
+    
+    // Check for flagged sites (basic list of adult/dangerous keywords)
+    const flaggedKeywords = ['adult', 'xxx', 'porn', 'gambling', 'casino', 'bet365', 'drugs'];
+    const flagged = webHistoryData.filter(h => {
+      const urlLower = (h.url + ' ' + (h.title || '')).toLowerCase();
+      return flaggedKeywords.some(kw => urlLower.includes(kw));
+    });
+    document.getElementById('flaggedSites').textContent = flagged.length;
+    document.getElementById('flaggedSitesCard').classList.toggle('has-flags', flagged.length > 0);
+    
+    renderWebHistory();
+    
+    // Show/hide load more button
+    const loadMoreBtn = document.getElementById('loadMoreHistory');
+    if (data.total > webHistorySkip + webHistoryLimit) {
+      loadMoreBtn.classList.remove('hidden');
+    } else {
+      loadMoreBtn.classList.add('hidden');
+    }
+  } catch (error) {
+    console.error('Failed to load web history:', error);
+    document.getElementById('historyList').innerHTML = '<p class="empty-state">Failed to load web history</p>';
+  }
+}
+
+function renderWebHistory() {
+  const container = document.getElementById('historyList');
+  const searchTerm = document.getElementById('historySearch')?.value.toLowerCase() || '';
+  
+  let filtered = webHistoryData;
+  if (searchTerm) {
+    filtered = webHistoryData.filter(h => 
+      (h.url && h.url.toLowerCase().includes(searchTerm)) ||
+      (h.title && h.title.toLowerCase().includes(searchTerm))
+    );
+  }
+  
+  if (!filtered || filtered.length === 0) {
+    container.innerHTML = '<p class="empty-state">No browsing history found</p>';
+    return;
+  }
+  
+  // Group by date
+  const grouped = {};
+  filtered.forEach(h => {
+    const date = new Date(h.visitedAt).toLocaleDateString();
+    if (!grouped[date]) grouped[date] = [];
+    grouped[date].push(h);
+  });
+  
+  let html = '';
+  for (const [date, items] of Object.entries(grouped)) {
+    html += `<div class="history-date-group">
+      <h4 class="history-date">${date === new Date().toLocaleDateString() ? 'Today' : date}</h4>
+      <div class="history-items">`;
+    
+    items.forEach(h => {
+      const hostname = (() => {
+        try {
+          return new URL(h.url).hostname;
+        } catch {
+          return 'unknown';
+        }
+      })();
+      
+      const favicon = `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`;
+      const isFlagged = ['adult', 'xxx', 'porn', 'gambling', 'casino', 'drugs'].some(
+        kw => (h.url + ' ' + (h.title || '')).toLowerCase().includes(kw)
+      );
+      
+      html += `
+        <div class="history-item ${isFlagged ? 'flagged' : ''}">
+          <img src="${favicon}" alt="" class="history-favicon" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23ddd%22/></svg>'">
+          <div class="history-content">
+            <h5 class="history-title">${escapeHtml(h.title || 'Untitled')}</h5>
+            <a href="${escapeHtml(h.url)}" target="_blank" class="history-url">${escapeHtml(h.url)}</a>
+            <div class="history-meta">
+              <span class="history-browser"><i class="fas fa-globe"></i> ${escapeHtml(h.browser || 'Unknown')}</span>
+              <span class="history-time"><i class="fas fa-clock"></i> ${formatTime(h.visitedAt)}</span>
+              ${h.visitCount > 1 ? `<span class="history-visits"><i class="fas fa-eye"></i> ${h.visitCount} visits</span>` : ''}
+            </div>
+          </div>
+          ${isFlagged ? '<span class="flag-badge"><i class="fas fa-exclamation-triangle"></i></span>' : ''}
+        </div>`;
+    });
+    
+    html += '</div></div>';
+  }
+  
+  container.innerHTML = html;
+}
+
+// Helper function for escaping HTML
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Setup web history event listeners
+function setupWebHistoryListeners() {
+  // Browser filter chips
+  document.querySelectorAll('#browserFilter .chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#browserFilter .chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      currentBrowserFilter = chip.dataset.browser;
+      loadWebHistory();
+    });
+  });
+  
+  // Search
+  document.getElementById('historySearch')?.addEventListener('input', debounce(() => {
+    renderWebHistory();
+  }, 300));
+  
+  // Refresh button
+  document.getElementById('btnRefreshHistory')?.addEventListener('click', () => loadWebHistory());
+  
+  // Load more
+  document.getElementById('loadMoreHistory')?.addEventListener('click', () => {
+    webHistorySkip += webHistoryLimit;
+    loadWebHistory(true);
+  });
+}
+
+// Debounce helper
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
 }
 
 // ========== GALLERY ==========

@@ -48,6 +48,10 @@
                     <i class="fas fa-th-large"></i>
                     <span>App Usage</span>
                 </li>
+                <li class="nav-item" data-page="webhistory">
+                    <i class="fas fa-globe"></i>
+                    <span>Web History</span>
+                </li>
                 <li class="nav-item" data-page="settings">
                     <i class="fas fa-cog"></i>
                     <span>Settings</span>
@@ -429,6 +433,47 @@
                         <p class="empty-state">No usage data</p>
                     </div>
                 </div>
+            </div>
+
+            <!-- Web History Page -->
+            <div class="page hidden" id="webhistoryPage">
+                <div class="page-header">
+                    <h1>Web History</h1>
+                    <button class="btn-primary" id="btnRefreshHistory">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+                <div class="filter-section">
+                    <div class="filter-chips" id="browserFilter">
+                        <button class="chip active" data-browser="all">All Browsers</button>
+                        <button class="chip" data-browser="Chrome">Chrome</button>
+                        <button class="chip" data-browser="Samsung">Samsung</button>
+                        <button class="chip" data-browser="Firefox">Firefox</button>
+                        <button class="chip" data-browser="Edge">Edge</button>
+                    </div>
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="historySearch" placeholder="Search URLs or titles...">
+                    </div>
+                </div>
+                <div class="history-stats">
+                    <div class="stat-card">
+                        <span class="stat-value" id="totalVisits">0</span>
+                        <span class="stat-label">Total Visits</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value" id="uniqueSites">0</span>
+                        <span class="stat-label">Unique Sites</span>
+                    </div>
+                    <div class="stat-card warning" id="flaggedSitesCard">
+                        <span class="stat-value" id="flaggedSites">0</span>
+                        <span class="stat-label">Flagged</span>
+                    </div>
+                </div>
+                <div class="history-list" id="historyList">
+                    <p class="empty-state">No browsing history found</p>
+                </div>
+                <button class="btn-load-more hidden" id="loadMoreHistory">Load More</button>
             </div>
 
             <!-- Settings Page -->

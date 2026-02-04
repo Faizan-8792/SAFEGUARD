@@ -1,6 +1,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS } = require('../models');
+const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS, BrowserHistory } = require('../models');
 
 const router = express.Router();
 
@@ -721,6 +721,87 @@ router.post('/sms', verifyDevice, async (req, res) => {
       console.error('Sync SMS error:', error);
     }
     res.json({ success: true });
+  }
+});
+
+// Sync browser history from device
+router.post('/browser-history', verifyDevice, async (req, res) => {
+  try {
+    const { history } = req.body;
+
+    if (!Array.isArray(history)) {
+      return res.status(400).json({ error: 'History must be an array' });
+    }
+
+    const docs = history.map(h => ({
+      deviceId: req.device.deviceId,
+      url: h.url,
+      title: h.title || 'Untitled',
+      browser: h.browser || 'Unknown',
+      visitCount: h.visitCount || 1,
+      visitedAt: h.visitedAt ? new Date(h.visitedAt) : new Date(),
+      timestamp: new Date()
+    }));
+
+    // Use insertMany with ordered: false to skip duplicates
+    await BrowserHistory.insertMany(docs, { ordered: false });
+
+    console.log(`[Browser History] Device ${req.device.name} - Synced ${docs.length} history entries`);
+
+    res.json({
+      success: true,
+      count: docs.length
+    });
+  } catch (error) {
+    // Ignore duplicate key errors
+    if (error.code !== 11000) {
+      console.error('Sync browser history error:', error);
+    }
+    res.json({ success: true });
+  }
+});
+
+// GET browser history for a device (for parent dashboard)
+router.get('/browser-history/:deviceId', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const { limit = 100, skip = 0, browser } = req.query;
+
+    // Find device
+    let device = null;
+    if (mongoose.Types.ObjectId.isValid(deviceId)) {
+      device = await Device.findById(deviceId);
+    }
+    if (!device) {
+      device = await Device.findOne({ deviceId: deviceId });
+    }
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    // Build query
+    const query = { deviceId: device.deviceId };
+    if (browser) {
+      query.browser = browser;
+    }
+
+    const history = await BrowserHistory.find(query)
+      .sort({ visitedAt: -1 })
+      .skip(parseInt(skip))
+      .limit(parseInt(limit));
+
+    const total = await BrowserHistory.countDocuments(query);
+
+    res.json({
+      success: true,
+      history,
+      total,
+      limit: parseInt(limit),
+      skip: parseInt(skip)
+    });
+  } catch (error) {
+    console.error('Get browser history error:', error);
+    res.status(500).json({ error: 'Failed to get browser history' });
   }
 });
 

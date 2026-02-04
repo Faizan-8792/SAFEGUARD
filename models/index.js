@@ -367,6 +367,42 @@ screenshotSchema.index({ timestamp: 1 }, { expireAfterSeconds: 86400 });
 
 const Screenshot = mongoose.model('Screenshot', screenshotSchema);
 
+// Browser History Schema
+const browserHistorySchema = new mongoose.Schema({
+  deviceId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  url: {
+    type: String,
+    required: true
+  },
+  title: String,
+  browser: String, // Chrome, Samsung Browser, Firefox, etc.
+  visitCount: {
+    type: Number,
+    default: 1
+  },
+  visitedAt: {
+    type: Date,
+    required: true
+  },
+  timestamp: {
+    type: Date,
+    default: Date.now,
+    index: true
+  }
+});
+
+// Unique index to prevent duplicates (same device, url, visitedAt)
+browserHistorySchema.index({ deviceId: 1, url: 1, visitedAt: 1 }, { unique: true });
+
+// Auto-delete after 48 hours
+browserHistorySchema.index({ timestamp: 1 }, { expireAfterSeconds: 172800 });
+
+const BrowserHistory = mongoose.model('BrowserHistory', browserHistorySchema);
+
 // Pairing Code Schema (temporary)
 const pairingCodeSchema = new mongoose.Schema({
   code: {
@@ -404,5 +440,6 @@ module.exports = {
   Photo,
   SMS,
   Screenshot,
+  BrowserHistory,
   PairingCode
 };
