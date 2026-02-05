@@ -369,22 +369,24 @@
 
                 <!-- Date Filter -->
                 <div class="date-filter-section">
-                    <div class="date-filter-inputs">
-                        <div class="date-input-group">
-                            <label for="photoStartDate">From:</label>
-                            <input type="date" id="photoStartDate" />
+                    <div class="date-filter-row">
+                        <div class="date-range-input" id="dateRangeInput">
+                            <i class="fas fa-calendar-alt"></i>
+                            <span id="dateRangeText">Select date range</span>
+                            <i class="fas fa-chevron-down"></i>
                         </div>
-                        <div class="date-input-group">
-                            <label for="photoEndDate">To:</label>
-                            <input type="date" id="photoEndDate" />
+                        <div class="date-filter-actions">
+                            <button class="btn-primary" id="btnGoFilter">
+                                <i class="fas fa-sync-alt"></i> Sync & Filter
+                            </button>
+                            <button class="btn-text" id="btnClearDateFilter">
+                                <i class="fas fa-times"></i> Clear
+                            </button>
                         </div>
-                        <button class="btn-primary" id="btnGoFilter">
-                            <i class="fas fa-search"></i> Go
-                        </button>
-                        <button class="btn-text" id="btnClearDateFilter">
-                            <i class="fas fa-times"></i> Clear
-                        </button>
                     </div>
+                    <!-- Hidden inputs to store selected dates -->
+                    <input type="hidden" id="photoStartDate" />
+                    <input type="hidden" id="photoEndDate" />
                 </div>
 
                 <!-- Album Tabs -->
@@ -491,6 +493,69 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Date Range Picker Modal -->
+            <div class="modal hidden" id="dateRangeModal">
+                <div class="modal-content date-range-modal">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-calendar-alt"></i> Select Date Range</h2>
+                        <button class="btn-close" id="closeDateRangeModal">&times;</button>
+                    </div>
+                    <div class="date-range-body">
+                        <!-- Quick Presets -->
+                        <div class="date-presets">
+                            <button class="preset-btn" data-preset="today">Today</button>
+                            <button class="preset-btn" data-preset="yesterday">Yesterday</button>
+                            <button class="preset-btn" data-preset="7days">Last 7 Days</button>
+                            <button class="preset-btn" data-preset="30days">Last 30 Days</button>
+                            <button class="preset-btn" data-preset="thisMonth">This Month</button>
+                        </div>
+                        
+                        <!-- Selected Range Display -->
+                        <div class="selected-range-display">
+                            <div class="range-date">
+                                <label>From</label>
+                                <span id="selectedStartDate">--</span>
+                            </div>
+                            <i class="fas fa-arrow-right"></i>
+                            <div class="range-date">
+                                <label>To</label>
+                                <span id="selectedEndDate">--</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Calendar Container -->
+                        <div class="calendars-container">
+                            <div class="calendar" id="calendarLeft">
+                                <div class="calendar-header">
+                                    <button class="cal-nav-btn" id="prevMonth"><i class="fas fa-chevron-left"></i></button>
+                                    <span class="calendar-month" id="leftMonthLabel">January 2026</span>
+                                    <span></span>
+                                </div>
+                                <div class="calendar-weekdays">
+                                    <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+                                </div>
+                                <div class="calendar-days" id="leftCalendarDays"></div>
+                            </div>
+                            <div class="calendar" id="calendarRight">
+                                <div class="calendar-header">
+                                    <span></span>
+                                    <span class="calendar-month" id="rightMonthLabel">February 2026</span>
+                                    <button class="cal-nav-btn" id="nextMonth"><i class="fas fa-chevron-right"></i></button>
+                                </div>
+                                <div class="calendar-weekdays">
+                                    <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+                                </div>
+                                <div class="calendar-days" id="rightCalendarDays"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn-secondary" id="btnCancelDateRange">Cancel</button>
+                        <button class="btn-primary" id="btnApplyDateRange">Apply</button>
                     </div>
                 </div>
             </div>

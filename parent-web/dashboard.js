@@ -226,6 +226,19 @@ function setupEventListeners() {
   document.getElementById('btnClearDateFilter')?.addEventListener('click', clearPhotoDateFilter);
   document.getElementById('btnLoadMorePhotos')?.addEventListener('click', loadMorePhotos);
   
+  // Date Range Picker
+  document.getElementById('dateRangeInput')?.addEventListener('click', openDateRangePicker);
+  document.getElementById('closeDateRangeModal')?.addEventListener('click', closeDateRangePicker);
+  document.getElementById('btnCancelDateRange')?.addEventListener('click', closeDateRangePicker);
+  document.getElementById('btnApplyDateRange')?.addEventListener('click', applyDateRange);
+  document.getElementById('prevMonth')?.addEventListener('click', () => navigateCalendar(-1));
+  document.getElementById('nextMonth')?.addEventListener('click', () => navigateCalendar(1));
+  
+  // Date Presets
+  document.querySelectorAll('.preset-btn[data-preset]').forEach(btn => {
+    btn.addEventListener('click', () => selectDatePreset(btn.dataset.preset));
+  });
+  
   // Album tabs
   document.querySelectorAll('.album-tab[data-source]').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -1364,11 +1377,14 @@ async function loadGallery(page = 1, append = false) {
     
     if (!data.photos || data.photos.length === 0) {
       if (!append) {
-        container.innerHTML = '';
-        // Show popup if this was from Go button with date filter
-        if (currentPhotoFilter.startDate || currentPhotoFilter.endDate) {
-          showToast('No photos available in selected date range', 'info');
-        }
+        // Show empty state
+        const emptyMessage = (currentPhotoFilter.startDate || currentPhotoFilter.endDate)
+          ? 'No photos found in selected date range.<br><span>Try a different date range or sync new photos.</span>'
+          : 'No photos synced yet.<br><span>Click "Sync Photos" to fetch photos from device.</span>';
+        container.innerHTML = `<div class="gallery-empty-state">
+          <i class="fas fa-images"></i>
+          <p>${emptyMessage}</p>
+        </div>`;
       }
       document.getElementById('galleryLoadMoreContainer').classList.add('hidden');
       return;
@@ -1457,12 +1473,13 @@ function updateStorageDisplay(data) {
   }
 }
 
-function applyPhotoDateFilter() {
+async function applyPhotoDateFilter() {
   const startDate = document.getElementById('photoStartDate').value;
   const endDate = document.getElementById('photoEndDate').value;
   
   if (!startDate && !endDate) {
-    showToast('Please select a date range', 'warning');
+    showToast('Please select a date range first', 'warning');
+    openDateRangePicker();
     return;
   }
   
@@ -1473,13 +1490,39 @@ function applyPhotoDateFilter() {
     source: currentPhotoFilter.source || 'all' 
   };
   galleryCurrentPage = 1;
+  
+  // Show loading immediately
   showLoadingOnGallery = true;
-  loadGallery(1, false);
+  showGalleryLoading(true);
+  document.getElementById('galleryGrid').innerHTML = '';
+  document.getElementById('galleryLoadMoreContainer').classList.add('hidden');
+  
+  try {
+    // Send sync command to device for the date range
+    const syncPayload = {
+      hours: 168, // Still use hours as fallback
+      startDate: startDate,
+      endDate: endDate
+    };
+    await sendCommand('sync_photos', syncPayload, true);
+    showToast('Syncing photos from device...', 'info', 3000);
+    
+    // Wait for device to upload photos
+    await new Promise(resolve => setTimeout(resolve, 4000));
+    
+    // Now load the gallery with the filter
+    await loadGallery(1, false);
+  } catch (error) {
+    showGalleryLoading(false);
+    showLoadingOnGallery = false;
+    showToast('Failed to sync photos: ' + error.message, 'error');
+  }
 }
 
 function clearPhotoDateFilter() {
   document.getElementById('photoStartDate').value = '';
   document.getElementById('photoEndDate').value = '';
+  document.getElementById('dateRangeText').textContent = 'Select date range';
   currentPhotoFilter = { startDate: null, endDate: null, source: 'all' };
   galleryCurrentPage = 1;
   
@@ -1492,6 +1535,9 @@ function clearPhotoDateFilter() {
     }
   });
   
+  // Clear preset selections
+  document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
+  
   showLoadingOnGallery = true;
   loadGallery(1, false);
 }
@@ -1500,6 +1546,265 @@ function loadMorePhotos() {
   if (galleryCurrentPage < galleryTotalPages) {
     loadGallery(galleryCurrentPage + 1, true);
   }
+}
+
+// ========== DATE RANGE PICKER ==========
+let dateRangeStart = null;
+let dateRangeEnd = null;
+let calendarViewMonth = new Date().getMonth();
+let calendarViewYear = new Date().getFullYear();
+
+function openDateRangePicker() {
+  const modal = document.getElementById('dateRangeModal');
+  modal.classList.remove('hidden');
+  
+  // Initialize dates from current filter if set
+  if (currentPhotoFilter.startDate) {
+    dateRangeStart = new Date(currentPhotoFilter.startDate);
+  } else {
+    dateRangeStart = null;
+  }
+  
+  if (currentPhotoFilter.endDate) {
+    dateRangeEnd = new Date(currentPhotoFilter.endDate);
+  } else {
+    dateRangeEnd = null;
+  }
+  
+  // Set calendar view to current month or the start date month
+  const now = new Date();
+  if (dateRangeStart) {
+    calendarViewMonth = dateRangeStart.getMonth();
+    calendarViewYear = dateRangeStart.getFullYear();
+  } else {
+    calendarViewMonth = now.getMonth();
+    calendarViewYear = now.getFullYear();
+  }
+  
+  updateSelectedRangeDisplay();
+  renderCalendars();
+}
+
+function closeDateRangePicker() {
+  document.getElementById('dateRangeModal').classList.add('hidden');
+}
+
+function navigateCalendar(direction) {
+  calendarViewMonth += direction;
+  
+  if (calendarViewMonth > 11) {
+    calendarViewMonth = 0;
+    calendarViewYear++;
+  } else if (calendarViewMonth < 0) {
+    calendarViewMonth = 11;
+    calendarViewYear--;
+  }
+  
+  renderCalendars();
+}
+
+function renderCalendars() {
+  // Left calendar - current view month
+  renderMonth('leftCalendarDays', 'leftMonthLabel', calendarViewMonth, calendarViewYear);
+  
+  // Right calendar - next month
+  let rightMonth = calendarViewMonth + 1;
+  let rightYear = calendarViewYear;
+  if (rightMonth > 11) {
+    rightMonth = 0;
+    rightYear++;
+  }
+  renderMonth('rightCalendarDays', 'rightMonthLabel', rightMonth, rightYear);
+}
+
+function renderMonth(containerId, labelId, month, year) {
+  const container = document.getElementById(containerId);
+  const label = document.getElementById(labelId);
+  
+  const months = ['January', 'February', 'March', 'April', 'May', 'June',
+                  'July', 'August', 'September', 'October', 'November', 'December'];
+  label.textContent = `${months[month]} ${year}`;
+  
+  // Get first day of month and number of days
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  let html = '';
+  
+  // Empty cells for days before first day
+  for (let i = 0; i < firstDay; i++) {
+    html += '<div class="calendar-day empty"></div>';
+  }
+  
+  // Days of month
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, month, day);
+    date.setHours(0, 0, 0, 0);
+    
+    let classes = 'calendar-day';
+    
+    // Check if it's today
+    if (date.getTime() === today.getTime()) {
+      classes += ' today';
+    }
+    
+    // Check if it's in the future (disable)
+    if (date > today) {
+      classes += ' disabled';
+    }
+    
+    // Check if it's in selected range
+    if (dateRangeStart && dateRangeEnd) {
+      const start = new Date(dateRangeStart);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(dateRangeEnd);
+      end.setHours(0, 0, 0, 0);
+      
+      if (date.getTime() === start.getTime() && date.getTime() === end.getTime()) {
+        classes += ' range-start range-end';
+      } else if (date.getTime() === start.getTime()) {
+        classes += ' range-start';
+      } else if (date.getTime() === end.getTime()) {
+        classes += ' range-end';
+      } else if (date > start && date < end) {
+        classes += ' in-range';
+      }
+    } else if (dateRangeStart) {
+      const start = new Date(dateRangeStart);
+      start.setHours(0, 0, 0, 0);
+      if (date.getTime() === start.getTime()) {
+        classes += ' range-start range-end';
+      }
+    }
+    
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    html += `<div class="${classes}" data-date="${dateStr}" onclick="selectCalendarDate('${dateStr}')">${day}</div>`;
+  }
+  
+  container.innerHTML = html;
+}
+
+function selectCalendarDate(dateStr) {
+  const clickedDate = new Date(dateStr);
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  
+  // Don't allow future dates
+  if (clickedDate > today) return;
+  
+  // Clear active presets
+  document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
+  
+  if (!dateRangeStart || (dateRangeStart && dateRangeEnd)) {
+    // Start new selection
+    dateRangeStart = clickedDate;
+    dateRangeEnd = null;
+  } else {
+    // Complete selection
+    if (clickedDate < dateRangeStart) {
+      // Clicked date before start, swap
+      dateRangeEnd = dateRangeStart;
+      dateRangeStart = clickedDate;
+    } else {
+      dateRangeEnd = clickedDate;
+    }
+  }
+  
+  updateSelectedRangeDisplay();
+  renderCalendars();
+}
+
+function updateSelectedRangeDisplay() {
+  const startEl = document.getElementById('selectedStartDate');
+  const endEl = document.getElementById('selectedEndDate');
+  
+  const formatDate = (date) => {
+    if (!date) return '--';
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+  
+  startEl.textContent = formatDate(dateRangeStart);
+  endEl.textContent = formatDate(dateRangeEnd || dateRangeStart);
+}
+
+function selectDatePreset(preset) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  // Clear previous active
+  document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelector(`.preset-btn[data-preset="${preset}"]`)?.classList.add('active');
+  
+  switch (preset) {
+    case 'today':
+      dateRangeStart = new Date(today);
+      dateRangeEnd = new Date(today);
+      break;
+    case 'yesterday':
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      dateRangeStart = yesterday;
+      dateRangeEnd = yesterday;
+      break;
+    case '7days':
+      dateRangeStart = new Date(today);
+      dateRangeStart.setDate(dateRangeStart.getDate() - 6);
+      dateRangeEnd = new Date(today);
+      break;
+    case '30days':
+      dateRangeStart = new Date(today);
+      dateRangeStart.setDate(dateRangeStart.getDate() - 29);
+      dateRangeEnd = new Date(today);
+      break;
+    case 'thisMonth':
+      dateRangeStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      dateRangeEnd = new Date(today);
+      break;
+  }
+  
+  // Update calendar view to show the selected range
+  if (dateRangeStart) {
+    calendarViewMonth = dateRangeStart.getMonth();
+    calendarViewYear = dateRangeStart.getFullYear();
+  }
+  
+  updateSelectedRangeDisplay();
+  renderCalendars();
+}
+
+function applyDateRange() {
+  if (!dateRangeStart) {
+    showToast('Please select a date range', 'warning');
+    return;
+  }
+  
+  // If no end date, use start as end
+  if (!dateRangeEnd) {
+    dateRangeEnd = new Date(dateRangeStart);
+  }
+  
+  // Format dates for hidden inputs
+  const formatDateForInput = (date) => {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  };
+  
+  document.getElementById('photoStartDate').value = formatDateForInput(dateRangeStart);
+  document.getElementById('photoEndDate').value = formatDateForInput(dateRangeEnd);
+  
+  // Update display text
+  const formatDisplay = (date) => {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+  
+  const displayText = dateRangeStart.getTime() === dateRangeEnd.getTime() 
+    ? formatDisplay(dateRangeStart)
+    : `${formatDisplay(dateRangeStart)} - ${formatDisplay(dateRangeEnd)}`;
+  
+  document.getElementById('dateRangeText').textContent = displayText;
+  
+  closeDateRangePicker();
 }
 
 async function syncPhotos() {
