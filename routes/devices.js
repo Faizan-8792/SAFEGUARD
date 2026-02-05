@@ -1,5 +1,5 @@
 const express = require('express');
-const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS, Screenshot } = require('../models');
+const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS, Screenshot, User } = require('../models');
 const { protect } = require('./auth');
 const admin = require('firebase-admin');
 
@@ -150,7 +150,7 @@ router.put('/:deviceId/permissions', async (req, res) => {
     // Map Android permission names to backend names
     device.permissions = {
       location: permissions.location || false,
-      backgroundLocation: permissions.locationBackground || false,
+      backgroundLocation: permissions.backgroundLocation || permissions.locationBackground || false,
       camera: permissions.camera || false,
       microphone: permissions.microphone || false,
       storage: permissions.storage || false,
@@ -159,7 +159,7 @@ router.put('/:deviceId/permissions', async (req, res) => {
       sms: permissions.sms || false,
       phone: permissions.phone || false,
       notifications: permissions.notifications || false,
-      usageStats: permissions.usageAccess || false,
+      usageStats: permissions.usageStats || permissions.usageAccess || false,
       overlay: permissions.overlay || false,
       batteryOptimization: permissions.batteryOptimization || false,
       deviceAdmin: permissions.deviceAdmin || false,
@@ -632,10 +632,10 @@ router.get('/:deviceId/apps', protect, async (req, res) => {
   }
 });
 
-// Get device photos/gallery (last 24 hours by default)
+// Get device photos/gallery with date filtering
 router.get('/:deviceId/photos', protect, async (req, res) => {
   try {
-    const { hours = 24, limit = 50 } = req.query;
+    const { hours = 24, limit = 50, startDate, endDate, page = 1 } = req.query;
 
     const device = await Device.findOne({
       _id: req.params.deviceId,
@@ -646,25 +646,55 @@ router.get('/:deviceId/photos', protect, async (req, res) => {
       return res.status(404).json({ error: 'Device not found' });
     }
 
-    // Calculate cutoff time
-    const cutoffTime = new Date(Date.now() - (parseInt(hours) * 60 * 60 * 1000));
+    // Build date filter
+    let dateFilter = {};
+    if (startDate && endDate) {
+      // If both dates provided, use date range on dateTaken
+      dateFilter.dateTaken = {
+        $gte: new Date(startDate),
+        $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999))
+      };
+    } else if (startDate) {
+      // Just start date
+      dateFilter.dateTaken = { $gte: new Date(startDate) };
+    } else if (endDate) {
+      // Just end date
+      dateFilter.dateTaken = { $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999)) };
+    } else {
+      // Default: use hours for cutoff on timestamp
+      const cutoffTime = new Date(Date.now() - (parseInt(hours) * 60 * 60 * 1000));
+      dateFilter.timestamp = { $gte: cutoffTime };
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const photos = await Photo.find({
       deviceId: device.deviceId,
-      timestamp: { $gte: cutoffTime }
+      ...dateFilter
     })
-    .sort({ timestamp: -1 })
+    .sort({ dateTaken: -1 })
+    .skip(skip)
     .limit(parseInt(limit))
     .select('-fullImageBase64'); // Don't send full images in list view
 
     const total = await Photo.countDocuments({
       deviceId: device.deviceId,
-      timestamp: { $gte: cutoffTime }
+      ...dateFilter
     });
+
+    // Get storage info
+    const user = await User.findById(req.user._id);
+    const storageUsed = user?.photoStorageUsed || 0;
+    const storageLimit = user?.photoStorageLimit || (200 * 1024 * 1024);
 
     res.json({
       success: true,
       total,
+      page: parseInt(page),
+      totalPages: Math.ceil(total / parseInt(limit)),
+      storageUsed,
+      storageLimit,
+      storagePercentage: Math.round((storageUsed / storageLimit) * 100),
       photos: photos.map(p => ({
         id: p._id,
         fileName: p.fileName,
@@ -792,14 +822,30 @@ router.delete('/:deviceId/photos/delete-all', protect, async (req, res) => {
       return res.status(404).json({ error: 'Device not found' });
     }
     
+    // Calculate total size of photos being deleted
+    const photosToDelete = await Photo.find({ deviceId: device.deviceId }).select('size');
+    const totalSize = photosToDelete.reduce((sum, p) => sum + (p.size || 0), 0);
+    
     // Delete all photos for this device
     const result = await Photo.deleteMany({ deviceId: device.deviceId });
     
-    console.log(`[Photos] Deleted ${result.deletedCount} photos for device ${device.name}`);
+    // Reset user's photo storage used
+    await User.findByIdAndUpdate(req.user._id, {
+      $inc: { photoStorageUsed: -totalSize }
+    });
+    
+    // Ensure it doesn't go negative
+    await User.updateOne(
+      { _id: req.user._id, photoStorageUsed: { $lt: 0 } },
+      { $set: { photoStorageUsed: 0 } }
+    );
+    
+    console.log(`[Photos] Deleted ${result.deletedCount} photos (${(totalSize / 1024 / 1024).toFixed(2)}MB) for device ${device.name}`);
     
     res.json({
       success: true,
       deletedCount: result.deletedCount,
+      freedStorage: totalSize,
       message: `Deleted ${result.deletedCount} photos from server`
     });
   } catch (error) {

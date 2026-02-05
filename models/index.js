@@ -30,6 +30,15 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // Photo storage quota tracking (in bytes)
+  photoStorageUsed: {
+    type: Number,
+    default: 0
+  },
+  photoStorageLimit: {
+    type: Number,
+    default: 200 * 1024 * 1024 // 200MB default
+  },
   createdAt: {
     type: Date,
     default: Date.now

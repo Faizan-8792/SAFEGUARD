@@ -189,6 +189,9 @@ function setupEventListeners() {
   document.getElementById('btnDeleteAllPhotos')?.addEventListener('click', deleteAllPhotos);
   document.getElementById('closePhotoModal')?.addEventListener('click', closePhotoModal);
   document.getElementById('btnDownloadPhoto')?.addEventListener('click', downloadCurrentPhoto);
+  document.getElementById('btnApplyDateFilter')?.addEventListener('click', applyPhotoDateFilter);
+  document.getElementById('btnClearDateFilter')?.addEventListener('click', clearPhotoDateFilter);
+  document.getElementById('btnLoadMorePhotos')?.addEventListener('click', loadMorePhotos);
   
   // Stream modal
   document.getElementById('closeStream').addEventListener('click', stopStream);
@@ -222,6 +225,12 @@ function setupEventListeners() {
   // Load more SMS
   document.getElementById('loadMoreSms')?.addEventListener('click', () => {
     loadSmsMessages(currentSmsFilter, smsPage + 1);
+  });
+  
+  // Load more Notifications
+  document.getElementById('loadMoreNotif')?.addEventListener('click', () => {
+    notificationsCurrentPage++;
+    loadNotifications(notificationsFilter, true);
   });
   
   // Settings toggles
@@ -579,8 +588,13 @@ async function loadDashboard() {
     // Update connection status based on data and online status
     const connStatus = document.getElementById('connectionStatus');
     if (connStatus) {
-      // If data is off or device is not online, show Offline
-      if (device.mobileDataEnabled === false || !device.isOnline) {
+      // Check if device was seen recently (within last 5 minutes)
+      const lastSeenTime = device.lastSeen ? new Date(device.lastSeen).getTime() : 0;
+      const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+      const isRecentlySeen = lastSeenTime > fiveMinutesAgo;
+      
+      // If device was not seen recently, show Offline
+      if (!isRecentlySeen) {
         connStatus.textContent = '• Offline';
         connStatus.style.color = '#f44336';
       } else {
@@ -651,32 +665,46 @@ async function loadRecentNotifications() {
 }
 
 // Notifications Page
-async function loadNotifications(filter = 'all') {
+let notificationsCurrentPage = 1;
+let notificationsFilter = 'all';
+let hasMoreNotifications = true;
+
+async function loadNotifications(filter = 'all', append = false) {
   if (!selectedDevice) {
     document.getElementById('notificationsList').innerHTML = '<p class="empty-state">Select a device to view notifications</p>';
     return;
   }
   
+  if (!append) {
+    notificationsCurrentPage = 1;
+    notificationsFilter = filter;
+  }
+  
   try {
-    let endpoint = `/devices/${getDeviceId(selectedDevice)}/notifications?limit=50`;
+    let endpoint = `/devices/${getDeviceId(selectedDevice)}/notifications?limit=50&page=${notificationsCurrentPage}`;
     if (filter !== 'all') {
       endpoint += `&app=${filter}`;
     }
     
     const data = await api(endpoint);
     const container = document.getElementById('notificationsList');
+    const loadMoreBtn = document.getElementById('loadMoreNotif');
     
     if (!data.notifications || data.notifications.length === 0) {
-      container.innerHTML = `
-        <p class="empty-state">
-          <i class="fas fa-bell-slash" style="font-size: 32px; margin-bottom: 12px;"></i><br>
-          No notifications found.<br>
-          <small>App notifications will appear here when the child device syncs.</small>
-        </p>`;
+      if (!append) {
+        container.innerHTML = `
+          <p class="empty-state">
+            <i class="fas fa-bell-slash" style="font-size: 32px; margin-bottom: 12px;"></i><br>
+            No notifications found.<br>
+            <small>App notifications will appear here when the child device syncs.</small>
+          </p>`;
+      }
+      hasMoreNotifications = false;
+      if (loadMoreBtn) loadMoreBtn.classList.add('hidden');
       return;
     }
     
-    container.innerHTML = data.notifications.map(notif => `
+    const notificationsHtml = data.notifications.map(notif => `
       <div class="notification-item">
         <div class="app-icon">
           ${getAppIcon(notif.packageName)}
@@ -689,9 +717,27 @@ async function loadNotifications(filter = 'all') {
         <span class="time">${formatTime(notif.timestamp)}</span>
       </div>
     `).join('');
+    
+    if (append) {
+      container.innerHTML += notificationsHtml;
+    } else {
+      container.innerHTML = notificationsHtml;
+    }
+    
+    // Show/hide load more button
+    hasMoreNotifications = data.notifications.length >= 50;
+    if (loadMoreBtn) {
+      if (hasMoreNotifications) {
+        loadMoreBtn.classList.remove('hidden');
+      } else {
+        loadMoreBtn.classList.add('hidden');
+      }
+    }
   } catch (error) {
     console.error('Failed to load notifications:', error);
-    document.getElementById('notificationsList').innerHTML = '<p class="empty-state">Failed to load notifications</p>';
+    if (!append) {
+      document.getElementById('notificationsList').innerHTML = '<p class="empty-state">Failed to load notifications</p>';
+    }
   }
 }
 
@@ -878,17 +924,38 @@ async function loadLocation() {
       const mapsUrl = `https://www.google.com/maps?q=${location.latitude},${location.longitude}`;
       document.getElementById('btnOpenMaps').href = mapsUrl;
       
-      // Update map using OpenStreetMap (no API key required)
+      // Calculate appropriate zoom level based on accuracy
+      // Lower accuracy = wider view, higher accuracy = closer view
+      const accuracy = location.accuracy || 100;
+      let zoom = 18; // Default high zoom for good accuracy
+      if (accuracy > 500) zoom = 14;
+      else if (accuracy > 200) zoom = 15;
+      else if (accuracy > 100) zoom = 16;
+      else if (accuracy > 50) zoom = 17;
+      
+      // Calculate bbox for exact zoom control
+      const zoomFactor = 0.002 * Math.pow(2, 18 - zoom);
+      
+      // Update map using OpenStreetMap with improved view (like Snapchat's map style)
       const mapContainer = document.getElementById('mapContainer');
       mapContainer.innerHTML = `
-        <iframe 
-          width="100%" 
-          height="100%" 
-          frameborder="0" 
-          style="border:0; border-radius: 12px;" 
-          src="https://www.openstreetmap.org/export/embed.html?bbox=${location.longitude - 0.01},${location.latitude - 0.01},${location.longitude + 0.01},${location.latitude + 0.01}&layer=mapnik&marker=${location.latitude},${location.longitude}"
-          allowfullscreen>
-        </iframe>
+        <div style="position: relative; width: 100%; height: 100%;">
+          <iframe 
+            width="100%" 
+            height="100%" 
+            frameborder="0" 
+            style="border:0; border-radius: 12px;" 
+            src="https://www.openstreetmap.org/export/embed.html?bbox=${location.longitude - zoomFactor},${location.latitude - zoomFactor},${location.longitude + zoomFactor},${location.latitude + zoomFactor}&layer=mapnik&marker=${location.latitude},${location.longitude}"
+            allowfullscreen>
+          </iframe>
+          <div style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 8px 12px; border-radius: 20px; font-size: 12px;">
+            <i class="fas fa-crosshairs" style="color: #4CAF50;"></i> 
+            Accuracy: ±${Math.round(accuracy)}m
+          </div>
+          <a href="${mapsUrl}" target="_blank" style="position: absolute; bottom: 10px; right: 10px; background: #4CAF50; color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; text-decoration: none;">
+            <i class="fas fa-external-link-alt"></i> Open in Google Maps
+          </a>
+        </div>
       `;
     } else {
       document.getElementById('currentAddress').textContent = 'Location not available';
@@ -1152,25 +1219,63 @@ function debounce(func, wait) {
 }
 
 // ========== GALLERY ==========
-async function loadGallery() {
+let galleryCurrentPage = 1;
+let galleryTotalPages = 1;
+let currentPhotoFilter = { startDate: null, endDate: null };
+
+async function loadGallery(page = 1, append = false) {
   if (!selectedDevice) {
     document.getElementById('galleryGrid').innerHTML = '<p class="empty-state">Select a device to view gallery</p>';
     return;
   }
   
   try {
-    const data = await api(`/devices/${getDeviceId(selectedDevice)}/photos?hours=168&limit=100`);
+    // Build query params
+    let queryParams = `limit=50&page=${page}`;
     
+    if (currentPhotoFilter.startDate && currentPhotoFilter.endDate) {
+      queryParams += `&startDate=${currentPhotoFilter.startDate}&endDate=${currentPhotoFilter.endDate}`;
+    } else if (currentPhotoFilter.startDate) {
+      queryParams += `&startDate=${currentPhotoFilter.startDate}`;
+    } else if (currentPhotoFilter.endDate) {
+      queryParams += `&endDate=${currentPhotoFilter.endDate}`;
+    } else {
+      queryParams += '&hours=168'; // Default 7 days
+    }
+    
+    const data = await api(`/devices/${getDeviceId(selectedDevice)}/photos?${queryParams}`);
+    
+    // Update storage info
+    updateStorageDisplay(data);
+    
+    // Update photo count
     document.getElementById('photoCount').textContent = `${data.total || 0} photos`;
+    
+    // Update gallery info text
+    if (currentPhotoFilter.startDate || currentPhotoFilter.endDate) {
+      let infoText = 'Showing photos';
+      if (currentPhotoFilter.startDate) infoText += ` from ${currentPhotoFilter.startDate}`;
+      if (currentPhotoFilter.endDate) infoText += ` to ${currentPhotoFilter.endDate}`;
+      document.getElementById('galleryInfoText').textContent = infoText;
+    } else {
+      document.getElementById('galleryInfoText').textContent = 'Showing photos from the last 7 days';
+    }
+    
+    // Update pagination
+    galleryCurrentPage = data.page || 1;
+    galleryTotalPages = data.totalPages || 1;
     
     const container = document.getElementById('galleryGrid');
     
     if (!data.photos || data.photos.length === 0) {
-      container.innerHTML = '<p class="empty-state">No photos found. Tap "Sync Photos" to fetch recent photos from the device.</p>';
+      if (!append) {
+        container.innerHTML = '<p class="empty-state">No photos found. Tap "Sync Photos" to fetch recent photos from the device.</p>';
+      }
+      document.getElementById('galleryLoadMoreContainer').classList.add('hidden');
       return;
     }
     
-    container.innerHTML = data.photos.map(photo => `
+    const photosHtml = data.photos.map(photo => `
       <div class="gallery-item">
         <img src="data:${photo.mimeType || 'image/jpeg'};base64,${photo.thumbnail}" alt="${photo.fileName}" onclick="viewPhoto('${photo.id}')">
         <div class="gallery-item-overlay">
@@ -1183,9 +1288,74 @@ async function loadGallery() {
         </div>
       </div>
     `).join('');
+    
+    if (append) {
+      container.insertAdjacentHTML('beforeend', photosHtml);
+    } else {
+      container.innerHTML = photosHtml;
+    }
+    
+    // Show/hide load more button
+    if (galleryCurrentPage < galleryTotalPages) {
+      document.getElementById('galleryLoadMoreContainer').classList.remove('hidden');
+    } else {
+      document.getElementById('galleryLoadMoreContainer').classList.add('hidden');
+    }
   } catch (error) {
     console.error('Failed to load gallery:', error);
     document.getElementById('galleryGrid').innerHTML = '<p class="empty-state">Failed to load photos</p>';
+  }
+}
+
+function updateStorageDisplay(data) {
+  const storageUsed = data.storageUsed || 0;
+  const storageLimit = data.storageLimit || (200 * 1024 * 1024);
+  const percentage = data.storagePercentage || Math.round((storageUsed / storageLimit) * 100);
+  
+  // Update text
+  document.getElementById('storageUsedText').textContent = `${(storageUsed / 1024 / 1024).toFixed(1)} MB`;
+  document.getElementById('storageLimitText').textContent = `${(storageLimit / 1024 / 1024).toFixed(0)} MB`;
+  document.getElementById('storagePercentText').textContent = `${percentage}%`;
+  
+  // Update bar
+  const bar = document.getElementById('storageBarFill');
+  bar.style.width = `${Math.min(percentage, 100)}%`;
+  bar.classList.remove('warning', 'danger');
+  if (percentage >= 90) {
+    bar.classList.add('danger');
+  } else if (percentage >= 70) {
+    bar.classList.add('warning');
+  }
+  
+  // Show/hide warning
+  const warning = document.getElementById('storageWarning');
+  if (percentage >= 100) {
+    warning.classList.remove('hidden');
+  } else {
+    warning.classList.add('hidden');
+  }
+}
+
+function applyPhotoDateFilter() {
+  const startDate = document.getElementById('photoStartDate').value;
+  const endDate = document.getElementById('photoEndDate').value;
+  
+  currentPhotoFilter = { startDate, endDate };
+  galleryCurrentPage = 1;
+  loadGallery(1, false);
+}
+
+function clearPhotoDateFilter() {
+  document.getElementById('photoStartDate').value = '';
+  document.getElementById('photoEndDate').value = '';
+  currentPhotoFilter = { startDate: null, endDate: null };
+  galleryCurrentPage = 1;
+  loadGallery(1, false);
+}
+
+function loadMorePhotos() {
+  if (galleryCurrentPage < galleryTotalPages) {
+    loadGallery(galleryCurrentPage + 1, true);
   }
 }
 
@@ -1209,7 +1379,9 @@ async function deleteAllPhotos() {
   if (!selectedDevice) return;
   
   const count = document.getElementById('photoCount')?.textContent || '0 photos';
-  if (!confirm(`Are you sure you want to delete all synced photos from the server?\n\n${count}\n\nThis will only remove photos from the parent dashboard, not from the child device.`)) {
+  const storageUsed = document.getElementById('storageUsedText')?.textContent || '0 MB';
+  
+  if (!confirm(`Are you sure you want to delete all synced photos from the server?\n\n${count} (${storageUsed})\n\nThis will only remove photos from the parent dashboard, not from the child device. Your storage quota will be reset.`)) {
     return;
   }
   
@@ -1219,7 +1391,8 @@ async function deleteAllPhotos() {
     });
     
     if (response.success) {
-      alert(`Deleted ${response.deletedCount || 'all'} photos from server.`);
+      const freedMB = response.freedStorage ? (response.freedStorage / 1024 / 1024).toFixed(1) : 0;
+      alert(`Deleted ${response.deletedCount || 'all'} photos from server.\nFreed ${freedMB} MB of storage.`);
       loadGallery();
     } else {
       alert('Failed to delete photos: ' + (response.error || 'Unknown error'));
@@ -2873,6 +3046,21 @@ async function loadPermissions() {
       const permName = el.dataset.permission;
       const statusEl = el.querySelector('.permission-status');
       const isGranted = permissions[permName] === true;
+      
+      // Handle restrictionSettings - only available on Android 13+
+      if (permName === 'restrictionSettings') {
+        const androidVersion = parseInt(data.device.androidVersion) || 0;
+        if (androidVersion < 13) {
+          if (statusEl) {
+            statusEl.textContent = 'Not in device';
+            statusEl.className = 'permission-status not-available';
+          }
+          el.classList.add('not-available');
+          const btn = el.querySelector('.btn-request-perm');
+          if (btn) btn.style.display = 'none';
+          return;
+        }
+      }
       
       if (statusEl) {
         statusEl.textContent = isGranted ? 'Granted' : 'Denied';

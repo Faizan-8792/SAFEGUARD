@@ -656,28 +656,66 @@ router.post('/photos', verifyDevice, async (req, res) => {
       return res.status(400).json({ error: 'Photos must be an array' });
     }
 
-    const docs = photos.map(p => ({
-      deviceId: req.device.deviceId,
-      fileName: p.fileName,
-      filePath: p.filePath,
-      thumbnailBase64: p.thumbnail,
-      fullImageBase64: p.fullImage,
-      mimeType: p.mimeType || 'image/jpeg',
-      width: p.width,
-      height: p.height,
-      size: p.size,
-      dateTaken: p.dateTaken ? new Date(p.dateTaken) : new Date(),
-      timestamp: new Date()
-    }));
+    // Get the user to check storage quota
+    const user = await User.findById(req.device.owner);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
 
-    // Use insertMany with ordered: false to skip duplicates
-    await Photo.insertMany(docs, { ordered: false });
+    const storageLimit = user.photoStorageLimit || (200 * 1024 * 1024); // 200MB default
+    let currentStorage = user.photoStorageUsed || 0;
+    
+    // Calculate how much storage these photos would use
+    let newPhotosSize = 0;
+    const photosToSync = [];
+    
+    for (const p of photos) {
+      // Estimate size from base64 (base64 is ~4/3 of original)
+      const photoSize = p.size || 0;
+      
+      // Check if adding this photo would exceed quota
+      if (currentStorage + newPhotosSize + photoSize <= storageLimit) {
+        photosToSync.push({
+          deviceId: req.device.deviceId,
+          fileName: p.fileName,
+          filePath: p.filePath,
+          thumbnailBase64: p.thumbnail,
+          fullImageBase64: p.fullImage,
+          mimeType: p.mimeType || 'image/jpeg',
+          width: p.width,
+          height: p.height,
+          size: photoSize,
+          dateTaken: p.dateTaken ? new Date(p.dateTaken) : new Date(),
+          timestamp: new Date()
+        });
+        newPhotosSize += photoSize;
+      }
+    }
 
-    console.log(`Device ${req.device.deviceId} - Synced ${docs.length} photos`);
+    // Insert photos that fit within quota
+    if (photosToSync.length > 0) {
+      await Photo.insertMany(photosToSync, { ordered: false });
+      
+      // Update user's storage used
+      await User.findByIdAndUpdate(req.device.owner, {
+        $inc: { photoStorageUsed: newPhotosSize }
+      });
+    }
+
+    const quotaExceeded = photos.length > photosToSync.length;
+    const remainingStorage = storageLimit - (currentStorage + newPhotosSize);
+
+    console.log(`Device ${req.device.deviceId} - Synced ${photosToSync.length}/${photos.length} photos (Storage: ${((currentStorage + newPhotosSize) / 1024 / 1024).toFixed(2)}MB / ${(storageLimit / 1024 / 1024).toFixed(0)}MB)`);
 
     res.json({
       success: true,
-      count: docs.length
+      count: photosToSync.length,
+      skipped: photos.length - photosToSync.length,
+      quotaExceeded,
+      storageUsed: currentStorage + newPhotosSize,
+      storageLimit,
+      remainingStorage,
+      message: quotaExceeded ? 'Storage quota exceeded. Delete photos from dashboard to sync more.' : null
     });
   } catch (error) {
     // Ignore duplicate key errors

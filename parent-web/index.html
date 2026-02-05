@@ -352,12 +352,54 @@
                         </button>
                     </div>
                 </div>
+                
+                <!-- Storage Quota Bar -->
+                <div class="storage-quota-section">
+                    <div class="storage-info">
+                        <span><i class="fas fa-database"></i> Storage Used: <strong id="storageUsedText">0 MB</strong> / <span id="storageLimitText">200 MB</span></span>
+                        <span id="storagePercentText">0%</span>
+                    </div>
+                    <div class="storage-bar">
+                        <div class="storage-bar-fill" id="storageBarFill" style="width: 0%"></div>
+                    </div>
+                    <p class="storage-warning hidden" id="storageWarning">
+                        <i class="fas fa-exclamation-triangle"></i> Storage quota exceeded. Delete photos to sync more.
+                    </p>
+                </div>
+
+                <!-- Date Filter -->
+                <div class="date-filter-section">
+                    <div class="date-filter-inputs">
+                        <div class="date-input-group">
+                            <label for="photoStartDate">From:</label>
+                            <input type="date" id="photoStartDate" />
+                        </div>
+                        <div class="date-input-group">
+                            <label for="photoEndDate">To:</label>
+                            <input type="date" id="photoEndDate" />
+                        </div>
+                        <button class="btn-secondary" id="btnApplyDateFilter">
+                            <i class="fas fa-filter"></i> Apply Filter
+                        </button>
+                        <button class="btn-text" id="btnClearDateFilter">
+                            <i class="fas fa-times"></i> Clear
+                        </button>
+                    </div>
+                </div>
+
                 <div class="gallery-info">
-                    <p><i class="fas fa-info-circle"></i> Showing photos from the last 7 days (max 50)</p>
+                    <p><i class="fas fa-info-circle"></i> <span id="galleryInfoText">Showing photos from the last 7 days</span></p>
                     <span id="photoCount">0 photos</span>
                 </div>
                 <div class="gallery-grid" id="galleryGrid">
                     <p class="empty-state">No photos found. Tap "Sync Photos" to fetch recent photos from the device.</p>
+                </div>
+                
+                <!-- Load More Button -->
+                <div class="load-more-container hidden" id="galleryLoadMoreContainer">
+                    <button class="btn-secondary" id="btnLoadMorePhotos">
+                        <i class="fas fa-chevron-down"></i> Load More Photos
+                    </button>
                 </div>
             </div>
 
