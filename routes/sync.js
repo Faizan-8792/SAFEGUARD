@@ -1,6 +1,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS, BrowserHistory } = require('../models');
+const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS, BrowserHistory, User } = require('../models');
 
 const router = express.Router();
 
