@@ -635,7 +635,7 @@ router.get('/:deviceId/apps', protect, async (req, res) => {
 // Get device photos/gallery with date filtering
 router.get('/:deviceId/photos', protect, async (req, res) => {
   try {
-    const { hours = 24, limit = 50, startDate, endDate, page = 1 } = req.query;
+    const { hours = 24, limit = 50, startDate, endDate, page = 1, source } = req.query;
 
     const device = await Device.findOne({
       _id: req.params.deviceId,
@@ -666,11 +666,18 @@ router.get('/:deviceId/photos', protect, async (req, res) => {
       dateFilter.timestamp = { $gte: cutoffTime };
     }
 
+    // Build source filter (album)
+    let sourceFilter = {};
+    if (source && source !== 'all') {
+      sourceFilter.source = source;
+    }
+
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const photos = await Photo.find({
       deviceId: device.deviceId,
-      ...dateFilter
+      ...dateFilter,
+      ...sourceFilter
     })
     .sort({ dateTaken: -1 })
     .skip(skip)
@@ -679,8 +686,35 @@ router.get('/:deviceId/photos', protect, async (req, res) => {
 
     const total = await Photo.countDocuments({
       deviceId: device.deviceId,
-      ...dateFilter
+      ...dateFilter,
+      ...sourceFilter
     });
+
+    // Get album counts for filtering
+    const albumCounts = await Photo.aggregate([
+      { $match: { deviceId: device.deviceId, ...dateFilter } },
+      { $group: { _id: '$source', count: { $sum: 1 } } }
+    ]);
+
+    const albums = {
+      all: total,
+      Camera: 0,
+      Screenshot: 0,
+      WhatsApp: 0,
+      Telegram: 0,
+      Download: 0,
+      Other: 0
+    };
+    albumCounts.forEach(a => {
+      const key = a._id || 'Other';
+      if (albums.hasOwnProperty(key)) {
+        albums[key] = a.count;
+      } else {
+        albums.Other += a.count;
+      }
+    });
+    // Recalculate 'all' as sum of all albums
+    albums.all = Object.keys(albums).filter(k => k !== 'all').reduce((sum, k) => sum + albums[k], 0);
 
     // Get storage info
     const user = await User.findById(req.user._id);
@@ -695,16 +729,20 @@ router.get('/:deviceId/photos', protect, async (req, res) => {
       storageUsed,
       storageLimit,
       storagePercentage: Math.round((storageUsed / storageLimit) * 100),
+      albums, // Album counts for tabs
       photos: photos.map(p => ({
         id: p._id,
         fileName: p.fileName,
+        filePath: p.filePath,
         thumbnail: p.thumbnailBase64,
         mimeType: p.mimeType,
         width: p.width,
         height: p.height,
         size: p.size,
         dateTaken: p.dateTaken,
-        timestamp: p.timestamp
+        timestamp: p.timestamp,
+        source: p.source || 'Other',
+        location: p.location || null
       }))
     });
   } catch (error) {
@@ -739,13 +777,16 @@ router.get('/:deviceId/photos/:photoId', protect, async (req, res) => {
       photo: {
         id: photo._id,
         fileName: photo.fileName,
+        filePath: photo.filePath,
         image: photo.fullImageBase64 || photo.thumbnailBase64,
         mimeType: photo.mimeType,
         width: photo.width,
         height: photo.height,
         size: photo.size,
         dateTaken: photo.dateTaken,
-        timestamp: photo.timestamp
+        timestamp: photo.timestamp,
+        source: photo.source || 'Other',
+        location: photo.location || null
       }
     });
   } catch (error) {

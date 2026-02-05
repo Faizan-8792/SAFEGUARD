@@ -378,13 +378,48 @@
                             <label for="photoEndDate">To:</label>
                             <input type="date" id="photoEndDate" />
                         </div>
-                        <button class="btn-secondary" id="btnApplyDateFilter">
-                            <i class="fas fa-filter"></i> Apply Filter
+                        <button class="btn-primary" id="btnGoFilter">
+                            <i class="fas fa-search"></i> Go
                         </button>
                         <button class="btn-text" id="btnClearDateFilter">
                             <i class="fas fa-times"></i> Clear
                         </button>
                     </div>
+                </div>
+
+                <!-- Album Tabs -->
+                <div class="album-tabs-section">
+                    <div class="album-tabs" id="albumTabs">
+                        <button class="album-tab active" data-source="all">
+                            <i class="fas fa-images"></i> All <span class="album-count" id="albumCountAll">0</span>
+                        </button>
+                        <button class="album-tab" data-source="Camera">
+                            <i class="fas fa-camera"></i> Camera <span class="album-count" id="albumCountCamera">0</span>
+                        </button>
+                        <button class="album-tab" data-source="Screenshot">
+                            <i class="fas fa-mobile-alt"></i> Screenshots <span class="album-count" id="albumCountScreenshot">0</span>
+                        </button>
+                        <button class="album-tab" data-source="WhatsApp">
+                            <i class="fab fa-whatsapp"></i> WhatsApp <span class="album-count" id="albumCountWhatsApp">0</span>
+                        </button>
+                        <button class="album-tab" data-source="Telegram">
+                            <i class="fab fa-telegram"></i> Telegram <span class="album-count" id="albumCountTelegram">0</span>
+                        </button>
+                        <button class="album-tab" data-source="Download">
+                            <i class="fas fa-download"></i> Downloads <span class="album-count" id="albumCountDownload">0</span>
+                        </button>
+                        <button class="album-tab" data-source="Other">
+                            <i class="fas fa-folder"></i> Other <span class="album-count" id="albumCountOther">0</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Loading Bar -->
+                <div class="gallery-loading hidden" id="galleryLoading">
+                    <div class="loading-bar">
+                        <div class="loading-bar-fill"></div>
+                    </div>
+                    <p>Loading photos...</p>
                 </div>
 
                 <div class="gallery-info">
@@ -416,9 +451,51 @@
                     <div class="photo-viewer">
                         <img id="fullPhotoImage" src="" alt="Photo">
                     </div>
-                    <div class="photo-info">
-                        <p id="photoDate">Date: --</p>
-                        <p id="photoSize">Size: --</p>
+                    <div class="photo-metadata">
+                        <div class="metadata-grid">
+                            <div class="metadata-item">
+                                <i class="fas fa-calendar-alt"></i>
+                                <div>
+                                    <label>Captured</label>
+                                    <span id="photoDate">--</span>
+                                </div>
+                            </div>
+                            <div class="metadata-item">
+                                <i class="fas fa-folder"></i>
+                                <div>
+                                    <label>Source</label>
+                                    <span id="photoSource">--</span>
+                                </div>
+                            </div>
+                            <div class="metadata-item">
+                                <i class="fas fa-expand-arrows-alt"></i>
+                                <div>
+                                    <label>Dimensions</label>
+                                    <span id="photoDimensions">--</span>
+                                </div>
+                            </div>
+                            <div class="metadata-item">
+                                <i class="fas fa-file"></i>
+                                <div>
+                                    <label>Size</label>
+                                    <span id="photoSize">--</span>
+                                </div>
+                            </div>
+                            <div class="metadata-item full-width" id="photoLocationContainer">
+                                <i class="fas fa-map-marker-alt"></i>
+                                <div>
+                                    <label>Location</label>
+                                    <span id="photoLocation">No location data</span>
+                                </div>
+                            </div>
+                            <div class="metadata-item full-width">
+                                <i class="fas fa-file-alt"></i>
+                                <div>
+                                    <label>File Path</label>
+                                    <span id="photoFilePath" class="file-path">--</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

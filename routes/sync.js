@@ -647,6 +647,40 @@ router.post('/permissions', verifyDevice, async (req, res) => {
   }
 });
 
+// Helper function to detect photo source/album from file path
+function detectPhotoSource(filePath, fileName) {
+  if (!filePath && !fileName) return 'Other';
+  const path = (filePath || fileName || '').toLowerCase();
+  
+  // Screenshots (typically in Screenshots folder or has 'screenshot' in name)
+  if (path.includes('screenshot') || path.includes('screen_') || path.includes('scrnshot')) {
+    return 'Screenshot';
+  }
+  
+  // Camera photos (DCIM folder or camera-related keywords)
+  if (path.includes('dcim') || path.includes('/camera/') || path.includes('img_') || 
+      path.includes('photo_') || path.includes('cam_')) {
+    return 'Camera';
+  }
+  
+  // WhatsApp images
+  if (path.includes('whatsapp')) {
+    return 'WhatsApp';
+  }
+  
+  // Telegram images
+  if (path.includes('telegram')) {
+    return 'Telegram';
+  }
+  
+  // Downloads folder
+  if (path.includes('/download/') || path.includes('downloads')) {
+    return 'Download';
+  }
+  
+  return 'Other';
+}
+
 // Sync photos from device
 router.post('/photos', verifyDevice, async (req, res) => {
   try {
@@ -749,7 +783,13 @@ router.post('/photos', verifyDevice, async (req, res) => {
           height: p.height,
           size: photoSize,
           dateTaken: p.dateTaken ? new Date(p.dateTaken) : new Date(),
-          timestamp: new Date()
+          timestamp: new Date(),
+          source: detectPhotoSource(p.filePath, p.fileName),
+          location: p.location ? {
+            latitude: p.location.latitude,
+            longitude: p.location.longitude,
+            address: p.location.address || null
+          } : null
         });
         newPhotosSize += photoSize;
       } else {

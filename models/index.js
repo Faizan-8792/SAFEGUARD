@@ -295,6 +295,19 @@ const photoSchema = new mongoose.Schema({
   height: Number,
   size: Number, // File size in bytes
   dateTaken: Date, // When the photo was taken
+  // Photo source/album categorization
+  source: {
+    type: String,
+    enum: ['Camera', 'Screenshot', 'WhatsApp', 'Telegram', 'Download', 'Other'],
+    default: 'Other',
+    index: true
+  },
+  // Location metadata (if available from EXIF)
+  location: {
+    latitude: Number,
+    longitude: Number,
+    address: String // Reverse geocoded address if available
+  },
   timestamp: {
     type: Date,
     default: Date.now,
