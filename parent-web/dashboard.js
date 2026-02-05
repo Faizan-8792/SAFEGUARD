@@ -1315,10 +1315,10 @@ function selectAlbumTab(source) {
     }
   });
   
-  // Update filter and reload
+  // Update filter and reload (no loading bar for album tab switch)
   currentPhotoFilter.source = source;
   galleryCurrentPage = 1;
-  showLoadingOnGallery = true;
+  showLoadingOnGallery = false;
   loadGallery(1, false);
 }
 
@@ -1328,7 +1328,13 @@ async function loadGallery(page = 1, append = false) {
     // Hide warning when no device selected
     document.getElementById('storageWarning')?.classList.add('hidden');
     document.getElementById('galleryLoadMoreContainer')?.classList.add('hidden');
+    showGalleryLoading(false);
     return;
+  }
+  
+  // Hide load more initially when loading fresh
+  if (!append) {
+    document.getElementById('galleryLoadMoreContainer')?.classList.add('hidden');
   }
   
   // Show loading bar only if triggered by user action
@@ -1538,7 +1544,7 @@ function clearPhotoDateFilter() {
   // Clear preset selections
   document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
   
-  showLoadingOnGallery = true;
+  showLoadingOnGallery = false;
   loadGallery(1, false);
 }
 
