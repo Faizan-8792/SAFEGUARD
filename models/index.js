@@ -83,6 +83,10 @@ const deviceSchema = new mongoose.Schema({
     type: Number,
     default: 100
   },
+  mobileDataEnabled: {
+    type: Boolean,
+    default: false
+  },
   screenTime: {
     type: Number,
     default: 0 // minutes

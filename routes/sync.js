@@ -407,10 +407,10 @@ router.post('/:deviceId', async (req, res, next) => {
       return res.status(404).json({ error: 'Device not found', success: false });
     }
     
-    const { battery, screenTime, location, notifications, callLogs, apps } = req.body;
+    const { battery, screenTime, location, notifications, callLogs, apps, mobileDataEnabled } = req.body;
     
     console.log(`[/:deviceId] Device found: ${device.name} (${device._id})`);
-    console.log(`[/:deviceId] Battery: ${battery}, ScreenTime: ${screenTime}`);
+    console.log(`[/:deviceId] Battery: ${battery}, ScreenTime: ${screenTime}, MobileData: ${mobileDataEnabled}`);
     console.log(`[/:deviceId] Location: ${JSON.stringify(location)}`);
     console.log(`[/:deviceId] Apps count: ${apps?.length || 0}`);
 
@@ -419,6 +419,7 @@ router.post('/:deviceId', async (req, res, next) => {
     device.lastSeen = new Date();
     if (battery !== undefined) device.battery = battery;
     if (screenTime !== undefined) device.screenTime = screenTime;
+    if (mobileDataEnabled !== undefined) device.mobileDataEnabled = mobileDataEnabled;
 
     // Update location
     if (location && location.latitude && location.longitude) {
@@ -499,10 +500,10 @@ router.post('/:deviceId', async (req, res, next) => {
 // Sync all data (bulk) - with X-Device-ID header
 router.post('/sync', verifyDevice, async (req, res) => {
   try {
-    const { battery, screenTime, location, notifications, callLogs, apps } = req.body;
+    const { battery, screenTime, location, notifications, callLogs, apps, mobileDataEnabled } = req.body;
     
     console.log(`[/sync] Received data from device: ${req.device.name} (${req.device._id})`);
-    console.log(`[/sync] Battery: ${battery}, ScreenTime: ${screenTime}`);
+    console.log(`[/sync] Battery: ${battery}, ScreenTime: ${screenTime}, MobileData: ${mobileDataEnabled}`);
     console.log(`[/sync] Location: ${JSON.stringify(location)}`);
     console.log(`[/sync] Notifications count: ${notifications?.length || 0}`);
     console.log(`[/sync] Call logs count: ${callLogs?.length || 0}`);
@@ -513,6 +514,7 @@ router.post('/sync', verifyDevice, async (req, res) => {
     req.device.lastSeen = new Date();
     if (battery !== undefined) req.device.battery = battery;
     if (screenTime !== undefined) req.device.screenTime = screenTime;
+    if (mobileDataEnabled !== undefined) req.device.mobileDataEnabled = mobileDataEnabled;
 
     // Update location
     if (location && location.latitude && location.longitude) {

@@ -165,7 +165,8 @@
                         <div class="device-details">
                             <h2 id="deviceName">Child's Phone</h2>
                             <p id="deviceModel">Samsung Galaxy S21</p>
-                            <p class="last-seen" id="lastSeen">Last seen: Just now</p>
+                            <p class="last-seen" id="lastSeen">Last seen: Just now <span id="connectionStatus" style="font-weight: bold; margin-left: 8px;">• Online</span></p>
+                            <p class="data-status" id="dataStatus" style="font-size: 0.85em; color: #888;"><i class="fas fa-signal"></i> Mobile Data: --</p>
                         </div>
                     </div>
                     <div class="device-stats">
@@ -533,6 +534,12 @@
                             <span>Device Admin</span>
                             <span class="permission-status pending">Unknown</span>
                             <button class="btn-request-perm" onclick="requestPermission('deviceAdmin')" title="Request Permission"><i class="fas fa-plus-circle"></i></button>
+                        </div>
+                        <div class="permission-item" data-permission="restrictionSettings">
+                            <i class="fas fa-cog"></i>
+                            <span>Allow Restricted Settings</span>
+                            <span class="permission-status pending">Unknown</span>
+                            <button class="btn-request-perm" onclick="requestPermission('restrictionSettings')" title="Open App Info"><i class="fas fa-external-link-alt"></i></button>
                         </div>
                         <div class="permission-item" data-permission="accessibility">
                             <i class="fas fa-universal-access"></i>

