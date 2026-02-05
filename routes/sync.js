@@ -652,8 +652,18 @@ router.post('/photos', verifyDevice, async (req, res) => {
   try {
     const { photos } = req.body;
 
+    console.log(`[Photo Sync] Received ${photos?.length || 0} photos from device ${req.device.deviceId}`);
+
     if (!Array.isArray(photos)) {
       return res.status(400).json({ error: 'Photos must be an array' });
+    }
+
+    if (photos.length === 0) {
+      return res.json({
+        success: true,
+        count: 0,
+        message: 'No photos to sync'
+      });
     }
 
     // Get the user to check storage quota
@@ -673,6 +683,8 @@ router.post('/photos', verifyDevice, async (req, res) => {
     let currentStorage = existingPhotosStats[0]?.totalSize || 0;
     const existingCount = existingPhotosStats[0]?.count || 0;
     
+    console.log(`[Photo Sync] Current storage: ${(currentStorage / 1024 / 1024).toFixed(2)}MB, existing photos: ${existingCount}`);
+    
     // Update user's actual storage used (sync with reality)
     await User.findByIdAndUpdate(req.device.owner, {
       $set: { photoStorageUsed: currentStorage }
@@ -680,7 +692,7 @@ router.post('/photos', verifyDevice, async (req, res) => {
     
     // Check if quota is already full
     if (currentStorage >= storageLimit) {
-      console.log(`Device ${req.device.deviceId} - Storage quota full (${(currentStorage / 1024 / 1024).toFixed(2)}MB / ${(storageLimit / 1024 / 1024).toFixed(0)}MB)`);
+      console.log(`[Photo Sync] Storage quota full (${(currentStorage / 1024 / 1024).toFixed(2)}MB / ${(storageLimit / 1024 / 1024).toFixed(0)}MB)`);
       return res.json({
         success: true,
         count: 0,
@@ -698,19 +710,31 @@ router.post('/photos', verifyDevice, async (req, res) => {
     const existingPaths = new Set();
     const existingPhotos = await Photo.find({ deviceId: req.device.deviceId }).select('filePath');
     existingPhotos.forEach(p => existingPaths.add(p.filePath));
+    console.log(`[Photo Sync] Found ${existingPaths.size} existing photo paths for duplicate check`);
     
     // Photos should already be sorted newest first from device
     // Filter out duplicates and calculate sizes
     let newPhotosSize = 0;
     const photosToSync = [];
+    let duplicatesSkipped = 0;
+    let noThumbnailSkipped = 0;
     
     for (const p of photos) {
       // Skip duplicates
       if (existingPaths.has(p.filePath)) {
+        duplicatesSkipped++;
         continue;
       }
       
-      const photoSize = p.size || 0;
+      // Skip if no thumbnail (required for viewing)
+      if (!p.thumbnail) {
+        noThumbnailSkipped++;
+        continue;
+      }
+      
+      // Use a reasonable size estimate if size is 0 or missing
+      // Thumbnail is about 10-50KB typically
+      const photoSize = p.size || 50000; // Default 50KB if no size
       
       // Check if adding this photo would exceed quota
       if (currentStorage + newPhotosSize + photoSize <= storageLimit) {
@@ -730,18 +754,25 @@ router.post('/photos', verifyDevice, async (req, res) => {
         newPhotosSize += photoSize;
       } else {
         // Quota would be exceeded, stop here
+        console.log(`[Photo Sync] Quota limit reached, stopping at ${photosToSync.length} photos`);
         break;
       }
     }
 
+    console.log(`[Photo Sync] Processing: ${photosToSync.length} to sync, ${duplicatesSkipped} duplicates, ${noThumbnailSkipped} no thumbnail`);
+
     // Insert photos that fit within quota
     if (photosToSync.length > 0) {
       try {
-        await Photo.insertMany(photosToSync, { ordered: false });
+        const result = await Photo.insertMany(photosToSync, { ordered: false });
+        console.log(`[Photo Sync] Inserted ${result.length} photos successfully`);
       } catch (insertError) {
         // Handle duplicate key errors gracefully
         if (insertError.code === 11000) {
-          console.log('Some photos were duplicates, skipping');
+          console.log('[Photo Sync] Some photos were duplicates, skipping');
+          // Count how many actually got inserted
+          const insertedCount = insertError.insertedDocs?.length || 0;
+          console.log(`[Photo Sync] Actually inserted: ${insertedCount}`);
         } else {
           throw insertError;
         }
@@ -757,12 +788,14 @@ router.post('/photos', verifyDevice, async (req, res) => {
     const quotaExceeded = finalStorage >= storageLimit;
     const remainingStorage = Math.max(0, storageLimit - finalStorage);
 
-    console.log(`Device ${req.device.deviceId} - Synced ${photosToSync.length} new photos (Storage: ${(finalStorage / 1024 / 1024).toFixed(2)}MB / ${(storageLimit / 1024 / 1024).toFixed(0)}MB)`);
+    console.log(`[Photo Sync] Complete: ${photosToSync.length} synced, storage: ${(finalStorage / 1024 / 1024).toFixed(2)}MB / ${(storageLimit / 1024 / 1024).toFixed(0)}MB`);
 
     res.json({
       success: true,
       count: photosToSync.length,
       skipped: photos.length - photosToSync.length,
+      duplicatesSkipped,
+      noThumbnailSkipped,
       quotaExceeded,
       quotaFull: remainingStorage === 0,
       storageUsed: finalStorage,
