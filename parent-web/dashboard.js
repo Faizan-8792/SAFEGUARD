@@ -219,6 +219,7 @@ function setupEventListeners() {
   
   // Gallery
   document.getElementById('btnSyncPhotos')?.addEventListener('click', syncPhotos);
+  document.getElementById('btnRefreshGallery')?.addEventListener('click', refreshGallery);
   document.getElementById('btnDeleteAllPhotos')?.addEventListener('click', deleteAllPhotos);
   document.getElementById('closePhotoModal')?.addEventListener('click', closePhotoModal);
   document.getElementById('btnDownloadPhoto')?.addEventListener('click', downloadCurrentPhoto);
@@ -1360,6 +1361,18 @@ function selectAlbumTab(source) {
   currentPhotoFilter.source = source;
   galleryCurrentPage = 1;
   showLoadingOnGallery = false;
+  loadGallery(1, false);
+}
+
+// Refresh gallery - reload the page to get fresh data
+function refreshGallery() {
+  showToast('Refreshing...', 'info', 1000);
+  // Clear any filters and reload
+  clearPhotoDateFilter();
+  // Force reload the gallery with loading indicator
+  showLoadingOnGallery = true;
+  showGalleryLoading(true);
+  galleryCurrentPage = 1;
   loadGallery(1, false);
 }
 
