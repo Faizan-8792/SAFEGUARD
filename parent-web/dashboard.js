@@ -1353,7 +1353,7 @@ async function loadGallery(page = 1, append = false) {
     } else if (currentPhotoFilter.endDate) {
       queryParams += `&endDate=${currentPhotoFilter.endDate}`;
     } else {
-      queryParams += '&hours=168'; // Default 7 days
+      queryParams += '&hours=8760'; // Default 1 year (show all photos)
     }
     
     // Add source/album filter
@@ -1361,7 +1361,10 @@ async function loadGallery(page = 1, append = false) {
       queryParams += `&source=${currentPhotoFilter.source}`;
     }
     
+    console.log('Gallery API request:', `/devices/${getDeviceId(selectedDevice)}/photos?${queryParams}`);
+    
     const data = await api(`/devices/${getDeviceId(selectedDevice)}/photos?${queryParams}`);
+    console.log('Gallery API response:', { total: data.total, photosCount: data.photos?.length, filter: currentPhotoFilter });
     
     // Hide loading bar
     showGalleryLoading(false);
@@ -1489,6 +1492,8 @@ async function applyPhotoDateFilter() {
     return;
   }
   
+  console.log('Applying date filter:', { startDate, endDate });
+  
   // Preserve source filter when applying date filter
   currentPhotoFilter = { 
     startDate, 
@@ -1503,26 +1508,8 @@ async function applyPhotoDateFilter() {
   document.getElementById('galleryGrid').innerHTML = '';
   document.getElementById('galleryLoadMoreContainer').classList.add('hidden');
   
-  try {
-    // Send sync command to device for the date range
-    const syncPayload = {
-      hours: 168, // Still use hours as fallback
-      startDate: startDate,
-      endDate: endDate
-    };
-    await sendCommand('sync_photos', syncPayload, true);
-    showToast('Syncing photos from device...', 'info', 3000);
-    
-    // Wait for device to upload photos
-    await new Promise(resolve => setTimeout(resolve, 4000));
-    
-    // Now load the gallery with the filter
-    await loadGallery(1, false);
-  } catch (error) {
-    showGalleryLoading(false);
-    showLoadingOnGallery = false;
-    showToast('Failed to sync photos: ' + error.message, 'error');
-  }
+  // Just filter existing photos - don't sync from device
+  await loadGallery(1, false);
 }
 
 function clearPhotoDateFilter() {
