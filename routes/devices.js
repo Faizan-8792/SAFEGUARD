@@ -648,23 +648,31 @@ router.get('/:deviceId/photos', protect, async (req, res) => {
       return res.status(404).json({ error: 'Device not found' });
     }
 
-    // Build date filter
+    // Build date filter - use $or to catch both dateTaken and timestamp fields
     let dateFilter = {};
     if (startDate && endDate) {
-      // If both dates provided, use date range on dateTaken
+      // If both dates provided, search by dateTaken OR timestamp (whichever matches)
       const startD = new Date(startDate);
       const endD = new Date(new Date(endDate).setHours(23, 59, 59, 999));
-      dateFilter.dateTaken = {
-        $gte: startD,
-        $lte: endD
-      };
-      console.log('[Photos API] Date filter applied:', { startD, endD });
+      dateFilter.$or = [
+        { dateTaken: { $gte: startD, $lte: endD } },
+        { timestamp: { $gte: startD, $lte: endD } }
+      ];
+      console.log('[Photos API] Date filter applied (OR logic):', { startD, endD });
     } else if (startDate) {
       // Just start date
-      dateFilter.dateTaken = { $gte: new Date(startDate) };
+      const startD = new Date(startDate);
+      dateFilter.$or = [
+        { dateTaken: { $gte: startD } },
+        { timestamp: { $gte: startD } }
+      ];
     } else if (endDate) {
       // Just end date
-      dateFilter.dateTaken = { $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999)) };
+      const endD = new Date(new Date(endDate).setHours(23, 59, 59, 999));
+      dateFilter.$or = [
+        { dateTaken: { $lte: endD } },
+        { timestamp: { $lte: endD } }
+      ];
     } else {
       // Default: use hours for cutoff on timestamp
       const cutoffTime = new Date(Date.now() - (parseInt(hours) * 60 * 60 * 1000));
