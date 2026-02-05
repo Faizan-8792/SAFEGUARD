@@ -1550,41 +1550,16 @@ async function applyPhotoDateFilter() {
   document.getElementById('galleryLoadMoreContainer').classList.add('hidden');
   
   try {
-    // Step 1: First try to fetch existing photos with date filter
+    // ONLY fetch from backend with date filter - NO syncing
+    // Syncing should only happen via "Sync Now" button
     let queryParams = `limit=50&page=1&startDate=${startDate}&endDate=${endDate}`;
     if (currentPhotoFilter.source && currentPhotoFilter.source !== 'all') {
       queryParams += `&source=${currentPhotoFilter.source}`;
     }
     
-    console.log('Step 1: Fetching existing photos with filter...');
-    let data = await api(`/devices/${getDeviceId(selectedDevice)}/photos?${queryParams}`);
-    console.log('Existing photos found:', data.photos?.length || 0);
-    
-    // Step 2: If no photos found, request sync from device
-    if (!data.photos || data.photos.length === 0) {
-      console.log('Step 2: No photos found, syncing from device...');
-      showToast('Fetching photos from device...', 'info', 3000);
-      
-      try {
-        // Send sync command to device with date range
-        await sendCommand('sync_photos', { 
-          hours: 168,
-          startDate: startDate,
-          endDate: endDate
-        }, true);
-        
-        // Wait for device to upload photos
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        
-        // Step 3: Fetch again after sync
-        console.log('Step 3: Fetching photos again after sync...');
-        data = await api(`/devices/${getDeviceId(selectedDevice)}/photos?${queryParams}`);
-        console.log('Photos after sync:', data.photos?.length || 0);
-      } catch (syncError) {
-        console.log('Sync command failed:', syncError.message);
-        // Continue with whatever we have
-      }
-    }
+    console.log('Fetching photos from backend with date filter...');
+    const data = await api(`/devices/${getDeviceId(selectedDevice)}/photos?${queryParams}`);
+    console.log('Photos found:', data.photos?.length || 0);
     
     // Hide loading and display results
     showGalleryLoading(false);
@@ -1601,9 +1576,15 @@ async function applyPhotoDateFilter() {
     const container = document.getElementById('galleryGrid');
     
     if (!data.photos || data.photos.length === 0) {
+      const formattedStart = new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const formattedEnd = new Date(endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       container.innerHTML = `<div class="gallery-empty-state">
         <i class="fas fa-images"></i>
-        <p>No photos found for ${startDate} to ${endDate}<br><span>The device may not have photos in this date range, or they haven't been synced yet.</span></p>
+        <p>No photos found for ${formattedStart} to ${formattedEnd}</p>
+        <span style="color: var(--text-secondary); font-size: 13px; margin-top: 8px;">
+          Photos from this date range haven't been synced yet.<br>
+          Use <strong>Sync Now</strong> button first to upload photos from device, then apply the filter.
+        </span>
       </div>`;
       document.getElementById('galleryLoadMoreContainer').classList.add('hidden');
       return;
