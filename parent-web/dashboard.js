@@ -1226,6 +1226,8 @@ let currentPhotoFilter = { startDate: null, endDate: null };
 async function loadGallery(page = 1, append = false) {
   if (!selectedDevice) {
     document.getElementById('galleryGrid').innerHTML = '<p class="empty-state">Select a device to view gallery</p>';
+    // Hide warning when no device selected
+    document.getElementById('storageWarning')?.classList.add('hidden');
     return;
   }
   
@@ -1304,6 +1306,9 @@ async function loadGallery(page = 1, append = false) {
   } catch (error) {
     console.error('Failed to load gallery:', error);
     document.getElementById('galleryGrid').innerHTML = '<p class="empty-state">Failed to load photos</p>';
+    // Hide warning on error and reset storage display to 0
+    document.getElementById('storageWarning')?.classList.add('hidden');
+    updateStorageDisplay({ storageUsed: 0, storageLimit: 200 * 1024 * 1024, storagePercentage: 0 });
   }
 }
 
