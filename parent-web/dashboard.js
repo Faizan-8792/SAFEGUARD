@@ -1304,6 +1304,47 @@ function updateAlbumCounts(albums) {
 // Track if loading should be shown (only for user actions)
 let showLoadingOnGallery = false;
 
+// Helper function to render gallery photos
+function renderGalleryPhotos(photos, append = false) {
+  const container = document.getElementById('galleryGrid');
+  
+  const photosHtml = photos.map(photo => {
+    const sourceIcon = {
+      'Camera': 'fa-camera',
+      'Screenshot': 'fa-mobile-alt',
+      'WhatsApp': 'fab fa-whatsapp',
+      'Telegram': 'fab fa-telegram',
+      'Download': 'fa-download',
+      'Other': 'fa-folder'
+    };
+    const iconClass = sourceIcon[photo.source] || 'fa-folder';
+    const isFab = iconClass.startsWith('fab');
+    
+    return `
+      <div class="gallery-item" onclick="viewPhoto('${photo.id}')">
+        <img src="data:${photo.mimeType || 'image/jpeg'};base64,${photo.thumbnail}" alt="${photo.fileName}" loading="lazy">
+        <div class="gallery-item-source">
+          <i class="${isFab ? iconClass : 'fas ' + iconClass}"></i>
+        </div>
+        <div class="gallery-item-overlay">
+          <button class="btn-icon" onclick="event.stopPropagation(); downloadPhoto('${photo.id}', '${photo.fileName || 'photo.jpg'}')" title="Download">
+            <i class="fas fa-download"></i>
+          </button>
+        </div>
+        <div class="gallery-item-info">
+          <span class="photo-time">${formatTime(photo.dateTaken || photo.timestamp)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  if (append) {
+    container.insertAdjacentHTML('beforeend', photosHtml);
+  } else {
+    container.innerHTML = photosHtml;
+  }
+}
+
 // Handle album tab click
 function selectAlbumTab(source) {
   // Update tab UI
@@ -1508,8 +1549,82 @@ async function applyPhotoDateFilter() {
   document.getElementById('galleryGrid').innerHTML = '';
   document.getElementById('galleryLoadMoreContainer').classList.add('hidden');
   
-  // Just filter existing photos - don't sync from device
-  await loadGallery(1, false);
+  try {
+    // Step 1: First try to fetch existing photos with date filter
+    let queryParams = `limit=50&page=1&startDate=${startDate}&endDate=${endDate}`;
+    if (currentPhotoFilter.source && currentPhotoFilter.source !== 'all') {
+      queryParams += `&source=${currentPhotoFilter.source}`;
+    }
+    
+    console.log('Step 1: Fetching existing photos with filter...');
+    let data = await api(`/devices/${getDeviceId(selectedDevice)}/photos?${queryParams}`);
+    console.log('Existing photos found:', data.photos?.length || 0);
+    
+    // Step 2: If no photos found, request sync from device
+    if (!data.photos || data.photos.length === 0) {
+      console.log('Step 2: No photos found, syncing from device...');
+      showToast('Fetching photos from device...', 'info', 3000);
+      
+      try {
+        // Send sync command to device with date range
+        await sendCommand('sync_photos', { 
+          hours: 168,
+          startDate: startDate,
+          endDate: endDate
+        }, true);
+        
+        // Wait for device to upload photos
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        // Step 3: Fetch again after sync
+        console.log('Step 3: Fetching photos again after sync...');
+        data = await api(`/devices/${getDeviceId(selectedDevice)}/photos?${queryParams}`);
+        console.log('Photos after sync:', data.photos?.length || 0);
+      } catch (syncError) {
+        console.log('Sync command failed:', syncError.message);
+        // Continue with whatever we have
+      }
+    }
+    
+    // Hide loading and display results
+    showGalleryLoading(false);
+    showLoadingOnGallery = false;
+    
+    // Update storage and albums
+    updateStorageDisplay(data);
+    updateAlbumCounts(data.albums);
+    
+    // Update pagination
+    galleryCurrentPage = data.page || 1;
+    galleryTotalPages = data.totalPages || 1;
+    
+    const container = document.getElementById('galleryGrid');
+    
+    if (!data.photos || data.photos.length === 0) {
+      container.innerHTML = `<div class="gallery-empty-state">
+        <i class="fas fa-images"></i>
+        <p>No photos found for ${startDate} to ${endDate}<br><span>The device may not have photos in this date range, or they haven't been synced yet.</span></p>
+      </div>`;
+      document.getElementById('galleryLoadMoreContainer').classList.add('hidden');
+      return;
+    }
+    
+    // Render photos
+    renderGalleryPhotos(data.photos, false);
+    
+    // Show/hide load more
+    if (galleryCurrentPage < galleryTotalPages) {
+      document.getElementById('galleryLoadMoreContainer').classList.remove('hidden');
+    } else {
+      document.getElementById('galleryLoadMoreContainer').classList.add('hidden');
+    }
+    
+  } catch (error) {
+    console.error('Filter error:', error);
+    showGalleryLoading(false);
+    showLoadingOnGallery = false;
+    showToast('Failed to load photos: ' + error.message, 'error');
+  }
 }
 
 function clearPhotoDateFilter() {

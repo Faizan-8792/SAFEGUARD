@@ -25,6 +25,7 @@ body {
   background: var(--background);
   color: var(--text-primary);
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 /* Utility Classes */
@@ -208,6 +209,7 @@ body {
   padding: 24px;
   max-width: 1200px;
   margin: 0 auto;
+  overflow-x: hidden;
 }
 
 .page.hidden {
@@ -1498,6 +1500,8 @@ body {
   
   .main-content {
     margin-left: 0;
+    width: 100%;
+    overflow-x: hidden;
   }
   
   .btn-menu {
@@ -1513,13 +1517,19 @@ body {
   }
   
   .page {
-    padding: 16px;
+    padding: 12px;
+    width: 100%;
+    box-sizing: border-box;
   }
   
   .page-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 16px;
+    gap: 12px;
+  }
+  
+  .page-header h1 {
+    font-size: 22px;
   }
 }
 
@@ -1780,6 +1790,8 @@ body {
   padding: 16px;
   margin-bottom: 16px;
   border: 1px solid var(--border);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .storage-info {
@@ -1789,6 +1801,8 @@ body {
   margin-bottom: 8px;
   font-size: 14px;
   color: var(--text-secondary);
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .storage-info strong {
@@ -1833,6 +1847,8 @@ body {
   padding: 16px;
   margin-bottom: 16px;
   border: 1px solid var(--border);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .date-filter-inputs {
@@ -2156,8 +2172,10 @@ body {
 
 .gallery-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .gallery-empty-state {
@@ -3378,6 +3396,8 @@ body {
 /* ========== Album Tabs ========== */
 .album-tabs-section {
   margin-bottom: 16px;
+  width: 100%;
+  overflow: hidden;
 }
 
 .album-tabs {
@@ -3385,7 +3405,9 @@ body {
   gap: 8px;
   overflow-x: auto;
   padding: 4px 0;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 .album-tabs::-webkit-scrollbar {
