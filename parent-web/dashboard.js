@@ -1288,6 +1288,9 @@ function updateAlbumCounts(albums) {
   document.getElementById('albumCountOther').textContent = albums.Other || 0;
 }
 
+// Track if loading should be shown (only for user actions)
+let showLoadingOnGallery = false;
+
 // Handle album tab click
 function selectAlbumTab(source) {
   // Update tab UI
@@ -1302,19 +1305,21 @@ function selectAlbumTab(source) {
   // Update filter and reload
   currentPhotoFilter.source = source;
   galleryCurrentPage = 1;
+  showLoadingOnGallery = true;
   loadGallery(1, false);
 }
 
 async function loadGallery(page = 1, append = false) {
   if (!selectedDevice) {
-    document.getElementById('galleryGrid').innerHTML = '<p class="empty-state">Select a device to view gallery</p>';
+    document.getElementById('galleryGrid').innerHTML = '<p class="empty-state">Select a device first</p>';
     // Hide warning when no device selected
     document.getElementById('storageWarning')?.classList.add('hidden');
+    document.getElementById('galleryLoadMoreContainer')?.classList.add('hidden');
     return;
   }
   
-  // Show loading bar
-  if (!append) {
+  // Show loading bar only if triggered by user action
+  if (!append && showLoadingOnGallery) {
     showGalleryLoading(true);
   }
   
@@ -1348,23 +1353,8 @@ async function loadGallery(page = 1, append = false) {
     // Update album counts
     updateAlbumCounts(data.albums);
     
-    // Update photo count
-    document.getElementById('photoCount').textContent = `${data.total || 0} photos`;
-    
-    // Update gallery info text
-    let infoText = 'Showing';
-    if (currentPhotoFilter.source && currentPhotoFilter.source !== 'all') {
-      infoText += ` ${currentPhotoFilter.source} photos`;
-    } else {
-      infoText += ' all photos';
-    }
-    if (currentPhotoFilter.startDate || currentPhotoFilter.endDate) {
-      if (currentPhotoFilter.startDate) infoText += ` from ${currentPhotoFilter.startDate}`;
-      if (currentPhotoFilter.endDate) infoText += ` to ${currentPhotoFilter.endDate}`;
-    } else {
-      infoText += ' from the last 7 days';
-    }
-    document.getElementById('galleryInfoText').textContent = infoText;
+    // Reset loading flag
+    showLoadingOnGallery = false;
     
     // Update pagination
     galleryCurrentPage = data.page || 1;
@@ -1374,7 +1364,11 @@ async function loadGallery(page = 1, append = false) {
     
     if (!data.photos || data.photos.length === 0) {
       if (!append) {
-        container.innerHTML = '<p class="empty-state">No photos found. Tap "Sync Photos" to fetch recent photos from the device.</p>';
+        container.innerHTML = '';
+        // Show popup if this was from Go button with date filter
+        if (currentPhotoFilter.startDate || currentPhotoFilter.endDate) {
+          showToast('No photos available in selected date range', 'info');
+        }
       }
       document.getElementById('galleryLoadMoreContainer').classList.add('hidden');
       return;
@@ -1425,7 +1419,9 @@ async function loadGallery(page = 1, append = false) {
   } catch (error) {
     console.error('Failed to load gallery:', error);
     showGalleryLoading(false);
-    document.getElementById('galleryGrid').innerHTML = '<p class="empty-state">Failed to load photos</p>';
+    showLoadingOnGallery = false;
+    document.getElementById('galleryGrid').innerHTML = '';
+    document.getElementById('galleryLoadMoreContainer')?.classList.add('hidden');
     // Hide warning on error and reset storage display to 0
     document.getElementById('storageWarning')?.classList.add('hidden');
     updateStorageDisplay({ storageUsed: 0, storageLimit: 200 * 1024 * 1024, storagePercentage: 0 });
@@ -1465,6 +1461,11 @@ function applyPhotoDateFilter() {
   const startDate = document.getElementById('photoStartDate').value;
   const endDate = document.getElementById('photoEndDate').value;
   
+  if (!startDate && !endDate) {
+    showToast('Please select a date range', 'warning');
+    return;
+  }
+  
   // Preserve source filter when applying date filter
   currentPhotoFilter = { 
     startDate, 
@@ -1472,6 +1473,7 @@ function applyPhotoDateFilter() {
     source: currentPhotoFilter.source || 'all' 
   };
   galleryCurrentPage = 1;
+  showLoadingOnGallery = true;
   loadGallery(1, false);
 }
 
@@ -1490,6 +1492,7 @@ function clearPhotoDateFilter() {
     }
   });
   
+  showLoadingOnGallery = true;
   loadGallery(1, false);
 }
 
@@ -1540,7 +1543,9 @@ async function syncPhotos() {
     await sendCommand('sync_photos', { hours: 168 }, true);
     showToast('Photo sync request sent! Please wait a moment for photos to load.', 'success', 5000);
     
-    // Reload gallery after a delay for device to upload photos
+    // Show loading and reload gallery after a delay for device to upload photos
+    showLoadingOnGallery = true;
+    showGalleryLoading(true);
     setTimeout(() => loadGallery(), 5000);
   } catch (error) {
     showToast('Failed to sync photos: ' + error.message, 'error');
