@@ -1363,9 +1363,42 @@ async function syncPhotos() {
   if (!selectedDevice) return;
   
   try {
+    // First check current storage quota from server (accurate)
+    let quotaFull = false;
+    try {
+      const quotaData = await api(`/devices/${getDeviceId(selectedDevice)}/photos/quota`);
+      updateStorageDisplay(quotaData);
+      quotaFull = quotaData.quotaFull || false;
+    } catch (e) {
+      // If quota check fails, use local display value
+      const storagePercentText = document.getElementById('storagePercentText')?.textContent || '0%';
+      const storagePercent = parseInt(storagePercentText) || 0;
+      quotaFull = storagePercent >= 100;
+    }
+    
+    // If quota is full, ask to delete first
+    if (quotaFull) {
+      const shouldDelete = confirm(
+        '📸 Photo Storage Full!\n\n' +
+        'Your 200MB photo storage quota is full.\n\n' +
+        'To sync new photos, you need to delete existing photos first.\n\n' +
+        'Would you like to delete all synced photos now?\n\n' +
+        '(This only removes photos from the dashboard, not from the child device)'
+      );
+      
+      if (shouldDelete) {
+        await deleteAllPhotos();
+        // After deletion, try to sync
+        await sendCommand('sync_photos', { hours: 168 }, true);
+        alert('Photo sync request sent to device. Photos will sync from newest to oldest until storage is full.');
+        setTimeout(() => loadGallery(), 5000);
+      }
+      return;
+    }
+    
     // Send sync_photos command via FCM to the device
-    await sendCommand('sync_photos', { hours: 24 }, true);
-    alert('Photo sync request sent to device. Please wait a moment and refresh.');
+    await sendCommand('sync_photos', { hours: 168 }, true);
+    alert('Photo sync request sent to device. Photos will sync from newest to oldest until storage is full.\n\nPlease wait a moment and refresh.');
     
     // Reload gallery after a delay for device to upload photos
     setTimeout(() => loadGallery(), 5000);

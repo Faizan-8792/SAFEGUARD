@@ -753,6 +753,49 @@ router.get('/:deviceId/photos/:photoId', protect, async (req, res) => {
   }
 });
 
+// Get photo storage quota status
+router.get('/:deviceId/photos/quota', protect, async (req, res) => {
+  try {
+    const device = await Device.findOne({
+      _id: req.params.deviceId,
+      owner: req.user._id
+    });
+
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    // Calculate actual storage from database
+    const stats = await Photo.aggregate([
+      { $match: { deviceId: device.deviceId } },
+      { $group: { _id: null, totalSize: { $sum: '$size' }, count: { $sum: 1 } } }
+    ]);
+
+    const user = await User.findById(req.user._id);
+    const storageLimit = user?.photoStorageLimit || (200 * 1024 * 1024);
+    const storageUsed = stats[0]?.totalSize || 0;
+    const photoCount = stats[0]?.count || 0;
+
+    // Update user's storage tracking to match reality
+    await User.findByIdAndUpdate(req.user._id, {
+      $set: { photoStorageUsed: storageUsed }
+    });
+
+    res.json({
+      success: true,
+      storageUsed,
+      storageLimit,
+      storagePercentage: Math.round((storageUsed / storageLimit) * 100),
+      remainingStorage: Math.max(0, storageLimit - storageUsed),
+      photoCount,
+      quotaFull: storageUsed >= storageLimit
+    });
+  } catch (error) {
+    console.error('Failed to get photo quota:', error);
+    res.status(500).json({ error: 'Failed to get storage quota' });
+  }
+});
+
 // Request photo sync from device
 router.post('/:deviceId/photos/sync', protect, async (req, res) => {
   try {

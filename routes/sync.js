@@ -663,14 +663,53 @@ router.post('/photos', verifyDevice, async (req, res) => {
     }
 
     const storageLimit = user.photoStorageLimit || (200 * 1024 * 1024); // 200MB default
-    let currentStorage = user.photoStorageUsed || 0;
     
-    // Calculate how much storage these photos would use
+    // Calculate actual current storage from existing photos (more accurate than tracking)
+    const existingPhotosStats = await Photo.aggregate([
+      { $match: { deviceId: req.device.deviceId } },
+      { $group: { _id: null, totalSize: { $sum: '$size' }, count: { $sum: 1 } } }
+    ]);
+    
+    let currentStorage = existingPhotosStats[0]?.totalSize || 0;
+    const existingCount = existingPhotosStats[0]?.count || 0;
+    
+    // Update user's actual storage used (sync with reality)
+    await User.findByIdAndUpdate(req.device.owner, {
+      $set: { photoStorageUsed: currentStorage }
+    });
+    
+    // Check if quota is already full
+    if (currentStorage >= storageLimit) {
+      console.log(`Device ${req.device.deviceId} - Storage quota full (${(currentStorage / 1024 / 1024).toFixed(2)}MB / ${(storageLimit / 1024 / 1024).toFixed(0)}MB)`);
+      return res.json({
+        success: true,
+        count: 0,
+        skipped: photos.length,
+        quotaExceeded: true,
+        quotaFull: true,
+        storageUsed: currentStorage,
+        storageLimit,
+        remainingStorage: 0,
+        message: 'Storage quota full. Please delete existing photos from the dashboard to sync new ones.'
+      });
+    }
+    
+    // Get existing photo file paths to check for duplicates
+    const existingPaths = new Set();
+    const existingPhotos = await Photo.find({ deviceId: req.device.deviceId }).select('filePath');
+    existingPhotos.forEach(p => existingPaths.add(p.filePath));
+    
+    // Photos should already be sorted newest first from device
+    // Filter out duplicates and calculate sizes
     let newPhotosSize = 0;
     const photosToSync = [];
     
     for (const p of photos) {
-      // Estimate size from base64 (base64 is ~4/3 of original)
+      // Skip duplicates
+      if (existingPaths.has(p.filePath)) {
+        continue;
+      }
+      
       const photoSize = p.size || 0;
       
       // Check if adding this photo would exceed quota
@@ -689,12 +728,24 @@ router.post('/photos', verifyDevice, async (req, res) => {
           timestamp: new Date()
         });
         newPhotosSize += photoSize;
+      } else {
+        // Quota would be exceeded, stop here
+        break;
       }
     }
 
     // Insert photos that fit within quota
     if (photosToSync.length > 0) {
-      await Photo.insertMany(photosToSync, { ordered: false });
+      try {
+        await Photo.insertMany(photosToSync, { ordered: false });
+      } catch (insertError) {
+        // Handle duplicate key errors gracefully
+        if (insertError.code === 11000) {
+          console.log('Some photos were duplicates, skipping');
+        } else {
+          throw insertError;
+        }
+      }
       
       // Update user's storage used
       await User.findByIdAndUpdate(req.device.owner, {
@@ -702,27 +753,26 @@ router.post('/photos', verifyDevice, async (req, res) => {
       });
     }
 
-    const quotaExceeded = photos.length > photosToSync.length;
-    const remainingStorage = storageLimit - (currentStorage + newPhotosSize);
+    const finalStorage = currentStorage + newPhotosSize;
+    const quotaExceeded = finalStorage >= storageLimit;
+    const remainingStorage = Math.max(0, storageLimit - finalStorage);
 
-    console.log(`Device ${req.device.deviceId} - Synced ${photosToSync.length}/${photos.length} photos (Storage: ${((currentStorage + newPhotosSize) / 1024 / 1024).toFixed(2)}MB / ${(storageLimit / 1024 / 1024).toFixed(0)}MB)`);
+    console.log(`Device ${req.device.deviceId} - Synced ${photosToSync.length} new photos (Storage: ${(finalStorage / 1024 / 1024).toFixed(2)}MB / ${(storageLimit / 1024 / 1024).toFixed(0)}MB)`);
 
     res.json({
       success: true,
       count: photosToSync.length,
       skipped: photos.length - photosToSync.length,
       quotaExceeded,
-      storageUsed: currentStorage + newPhotosSize,
+      quotaFull: remainingStorage === 0,
+      storageUsed: finalStorage,
       storageLimit,
       remainingStorage,
-      message: quotaExceeded ? 'Storage quota exceeded. Delete photos from dashboard to sync more.' : null
+      message: quotaExceeded ? 'Storage quota reached. Delete photos from dashboard to sync more.' : null
     });
   } catch (error) {
-    // Ignore duplicate key errors
-    if (error.code !== 11000) {
-      console.error('Sync photos error:', error);
-    }
-    res.json({ success: true });
+    console.error('Sync photos error:', error);
+    res.status(500).json({ error: 'Failed to sync photos', details: error.message });
   }
 });
 
