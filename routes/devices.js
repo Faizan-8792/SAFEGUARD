@@ -637,6 +637,8 @@ router.get('/:deviceId/photos', protect, async (req, res) => {
   try {
     const { hours = 24, limit = 50, startDate, endDate, page = 1, source } = req.query;
 
+    console.log('[Photos API] Request params:', { deviceId: req.params.deviceId, startDate, endDate, hours, page, source });
+
     const device = await Device.findOne({
       _id: req.params.deviceId,
       owner: req.user._id
@@ -650,10 +652,13 @@ router.get('/:deviceId/photos', protect, async (req, res) => {
     let dateFilter = {};
     if (startDate && endDate) {
       // If both dates provided, use date range on dateTaken
+      const startD = new Date(startDate);
+      const endD = new Date(new Date(endDate).setHours(23, 59, 59, 999));
       dateFilter.dateTaken = {
-        $gte: new Date(startDate),
-        $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999))
+        $gte: startD,
+        $lte: endD
       };
+      console.log('[Photos API] Date filter applied:', { startD, endD });
     } else if (startDate) {
       // Just start date
       dateFilter.dateTaken = { $gte: new Date(startDate) };
@@ -664,6 +669,7 @@ router.get('/:deviceId/photos', protect, async (req, res) => {
       // Default: use hours for cutoff on timestamp
       const cutoffTime = new Date(Date.now() - (parseInt(hours) * 60 * 60 * 1000));
       dateFilter.timestamp = { $gte: cutoffTime };
+      console.log('[Photos API] Using hours filter, cutoff:', cutoffTime);
     }
 
     // Build source filter (album)
@@ -689,6 +695,11 @@ router.get('/:deviceId/photos', protect, async (req, res) => {
       ...dateFilter,
       ...sourceFilter
     });
+
+    console.log('[Photos API] Query result:', { found: photos.length, total, deviceId: device.deviceId });
+    if (photos.length > 0) {
+      console.log('[Photos API] First photo dateTaken:', photos[0].dateTaken);
+    }
 
     // Get album counts for filtering
     const albumCounts = await Photo.aggregate([
