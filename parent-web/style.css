@@ -6112,14 +6112,15 @@ body {
 .message-bubble-wrapper {
   display: flex;
   margin-bottom: 8px;
+  width: 100%;
 }
 
 .message-bubble-wrapper.received {
-  justify-content: flex-start;
+  justify-content: flex-start !important;
 }
 
 .message-bubble-wrapper.sent {
-  justify-content: flex-end;
+  justify-content: flex-end !important;
 }
 
 .message-bubble {
@@ -6129,14 +6130,22 @@ body {
   position: relative;
 }
 
-.message-bubble-wrapper.received .message-bubble {
-  background: rgba(42, 42, 66, 0.9);
+/* Received messages - LEFT side, darker background */
+.message-bubble-wrapper.received .message-bubble,
+.received-bubble {
+  background: rgba(42, 42, 66, 0.95) !important;
   border-bottom-left-radius: 6px;
+  margin-left: 0;
+  margin-right: auto;
 }
 
-.message-bubble-wrapper.sent .message-bubble {
-  background: var(--gradient-primary);
+/* Sent messages - RIGHT side, gradient background */
+.message-bubble-wrapper.sent .message-bubble,
+.sent-bubble {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
   border-bottom-right-radius: 6px;
+  margin-left: auto;
+  margin-right: 0;
 }
 
 .sender-name {

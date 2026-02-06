@@ -5649,10 +5649,12 @@ function renderSocialMessages() {
     
     const isSent = msg.message_type === 'SENT';
     const time = formatMessageTime(msg.timestamp);
+    const bubbleClass = isSent ? 'sent' : 'received';
+    console.log(`Message: "${msg.message_text?.substring(0,20)}" | type: ${msg.message_type} | class: ${bubbleClass}`);
     
     html += `
-      <div class="message-bubble-wrapper ${isSent ? 'sent' : 'received'}">
-        <div class="message-bubble">
+      <div class="message-bubble-wrapper ${bubbleClass}">
+        <div class="message-bubble ${bubbleClass}-bubble">
           ${msg.is_group_chat && msg.sender_in_group && !isSent 
             ? `<div class="sender-name">${escapeHtml(msg.sender_in_group)}</div>` 
             : ''
