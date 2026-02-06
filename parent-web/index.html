@@ -2,11 +2,23 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>FamilyGuard Pro - Parent Dashboard</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Brand Logo as Inline SVG for crisp rendering -->
+    <style>
+      .brand-logo {
+        width: 36px;
+        height: 36px;
+        flex-shrink: 0;
+      }
+      .brand-logo svg {
+        width: 100%;
+        height: 100%;
+      }
+    </style>
 </head>
 <body>
     <div class="app-container">
@@ -14,7 +26,28 @@
         <nav class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <i class="fas fa-shield-alt"></i>
+                    <div class="brand-logo">
+                      <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                          <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#667eea"/>
+                            <stop offset="100%" style="stop-color:#764ba2"/>
+                          </linearGradient>
+                        </defs>
+                        <!-- Shield shape -->
+                        <path d="M32 4L8 14v18c0 14 10.667 24 24 28 13.333-4 24-14 24-28V14L32 4z" fill="url(#logoGradient)"/>
+                        <!-- Family icon inside -->
+                        <circle cx="32" cy="24" r="6" fill="white" opacity="0.95"/>
+                        <circle cx="22" cy="38" r="4" fill="white" opacity="0.9"/>
+                        <circle cx="42" cy="38" r="4" fill="white" opacity="0.9"/>
+                        <path d="M32 32c5 0 9 3 9 7v5H23v-5c0-4 4-7 9-7z" fill="white" opacity="0.95"/>
+                        <path d="M22 44c3 0 5 2 5 4v4H17v-4c0-2 2-4 5-4z" fill="white" opacity="0.85"/>
+                        <path d="M42 44c3 0 5 2 5 4v4H37v-4c0-2 2-4 5-4z" fill="white" opacity="0.85"/>
+                        <!-- Checkmark accent -->
+                        <circle cx="48" cy="16" r="8" fill="#48bb78"/>
+                        <path d="M44 16l3 3 5-5" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </div>
                     <span>FamilyGuard Pro</span>
                 </div>
             </div>
@@ -188,9 +221,116 @@
                     </div>
                 </div>
 
+                <!-- Sync Status Banner - Transparency & Trust -->
+                <div class="sync-status-banner" id="syncStatusBanner">
+                    <div class="sync-status-content">
+                        <div class="sync-status-indicator">
+                            <i class="fas fa-check-circle sync-icon synced"></i>
+                            <span class="sync-text">Last sync: <strong id="lastSyncTime">5 minutes ago</strong></span>
+                        </div>
+                        <div class="sync-status-actions">
+                            <button class="btn-text" id="btnViewSyncLogs">
+                                <i class="fas fa-history"></i> View Logs
+                            </button>
+                            <button class="btn-secondary btn-sm" id="btnSyncAllNow">
+                                <i class="fas fa-sync-alt"></i> Sync Now
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Permission Health Panel - Compliance Visibility -->
+                <div class="permission-health-panel" id="permissionHealthPanel">
+                    <div class="panel-header">
+                        <h4><i class="fas fa-shield-check"></i> Permission Health</h4>
+                        <button class="btn-text btn-sm" id="btnRefreshPermissions">
+                            <i class="fas fa-redo"></i>
+                        </button>
+                    </div>
+                    <div class="permission-grid">
+                        <div class="permission-item granted" data-permission="location">
+                            <i class="fas fa-map-marker-alt"></i>
+                            <span>Location</span>
+                            <i class="fas fa-check-circle status-icon"></i>
+                        </div>
+                        <div class="permission-item granted" data-permission="storage">
+                            <i class="fas fa-folder"></i>
+                            <span>Storage</span>
+                            <i class="fas fa-check-circle status-icon"></i>
+                        </div>
+                        <div class="permission-item granted" data-permission="notifications">
+                            <i class="fas fa-bell"></i>
+                            <span>Notifications</span>
+                            <i class="fas fa-check-circle status-icon"></i>
+                        </div>
+                        <div class="permission-item pending" data-permission="camera">
+                            <i class="fas fa-camera"></i>
+                            <span>Camera</span>
+                            <i class="fas fa-exclamation-circle status-icon"></i>
+                        </div>
+                        <div class="permission-item granted" data-permission="microphone">
+                            <i class="fas fa-microphone"></i>
+                            <span>Microphone</span>
+                            <i class="fas fa-check-circle status-icon"></i>
+                        </div>
+                        <div class="permission-item granted" data-permission="contacts">
+                            <i class="fas fa-address-book"></i>
+                            <span>Contacts</span>
+                            <i class="fas fa-check-circle status-icon"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Insights Cards -->
+                <div class="section quick-insights-section">
+                    <h3><i class="fas fa-chart-line"></i> Quick Insights</h3>
+                    <div class="insights-grid">
+                        <div class="insight-card" data-page="gallery">
+                            <div class="insight-icon photos">
+                                <i class="fas fa-images"></i>
+                            </div>
+                            <div class="insight-data">
+                                <span class="insight-value" id="insightPhotos">0</span>
+                                <span class="insight-label">Photos today</span>
+                            </div>
+                            <i class="fas fa-chevron-right insight-arrow"></i>
+                        </div>
+                        <div class="insight-card" data-page="calls">
+                            <div class="insight-icon calls">
+                                <i class="fas fa-phone"></i>
+                            </div>
+                            <div class="insight-data">
+                                <span class="insight-value" id="insightCalls">0</span>
+                                <span class="insight-label">Calls today</span>
+                            </div>
+                            <i class="fas fa-chevron-right insight-arrow"></i>
+                        </div>
+                        <div class="insight-card" data-page="notifications">
+                            <div class="insight-icon notifications">
+                                <i class="fas fa-bell"></i>
+                            </div>
+                            <div class="insight-data">
+                                <span class="insight-value" id="insightNotifs">0</span>
+                                <span class="insight-label">New notifications</span>
+                            </div>
+                            <i class="fas fa-chevron-right insight-arrow"></i>
+                        </div>
+                        <div class="insight-card" data-page="location">
+                            <div class="insight-icon location">
+                                <i class="fas fa-map-marker-alt"></i>
+                            </div>
+                            <div class="insight-data">
+                                <span class="insight-value" id="insightPlaces">0</span>
+                                <span class="insight-label">Places visited</span>
+                            </div>
+                            <i class="fas fa-chevron-right insight-arrow"></i>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Quick Actions -->
                 <div class="section">
-                    <h3>Live Monitoring</h3>
+                    <h3><i class="fas fa-bolt"></i> Live Monitoring</h3>
                     <div class="action-grid">
                         <button class="action-card" id="btnScreenMirror">
                             <i class="fas fa-desktop"></i>
@@ -211,17 +351,13 @@
                     </div>
                 </div>
 
-                <!-- Danger Actions -->
+                <!-- Device Actions -->
                 <div class="section">
-                    <h3>Quick Actions</h3>
+                    <h3><i class="fas fa-mobile-alt"></i> Device Actions</h3>
                     <div class="action-grid">
                         <button class="action-card" id="btnOpenApp">
                             <i class="fas fa-external-link-alt"></i>
                             <span>Open App</span>
-                        </button>
-                        <button class="action-card danger" id="btnDeleteCallLogs">
-                            <i class="fas fa-trash"></i>
-                            <span>Delete Call Logs</span>
                         </button>
                         <button class="action-card" id="btnLockDevice">
                             <i class="fas fa-lock"></i>
@@ -233,19 +369,19 @@
                         </button>
                         <button class="action-card" id="btnSyncNow">
                             <i class="fas fa-sync"></i>
-                            <span>Sync Now</span>
+                            <span>Sync Data</span>
                         </button>
                     </div>
                 </div>
 
-                <!-- Recent Activity -->
+                <!-- Recent Activity Timeline -->
                 <div class="section">
                     <div class="section-header">
-                        <h3>Recent Notifications</h3>
+                        <h3><i class="fas fa-stream"></i> Recent Activity</h3>
                         <a href="#" class="view-all" data-page="notifications">View All</a>
                     </div>
                     <div class="activity-list" id="recentNotifications">
-                        <p class="empty-state">No recent notifications</p>
+                        <p class="empty-state"><i class="fas fa-inbox"></i><br>No recent activity</p>
                     </div>
                 </div>
             </div>
@@ -253,19 +389,26 @@
             <!-- Notifications Page -->
             <div class="page hidden" id="notificationsPage">
                 <div class="page-header">
-                    <h1>Notifications</h1>
+                    <h1><i class="fas fa-bell"></i> Notifications</h1>
+                    <div class="page-header-actions">
+                        <button class="btn-danger" id="btnDeleteAllNotifications">
+                            <i class="fas fa-trash-alt"></i> Delete All
+                        </button>
+                    </div>
+                </div>
+                <div class="filter-chips-container">
                     <div class="filter-chips">
-                        <button class="chip active" data-filter="all">All</button>
-                        <button class="chip" data-filter="com.whatsapp">WhatsApp</button>
-                        <button class="chip" data-filter="com.instagram.android">Instagram</button>
-                        <button class="chip" data-filter="org.telegram.messenger">Telegram</button>
-                        <button class="chip" data-filter="com.facebook.orca">Messenger</button>
+                        <button class="chip active" data-filter="all"><i class="fas fa-layer-group"></i> All</button>
+                        <button class="chip" data-filter="com.whatsapp"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+                        <button class="chip" data-filter="com.instagram.android"><i class="fab fa-instagram"></i> Instagram</button>
+                        <button class="chip" data-filter="org.telegram.messenger"><i class="fab fa-telegram"></i> Telegram</button>
+                        <button class="chip" data-filter="com.facebook.orca"><i class="fab fa-facebook-messenger"></i> Messenger</button>
                     </div>
                 </div>
                 <div class="notifications-list" id="notificationsList">
-                    <p class="empty-state">No notifications found</p>
+                    <p class="empty-state"><i class="fas fa-bell-slash"></i> No notifications found</p>
                 </div>
-                <button class="btn-load-more" id="loadMoreNotif">Load More</button>
+                <button class="btn-load-more" id="loadMoreNotif"><i class="fas fa-plus"></i> Load More</button>
             </div>
 
             <!-- Call History Page -->
@@ -295,46 +438,83 @@
                     </div>
                 </div>
                 <div class="calls-list" id="callsList">
-                    <p class="empty-state">No call logs found</p>
+                    <p class="empty-state"><i class="fas fa-phone-slash"></i> No call logs found</p>
                 </div>
             </div>
 
             <!-- Location Page -->
             <div class="page hidden" id="locationPage">
                 <div class="page-header">
-                    <h1>Location</h1>
-                    <button class="btn-primary" id="btnRefreshLocation">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
+                    <h1><i class="fas fa-map-marker-alt"></i> Location Tracker</h1>
+                    <div class="page-header-actions">
+                        <button class="btn-secondary" id="btnLocationHistory">
+                            <i class="fas fa-history"></i> History
+                        </button>
+                        <button class="btn-primary" id="btnRefreshLocation">
+                            <i class="fas fa-crosshairs"></i> Track Now
+                        </button>
+                    </div>
                 </div>
                 <div class="location-container">
-                    <div class="map-container" id="mapContainer">
-                        <p class="map-placeholder">Map will be displayed here</p>
-                    </div>
-                    <div class="location-info">
-                        <h3>Current Location</h3>
-                        <p id="currentAddress">Loading...</p>
-                        <div class="location-details">
-                            <div class="detail">
-                                <label>Latitude</label>
-                                <span id="latitude">--</span>
-                            </div>
-                            <div class="detail">
-                                <label>Longitude</label>
-                                <span id="longitude">--</span>
-                            </div>
-                            <div class="detail">
-                                <label>Accuracy</label>
-                                <span id="accuracy">--</span>
-                            </div>
-                            <div class="detail">
-                                <label>Last Update</label>
-                                <span id="locationTime">--</span>
+                    <div class="map-wrapper">
+                        <div class="map-container" id="mapContainer">
+                            <div class="map-placeholder">
+                                <i class="fas fa-map-marked-alt"></i>
+                                <p>Loading map...</p>
                             </div>
                         </div>
-                        <a href="#" class="btn-secondary" id="btnOpenMaps" target="_blank">
-                            <i class="fas fa-external-link-alt"></i> Open in Google Maps
-                        </a>
+                        <div class="map-controls">
+                            <button class="map-control-btn" id="btnZoomIn" title="Zoom In"><i class="fas fa-plus"></i></button>
+                            <button class="map-control-btn" id="btnZoomOut" title="Zoom Out"><i class="fas fa-minus"></i></button>
+                            <button class="map-control-btn" id="btnCenterMap" title="Center Map"><i class="fas fa-location-crosshairs"></i></button>
+                        </div>
+                    </div>
+                    <div class="location-info-card">
+                        <div class="location-header">
+                            <div class="location-icon">
+                                <i class="fas fa-map-pin"></i>
+                            </div>
+                            <div class="location-title">
+                                <h3>Current Location</h3>
+                                <span class="location-status online"><i class="fas fa-circle"></i> Live</span>
+                            </div>
+                        </div>
+                        <p class="address-text" id="currentAddress"><i class="fas fa-spinner fa-spin"></i> Fetching location...</p>
+                        <div class="location-details-grid">
+                            <div class="detail-item">
+                                <div class="detail-icon"><i class="fas fa-crosshairs"></i></div>
+                                <div class="detail-content">
+                                    <label>Latitude</label>
+                                    <span id="latitude">--</span>
+                                </div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-icon"><i class="fas fa-crosshairs"></i></div>
+                                <div class="detail-content">
+                                    <label>Longitude</label>
+                                    <span id="longitude">--</span>
+                                </div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-icon"><i class="fas fa-bullseye"></i></div>
+                                <div class="detail-content">
+                                    <label>Accuracy</label>
+                                    <span id="accuracy">--</span>
+                                </div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-icon"><i class="fas fa-clock"></i></div>
+                                <div class="detail-content">
+                                    <label>Last Update</label>
+                                    <span id="locationTime">--</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="location-actions">
+                            <a href="#" class="btn-primary btn-full" id="btnOpenMaps" target="_blank">
+                                <i class="fab fa-google"></i> Open in Google Maps
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -719,7 +899,7 @@
                         </div>
                         <div class="permission-item" data-permission="restrictionSettings">
                             <i class="fas fa-cog"></i>
-                            <span>Allow Restricted Settings</span>
+                            <span>Allow Restricted Settings ( Might not present in some device)</span>
                             <span class="permission-status pending">Unknown</span>
                             <button class="btn-request-perm" onclick="requestPermission('restrictionSettings')" title="Open App Info"><i class="fas fa-external-link-alt"></i></button>
                         </div>

@@ -475,6 +475,52 @@ router.get('/:deviceId/notifications', protect, async (req, res) => {
   }
 });
 
+// Delete all notifications for a device
+router.delete('/:deviceId/notifications', protect, async (req, res) => {
+  try {
+    console.log('[Notifications DELETE] deviceId param:', req.params.deviceId);
+    console.log('[Notifications DELETE] user:', req.user?._id);
+    
+    // Try to find device by _id first, then by deviceId field
+    let device = await Device.findOne({
+      _id: req.params.deviceId,
+      owner: req.user._id
+    });
+    
+    // If not found by _id, try by deviceId field
+    if (!device) {
+      device = await Device.findOne({
+        deviceId: req.params.deviceId,
+        owner: req.user._id
+      });
+    }
+    
+    // If still not found, try without owner check (for debugging)
+    if (!device) {
+      const anyDevice = await Device.findOne({ _id: req.params.deviceId });
+      if (anyDevice) {
+        console.log('[Notifications DELETE] Device exists but owner mismatch. Device owner:', anyDevice.owner, 'Request user:', req.user._id);
+      } else {
+        console.log('[Notifications DELETE] Device not found at all');
+      }
+      return res.status(404).json({ error: 'Device not found or access denied' });
+    }
+
+    const result = await Notification.deleteMany({ deviceId: device.deviceId });
+    
+    console.log(`[Notifications] Deleted ${result.deletedCount} notifications for device ${device.name}`);
+    
+    res.json({
+      success: true,
+      deletedCount: result.deletedCount,
+      message: `Deleted ${result.deletedCount} notifications`
+    });
+  } catch (error) {
+    console.error('Error deleting notifications:', error);
+    res.status(500).json({ error: 'Failed to delete notifications' });
+  }
+});
+
 // Get device call logs
 router.get('/:deviceId/call-logs', protect, async (req, res) => {
   try {

@@ -123,11 +123,12 @@ async function refreshDataSilent() {
 
 // Event Listeners
 function setupEventListeners() {
-  // Login form
-  document.getElementById('loginForm').addEventListener('submit', handleLogin);
+  try {
+    // Login form
+    document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
   
-  // Register form
-  document.getElementById('registerForm')?.addEventListener('submit', handleRegister);
+    // Register form
+    document.getElementById('registerForm')?.addEventListener('submit', handleRegister);
   
   // Show register page
   document.getElementById('showRegister')?.addEventListener('click', (e) => {
@@ -159,7 +160,7 @@ function setupEventListeners() {
   });
   
   // Mobile menu
-  document.getElementById('btnMenu').addEventListener('click', (e) => {
+  document.getElementById('btnMenu')?.addEventListener('click', (e) => {
     e.stopPropagation();
     sidebar.classList.toggle('open');
   });
@@ -179,29 +180,29 @@ function setupEventListeners() {
   });
   
   // Logout
-  document.getElementById('btnLogout').addEventListener('click', handleLogout);
+  document.getElementById('btnLogout')?.addEventListener('click', handleLogout);
   
   // Device selector
   deviceSelector.addEventListener('change', handleDeviceChange);
   
   // Refresh button
-  document.getElementById('btnRefresh').addEventListener('click', refreshData);
+  document.getElementById('btnRefresh')?.addEventListener('click', refreshData);
   
   // Add device
-  document.getElementById('btnAddDevice').addEventListener('click', showPairingModal);
-  document.getElementById('closePairing').addEventListener('click', hidePairingModal);
-  document.getElementById('btnNewCode').addEventListener('click', generatePairingCode);
+  document.getElementById('btnAddDevice')?.addEventListener('click', showPairingModal);
+  document.getElementById('closePairing')?.addEventListener('click', hidePairingModal);
+  document.getElementById('btnNewCode')?.addEventListener('click', generatePairingCode);
   
   // Quick actions - Use WebRTC for streaming
-  document.getElementById('btnScreenMirror').addEventListener('click', () => startWebRTCStream('screen'));
-  document.getElementById('btnCamera').addEventListener('click', () => startWebRTCStream('camera'));
-  document.getElementById('btnLiveListen').addEventListener('click', () => startWebRTCStream('audio'));
-  document.getElementById('btnViewLocation').addEventListener('click', () => navigateTo('location'));
+  document.getElementById('btnScreenMirror')?.addEventListener('click', () => startWebRTCStream('screen'));
+  document.getElementById('btnCamera')?.addEventListener('click', () => startWebRTCStream('camera'));
+  document.getElementById('btnLiveListen')?.addEventListener('click', () => startWebRTCStream('audio'));
+  document.getElementById('btnViewLocation')?.addEventListener('click', () => navigateTo('location'));
   document.getElementById('btnOpenApp')?.addEventListener('click', () => sendCommand('open_app'));
-  document.getElementById('btnDeleteCallLogs').addEventListener('click', deleteCallLogs);
-  document.getElementById('btnLockDevice').addEventListener('click', () => sendCommand('lock_device'));
-  document.getElementById('btnRingDevice').addEventListener('click', ringDevice);
-  document.getElementById('btnSyncNow').addEventListener('click', syncNow);
+  document.getElementById('btnDeleteCallLogs')?.addEventListener('click', deleteCallLogs);
+  document.getElementById('btnLockDevice')?.addEventListener('click', () => sendCommand('lock_device'));
+  document.getElementById('btnRingDevice')?.addEventListener('click', ringDevice);
+  document.getElementById('btnSyncNow')?.addEventListener('click', syncNow);
   
   // Screenshot
   document.getElementById('btnScreenshot')?.addEventListener('click', captureScreenshot);
@@ -209,10 +210,17 @@ function setupEventListeners() {
   document.getElementById('btnCaptureScreenshot')?.addEventListener('click', captureScreenshotFromPage);
   
   // Call history
-  document.getElementById('btnDeleteAllCalls').addEventListener('click', deleteCallLogs);
+  document.getElementById('btnDeleteAllCalls')?.addEventListener('click', deleteCallLogs);
+  
+  // Notifications - Delete All
+  document.getElementById('btnDeleteAllNotifications')?.addEventListener('click', deleteAllNotifications);
   
   // Location
-  document.getElementById('btnRefreshLocation').addEventListener('click', loadLocation);
+  document.getElementById('btnRefreshLocation')?.addEventListener('click', loadLocation);
+  document.getElementById('btnLocationHistory')?.addEventListener('click', () => showToast('Location history coming soon', 'info'));
+  document.getElementById('btnZoomIn')?.addEventListener('click', () => { if (window.leafletMap) window.leafletMap.zoomIn(); });
+  document.getElementById('btnZoomOut')?.addEventListener('click', () => { if (window.leafletMap) window.leafletMap.zoomOut(); });
+  document.getElementById('btnCenterMap')?.addEventListener('click', centerMapOnDevice);
   
   // App Usage - Manage Blocked Apps
   document.getElementById('btnManageBlocked')?.addEventListener('click', showBlockedAppsModal);
@@ -248,8 +256,8 @@ function setupEventListeners() {
   });
   
   // Stream modal
-  document.getElementById('closeStream').addEventListener('click', stopStream);
-  document.getElementById('btnStopStream').addEventListener('click', stopStream);
+  document.getElementById('closeStream')?.addEventListener('click', stopStream);
+  document.getElementById('btnStopStream')?.addEventListener('click', stopStream);
   document.getElementById('btnSwitchCamera')?.addEventListener('click', () => sendCommand('switch_camera'));
   document.getElementById('btnMuteStream')?.addEventListener('click', toggleStreamMute);
   document.getElementById('btnFullscreenStream')?.addEventListener('click', toggleStreamFullscreen);
@@ -257,6 +265,24 @@ function setupEventListeners() {
   
   // Request all permissions button
   document.getElementById('btnRequestAllPermissions')?.addEventListener('click', requestAllMissingPermissions);
+  
+  // Sync status banner buttons
+  document.getElementById('btnSyncAllNow')?.addEventListener('click', syncNow);
+  document.getElementById('btnViewSyncLogs')?.addEventListener('click', () => showToast('Sync logs coming soon', 'info'));
+  
+  // Refresh permissions button
+  document.getElementById('btnRefreshPermissions')?.addEventListener('click', () => {
+    loadDashboard();
+    showToast('Permissions refreshed', 'success');
+  });
+  
+  // Quick insight cards - navigate to pages
+  document.querySelectorAll('.insight-card[data-page]').forEach(card => {
+    card.addEventListener('click', () => {
+      const page = card.dataset.page;
+      if (page) navigateTo(page);
+    });
+  });
   
   // Filter chips for notifications
   document.querySelectorAll('.chip[data-filter]').forEach(chip => {
@@ -293,7 +319,7 @@ function setupEventListeners() {
   });
   
   // Remove device
-  document.getElementById('btnRemoveDevice').addEventListener('click', removeDevice);
+  document.getElementById('btnRemoveDevice')?.addEventListener('click', removeDevice);
   
   // Uninstall app from device
   document.getElementById('btnUninstallApp')?.addEventListener('click', uninstallApp);
@@ -308,6 +334,9 @@ function setupEventListeners() {
       radio.checked = true;
     });
   });
+  } catch (error) {
+    console.error('Error setting up event listeners:', error);
+  }
 }
 
 // API Functions
@@ -679,10 +708,160 @@ async function loadDashboard() {
     const statusDot = document.getElementById('statusDot');
     statusDot.className = `status-dot ${device.isOnline ? 'online' : 'offline'}`;
     
+    // Update sync status banner dynamically
+    updateSyncStatus(device);
+    
+    // Update permission health panel dynamically
+    updatePermissionHealth(device.permissions);
+    
+    // Update quick insights dynamically
+    updateQuickInsights();
+    
     // Load recent notifications
     loadRecentNotifications();
   } catch (error) {
     console.error('Failed to load dashboard:', error);
+  }
+}
+
+// Update sync status banner with real data
+function updateSyncStatus(device) {
+  const lastSyncEl = document.getElementById('lastSyncTime');
+  const syncIconEl = document.querySelector('.sync-icon');
+  
+  if (!lastSyncEl) return;
+  
+  // Use device lastSeen as a proxy for last sync
+  const lastSync = device.lastSeen ? new Date(device.lastSeen) : null;
+  
+  if (lastSync) {
+    const now = new Date();
+    const diffMs = now - lastSync;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+    
+    let timeText = '';
+    if (diffMins < 1) {
+      timeText = 'Just now';
+    } else if (diffMins < 60) {
+      timeText = `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+    } else if (diffHours < 24) {
+      timeText = `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    } else {
+      timeText = `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    }
+    
+    lastSyncEl.textContent = timeText;
+    
+    // Update icon based on recency
+    if (syncIconEl) {
+      syncIconEl.classList.remove('synced', 'syncing', 'error');
+      if (diffMins < 5) {
+        syncIconEl.classList.add('synced');
+        syncIconEl.className = 'fas fa-check-circle sync-icon synced';
+      } else if (diffMins < 30) {
+        syncIconEl.classList.add('synced');
+        syncIconEl.className = 'fas fa-check-circle sync-icon synced';
+      } else {
+        syncIconEl.className = 'fas fa-exclamation-circle sync-icon error';
+      }
+    }
+  } else {
+    lastSyncEl.textContent = 'Never synced';
+    if (syncIconEl) {
+      syncIconEl.className = 'fas fa-exclamation-circle sync-icon error';
+    }
+  }
+}
+
+// Update permission health panel with device permissions
+function updatePermissionHealth(permissions) {
+  if (!permissions) permissions = {};
+  
+  const permissionItems = document.querySelectorAll('.permission-item[data-permission]');
+  
+  permissionItems.forEach(item => {
+    const permName = item.dataset.permission;
+    const statusIcon = item.querySelector('.status-icon');
+    
+    // Map permission names to device permission keys
+    const permMap = {
+      'location': permissions.location,
+      'storage': permissions.storage || permissions.readExternalStorage,
+      'notifications': permissions.notificationListener || permissions.notifications,
+      'camera': permissions.camera,
+      'microphone': permissions.microphone || permissions.recordAudio,
+      'contacts': permissions.contacts || permissions.readContacts
+    };
+    
+    const isGranted = permMap[permName];
+    
+    item.classList.remove('granted', 'denied', 'pending');
+    
+    if (isGranted === true) {
+      item.classList.add('granted');
+      if (statusIcon) {
+        statusIcon.className = 'fas fa-check-circle status-icon';
+      }
+    } else if (isGranted === false) {
+      item.classList.add('denied');
+      if (statusIcon) {
+        statusIcon.className = 'fas fa-times-circle status-icon';
+      }
+    } else {
+      item.classList.add('pending');
+      if (statusIcon) {
+        statusIcon.className = 'fas fa-question-circle status-icon';
+      }
+    }
+  });
+}
+
+// Update quick insights with real data
+async function updateQuickInsights() {
+  if (!selectedDevice) return;
+  
+  const deviceId = getDeviceId(selectedDevice);
+  
+  try {
+    // Get today's date range
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+    
+    // Fetch photo count for today
+    try {
+      const photoData = await api(`/devices/${deviceId}/photos?limit=1`);
+      document.getElementById('insightPhotos').textContent = photoData.total || 0;
+    } catch (e) {
+      document.getElementById('insightPhotos').textContent = '0';
+    }
+    
+    // Fetch call count for today
+    try {
+      const callData = await api(`/devices/${deviceId}/call-logs?limit=1`);
+      document.getElementById('insightCalls').textContent = callData.total || 0;
+    } catch (e) {
+      document.getElementById('insightCalls').textContent = '0';
+    }
+    
+    // Fetch notification count
+    try {
+      const notifData = await api(`/devices/${deviceId}/notifications?limit=1`);
+      document.getElementById('insightNotifs').textContent = notifData.total || 0;
+    } catch (e) {
+      document.getElementById('insightNotifs').textContent = '0';
+    }
+    
+    // Fetch location count (places visited)
+    try {
+      const locData = await api(`/devices/${deviceId}/location`);
+      document.getElementById('insightPlaces').textContent = locData.history ? locData.history.length : 0;
+    } catch (e) {
+      document.getElementById('insightPlaces').textContent = '0';
+    }
+  } catch (error) {
+    console.error('Failed to load insights:', error);
   }
 }
 
@@ -865,6 +1044,43 @@ async function deleteCallLogs() {
     loadCallHistory();
   } catch (error) {
     alert('Failed to delete call logs: ' + error.message);
+  }
+}
+
+// Delete All Notifications
+async function deleteAllNotifications() {
+  if (!selectedDevice) {
+    showToast('Please select a device first', 'warning');
+    return;
+  }
+  
+  const deviceId = getDeviceId(selectedDevice);
+  console.log('Deleting notifications for device:', deviceId, selectedDevice);
+  
+  if (!confirm('Are you sure you want to delete ALL notifications? This action cannot be undone.')) {
+    return;
+  }
+  
+  try {
+    showToast('Deleting all notifications...', 'info');
+    const result = await api(`/devices/${deviceId}/notifications`, { method: 'DELETE' });
+    console.log('Delete result:', result);
+    showToast(`Deleted ${result.deletedCount || 'all'} notifications successfully`, 'success');
+    loadNotifications();
+  } catch (error) {
+    console.error('Delete notifications error:', error);
+    if (error.message.includes('404') || error.message.includes('Not found')) {
+      showToast('Device not found or access denied. Please refresh and try again.', 'error');
+    } else {
+      showToast('Failed to delete notifications: ' + error.message, 'error');
+    }
+  }
+}
+
+// Center map on device location
+function centerMapOnDevice() {
+  if (window.leafletMap && window.currentDeviceLocation) {
+    window.leafletMap.flyTo(window.currentDeviceLocation, 16, { duration: 1 });
   }
 }
 

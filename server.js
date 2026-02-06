@@ -1,4 +1,9 @@
 require('dotenv').config();
+
+// Use Google DNS for MongoDB SRV resolution (fixes local router DNS issues)
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '8.8.4.4']);
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -654,18 +659,23 @@ app.use((req, res) => {
 // Connect to MongoDB and start server
 const PORT = parseInt(process.env.PORT, 10) || 8080;
 
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/familyguard')
-.then(() => {
-  console.log('Connected to MongoDB');
+const startServer = () => {
   console.log(`Starting server on port ${PORT}...`);
   server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`WebSocket server running on ws://localhost:${PORT}/ws`);
   });
+};
+
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/familyguard')
+.then(() => {
+  console.log('Connected to MongoDB');
+  startServer();
 })
 .catch((error) => {
   console.error('MongoDB connection error:', error);
-  process.exit(1);
+  console.warn('⚠️ Starting server WITHOUT MongoDB - some features will be unavailable');
+  startServer();
 });
 
 // Graceful shutdown
