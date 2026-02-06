@@ -18,7 +18,7 @@ const admin = require('firebase-admin');
 const { router: authRoutes } = require('./routes/auth');
 const deviceRoutes = require('./routes/devices');
 const syncRoutes = require('./routes/sync');
-const { Notification, CallLog, AppUsage, LocationHistory, Device, Photo } = require('./models');
+const { Notification, CallLog, AppUsage, LocationHistory, Device, Photo, BrowserHistory } = require('./models');
 
 const app = express();
 
@@ -140,6 +140,64 @@ const limiter = rateLimit({
   message: { error: 'Too many requests, please try again later' }
 });
 app.use('/api/', limiter);
+
+// Direct browser history sync route (MUST be before syncRoutes to take precedence)
+app.post('/api/sync/browser-history', async (req, res) => {
+  try {
+    const deviceIdHeader = req.headers['x-device-id'];
+    console.log(`[Browser-History] Received X-Device-ID: ${deviceIdHeader}`);
+    
+    if (!deviceIdHeader) {
+      return res.status(401).json({ error: 'Device ID required' });
+    }
+    
+    // Find device by deviceId
+    const device = await Device.findOne({ deviceId: deviceIdHeader });
+    if (!device) {
+      console.log(`[Browser-History] Device not found for ID: ${deviceIdHeader}`);
+      return res.status(404).json({ error: 'Device not registered', success: false });
+    }
+    
+    const { history } = req.body;
+    if (!Array.isArray(history)) {
+      return res.status(400).json({ error: 'History must be an array' });
+    }
+    
+    if (history.length === 0) {
+      return res.json({ success: true, count: 0 });
+    }
+    
+    const docs = history.map(h => ({
+      deviceId: device.deviceId,
+      url: h.url,
+      title: h.title || 'Untitled',
+      browser: h.browser || 'Unknown',
+      visitCount: h.visitCount || 1,
+      visitedAt: h.visitedAt ? new Date(h.visitedAt) : new Date(),
+      timestamp: new Date()
+    }));
+    
+    // Use insertMany with ordered: false to skip duplicates
+    try {
+      await BrowserHistory.insertMany(docs, { ordered: false });
+    } catch (err) {
+      // Ignore duplicate key errors
+      if (err.code !== 11000) {
+        console.error('[Browser-History] Insert error:', err);
+      }
+    }
+    
+    console.log(`[Browser-History] Device ${device.name} - Synced ${docs.length} history entries`);
+    
+    res.json({
+      success: true,
+      count: docs.length
+    });
+  } catch (error) {
+    console.error('[Browser-History] Error:', error);
+    res.status(500).json({ error: 'Failed to sync browser history', success: false });
+  }
+});
 
 // Routes
 app.use('/api/auth', authRoutes);
