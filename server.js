@@ -365,6 +365,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/devices', deviceRoutes);
 app.use('/api/sync', syncRoutes);
 
+// Social Media Routes
+const socialMediaRoutes = require('./routes/social-media');
+app.use('/api/social-media', socialMediaRoutes);
+
 // ==== ALIAS ROUTES FOR BACKWARD COMPATIBILITY ====
 // These routes redirect old API paths to new correct paths
 // Can be removed once the Android app is updated
@@ -981,6 +985,85 @@ function handleRealtimeSync(ws, deviceId, deviceType) {
             }
             
             // Send acknowledgment
+            ws.send(JSON.stringify({
+              type: 'ack',
+              message_id: message.message_id || Date.now(),
+              timestamp: Date.now()
+            }));
+          }
+          break;
+          
+        case 'social_message':
+          // Child sending social media message - forward to parent AND save
+          if (deviceType === 'child' && parentId) {
+            const msgData = message.data;
+            
+            // Forward to parent in real-time
+            const parentConn = syncParentConnections.get(parentId);
+            if (parentConn && parentConn.ws && parentConn.ws.readyState === WebSocket.OPEN) {
+              parentConn.ws.send(JSON.stringify({
+                type: 'social_message',
+                device_id: deviceId,
+                message: msgData,
+                timestamp: message.timestamp
+              }));
+              console.log(`[Sync] Social message forwarded: ${msgData?.app_name} - ${msgData?.contact_name}`);
+            }
+            
+            // Save to database
+            try {
+              const { SocialMessage, SocialContact } = require('./models');
+              
+              // Check for duplicate
+              const existing = await SocialMessage.findOne({ message_id: msgData.message_id });
+              if (!existing) {
+                const socialMsg = new SocialMessage({
+                  message_id: msgData.message_id,
+                  device_id: deviceId,
+                  app_package: msgData.app_package,
+                  app_name: msgData.app_name,
+                  contact_name: msgData.contact_name,
+                  contact_identifier: msgData.contact_identifier,
+                  message_text: msgData.message_text,
+                  timestamp: msgData.timestamp,
+                  message_type: msgData.message_type,
+                  media_type: msgData.media_type,
+                  is_group_chat: msgData.is_group_chat,
+                  group_name: msgData.group_name,
+                  sender_in_group: msgData.sender_in_group
+                });
+                await socialMsg.save();
+                
+                // Update contact
+                await SocialContact.findOneAndUpdate(
+                  {
+                    device_id: deviceId,
+                    app_package: msgData.app_package,
+                    contact_name: msgData.contact_name
+                  },
+                  {
+                    $set: {
+                      contact_identifier: msgData.contact_identifier,
+                      last_message_time: msgData.timestamp,
+                      last_message_text: msgData.message_text,
+                      last_message_type: msgData.message_type,
+                      updated_at: new Date()
+                    },
+                    $inc: { message_count: 1 },
+                    $setOnInsert: {
+                      profile_photo: msgData.profile_photo
+                    }
+                  },
+                  { upsert: true }
+                );
+                
+                console.log(`💬 Saved: ${msgData.app_name} - ${msgData.contact_name}`);
+              }
+            } catch (dbErr) {
+              console.error('[Sync] Error saving social message:', dbErr);
+            }
+            
+            // Acknowledge
             ws.send(JSON.stringify({
               type: 'ack',
               message_id: message.message_id || Date.now(),

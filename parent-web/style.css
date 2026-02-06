@@ -5727,3 +5727,545 @@ body {
     gap: 0.5rem;
   }
 }
+
+/* ============================================
+   SOCIAL MEDIA MONITORING STYLES
+   ============================================ */
+
+/* Social Media Dashboard Layout */
+.social-media-dashboard {
+  display: grid;
+  grid-template-columns: 280px 320px 1fr;
+  height: calc(100vh - 180px);
+  gap: 0;
+  background: var(--surface);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+
+/* App Selector Panel (Left) */
+.app-selector-panel {
+  background: rgba(26, 26, 46, 0.98);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-selector-panel h3 {
+  padding: 20px;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-selector-panel h3 i {
+  color: var(--primary);
+}
+
+.app-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.social-app-card {
+  display: flex;
+  align-items: center;
+  padding: 14px;
+  border-radius: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: transparent;
+  border: 2px solid transparent;
+}
+
+.social-app-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.social-app-card.active {
+  background: rgba(102, 126, 234, 0.15);
+  border-color: var(--primary);
+}
+
+.app-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-right: 14px;
+  flex-shrink: 0;
+}
+
+.app-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-details h4 {
+  margin: 0 0 4px 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.app-details .app-stats {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.app-badge {
+  background: var(--gradient-primary);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 12px;
+  min-width: 24px;
+  text-align: center;
+}
+
+/* Contact List Panel (Middle) */
+.contact-list-panel {
+  background: rgba(26, 26, 46, 0.95);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.contact-list-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.contact-list-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.contact-count {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.contact-search {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+.contact-search i {
+  position: absolute;
+  left: 28px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-hint);
+}
+
+.contact-search input {
+  width: 100%;
+  padding: 10px 12px 10px 36px;
+  background: var(--surface-glass);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.contact-search input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.contact-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.social-contact-item {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.social-contact-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.social-contact-item.active {
+  background: rgba(102, 126, 234, 0.1);
+}
+
+.social-contact-item .contact-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  margin-right: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 600;
+  color: white;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.social-contact-item .contact-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.social-contact-item .contact-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.contact-name-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.contact-name-row h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contact-name-row .last-time {
+  font-size: 0.75rem;
+  color: var(--text-hint);
+  white-space: nowrap;
+  margin-left: 8px;
+}
+
+.last-message-row {
+  display: flex;
+  align-items: center;
+}
+
+.last-message-row .last-message {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contact-badge {
+  background: var(--gradient-success);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 10px;
+  flex-shrink: 0;
+}
+
+/* Chat View Panel (Right) */
+.chat-view-panel {
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(26, 26, 46, 0.95) 0%, rgba(20, 20, 38, 0.98) 100%);
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  background: rgba(26, 26, 46, 0.98);
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-contact-info {
+  display: flex;
+  align-items: center;
+}
+
+.chat-contact-info .contact-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  margin-right: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.chat-contact-info .contact-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chat-contact-info .avatar-letter {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+  border-radius: 50%;
+}
+
+.contact-details h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.contact-identifier {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.chat-actions .btn-icon {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.chat-actions .btn-icon:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--error);
+}
+
+/* Chat Messages Container */
+.chat-messages-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23667eea' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+.empty-chat-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-hint);
+}
+
+.empty-chat-state i {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-chat-state p {
+  font-size: 1rem;
+}
+
+/* Date Separator */
+.date-separator {
+  text-align: center;
+  margin: 20px 0;
+}
+
+.date-separator span {
+  background: rgba(102, 126, 234, 0.2);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  padding: 6px 16px;
+  border-radius: 20px;
+}
+
+/* Message Bubbles */
+.message-bubble-wrapper {
+  display: flex;
+  margin-bottom: 8px;
+}
+
+.message-bubble-wrapper.received {
+  justify-content: flex-start;
+}
+
+.message-bubble-wrapper.sent {
+  justify-content: flex-end;
+}
+
+.message-bubble {
+  max-width: 70%;
+  padding: 10px 14px;
+  border-radius: 18px;
+  position: relative;
+}
+
+.message-bubble-wrapper.received .message-bubble {
+  background: rgba(42, 42, 66, 0.9);
+  border-bottom-left-radius: 6px;
+}
+
+.message-bubble-wrapper.sent .message-bubble {
+  background: var(--gradient-primary);
+  border-bottom-right-radius: 6px;
+}
+
+.sender-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary-light);
+  margin-bottom: 4px;
+}
+
+.media-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.message-text {
+  font-size: 0.95rem;
+  line-height: 1.4;
+  word-wrap: break-word;
+  color: var(--text-primary);
+}
+
+.message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.message-time {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.message-meta i {
+  font-size: 0.7rem;
+  color: var(--success);
+}
+
+/* Social Stats Overview */
+.social-stats-overview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 20px;
+}
+
+/* Loading States */
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  color: var(--text-secondary);
+  gap: 10px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-hint);
+}
+
+.empty-state i {
+  font-size: 36px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+  display: block;
+}
+
+.empty-state small {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.85rem;
+}
+
+.empty-state.error {
+  color: var(--error);
+}
+
+/* Social Badge in Sidebar */
+.social-badge {
+  background: var(--gradient-success) !important;
+}
+
+/* Mobile Responsive for Social Media */
+@media (max-width: 1200px) {
+  .social-media-dashboard {
+    grid-template-columns: 250px 280px 1fr;
+  }
+}
+
+@media (max-width: 992px) {
+  .social-media-dashboard {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  
+  .app-selector-panel {
+    max-height: 200px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  
+  .contact-list-panel {
+    max-height: 300px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  
+  .chat-view-panel {
+    min-height: 400px;
+  }
+}
+
+@media (max-width: 768px) {
+  .social-stats-overview {
+    grid-template-columns: 1fr;
+  }
+  
+  .message-bubble {
+    max-width: 85%;
+  }
+}

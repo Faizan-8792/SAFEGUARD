@@ -241,6 +241,14 @@ function handleRealtimeMessage(data) {
       debugLog('[Sync] Real-time location:', data.location);
       handleInstantLocation(data.device_id, data.location);
       break;
+    
+    case 'social_message':
+      // INSTANT social media message from child device
+      debugLog('[Sync] Real-time social message:', data.message);
+      if (typeof handleRealtimeSocialMessage === 'function') {
+        handleRealtimeSocialMessage(data.message);
+      }
+      break;
       
     case 'device_online':
       debugLog('[Sync] Device online:', data.device_id);
@@ -965,6 +973,9 @@ function navigateTo(page) {
         break;
       case 'apps':
         loadAppUsage();
+        break;
+      case 'socialmedia':
+        loadSocialMedia();
         break;
       case 'webhistory':
         loadWebHistory();
@@ -5316,3 +5327,534 @@ function escapeHtml(text) {
   div.textContent = text;
   return div.innerHTML;
 }
+
+// ============================================
+// SOCIAL MEDIA MONITORING FUNCTIONS
+// ============================================
+
+// Social Media state
+let socialApps = [];
+let socialContacts = [];
+let socialMessages = [];
+let selectedSocialApp = null;
+let selectedSocialContact = null;
+
+// App metadata for icons and colors
+const SOCIAL_APP_METADATA = {
+  'com.whatsapp': { name: 'WhatsApp', icon: 'fab fa-whatsapp', color: '#25D366', emoji: '💚' },
+  'com.whatsapp.w4b': { name: 'WhatsApp Business', icon: 'fab fa-whatsapp', color: '#25D366', emoji: '💚' },
+  'com.instagram.android': { name: 'Instagram', icon: 'fab fa-instagram', color: '#E1306C', emoji: '📷' },
+  'com.facebook.orca': { name: 'Messenger', icon: 'fab fa-facebook-messenger', color: '#0084FF', emoji: '💙' },
+  'com.facebook.mlite': { name: 'Messenger Lite', icon: 'fab fa-facebook-messenger', color: '#0084FF', emoji: '💙' },
+  'org.telegram.messenger': { name: 'Telegram', icon: 'fab fa-telegram', color: '#0088CC', emoji: '✈️' },
+  'org.telegram.messenger.web': { name: 'Telegram', icon: 'fab fa-telegram', color: '#0088CC', emoji: '✈️' },
+  'com.snapchat.android': { name: 'Snapchat', icon: 'fab fa-snapchat', color: '#FFFC00', emoji: '👻' },
+  'com.twitter.android': { name: 'Twitter/X', icon: 'fab fa-twitter', color: '#1DA1F2', emoji: '🐦' },
+  'com.zhiliaoapp.musically': { name: 'TikTok', icon: 'fab fa-tiktok', color: '#FF0050', emoji: '🎵' }
+};
+
+// Load Social Media page
+async function loadSocialMedia() {
+  if (!selectedDevice) {
+    showToast('Please select a device first', 'warning');
+    return;
+  }
+  
+  const deviceId = getDeviceId(selectedDevice);
+  
+  // Setup event listeners once
+  setupSocialMediaListeners();
+  
+  // Load apps
+  await loadSocialApps(deviceId);
+  
+  // Load stats
+  await loadSocialStats(deviceId);
+}
+
+// Setup event listeners for social media page
+function setupSocialMediaListeners() {
+  // Refresh button
+  document.getElementById('btnRefreshSocial')?.removeEventListener('click', loadSocialMedia);
+  document.getElementById('btnRefreshSocial')?.addEventListener('click', loadSocialMedia);
+  
+  // Contact search
+  const searchInput = document.getElementById('contactSearch');
+  if (searchInput) {
+    searchInput.removeEventListener('input', handleContactSearch);
+    searchInput.addEventListener('input', handleContactSearch);
+  }
+  
+  // Delete chat button
+  document.getElementById('btnDeleteChat')?.addEventListener('click', deleteSocialChat);
+}
+
+// Load social media apps for device
+async function loadSocialApps(deviceId) {
+  const appList = document.getElementById('socialAppList');
+  if (!appList) return;
+  
+  appList.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> Loading apps...</p>';
+  
+  try {
+    const response = await fetch(`${API_BASE}/social-media/${deviceId}/apps`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    if (!response.ok) throw new Error('Failed to fetch apps');
+    
+    const data = await response.json();
+    socialApps = data.apps || [];
+    
+    if (socialApps.length === 0) {
+      appList.innerHTML = `
+        <div class="empty-state">
+          <i class="fas fa-comment-slash"></i>
+          <p>No social media activity yet</p>
+          <small>Messages will appear here when the child uses social media apps</small>
+        </div>
+      `;
+      return;
+    }
+    
+    renderSocialApps();
+    
+  } catch (error) {
+    console.error('Error loading social apps:', error);
+    appList.innerHTML = `
+      <div class="empty-state error">
+        <i class="fas fa-exclamation-circle"></i>
+        <p>Failed to load apps</p>
+      </div>
+    `;
+  }
+}
+
+// Render social apps list
+function renderSocialApps() {
+  const appList = document.getElementById('socialAppList');
+  if (!appList) return;
+  
+  appList.innerHTML = socialApps.map(app => {
+    const meta = SOCIAL_APP_METADATA[app.app_package] || { 
+      name: app.app_name, 
+      icon: 'fas fa-comment', 
+      color: '#667eea',
+      emoji: '💬'
+    };
+    
+    return `
+      <div class="social-app-card ${selectedSocialApp === app.app_package ? 'active' : ''}" 
+           data-package="${app.app_package}"
+           onclick="selectSocialApp('${app.app_package}')">
+        <div class="app-icon-wrapper" style="background-color: ${meta.color}20; color: ${meta.color}">
+          <i class="${meta.icon}"></i>
+        </div>
+        <div class="app-details">
+          <h4>${meta.name}</h4>
+          <span class="app-stats">${app.contact_count} chats • ${app.message_count} msgs</span>
+        </div>
+        ${app.message_count > 0 ? `<span class="app-badge">${app.message_count}</span>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+// Select a social app
+async function selectSocialApp(appPackage) {
+  selectedSocialApp = appPackage;
+  selectedSocialContact = null;
+  
+  // Update UI
+  renderSocialApps();
+  
+  // Clear messages view
+  const chatMessages = document.getElementById('chatMessages');
+  if (chatMessages) {
+    chatMessages.innerHTML = `
+      <div class="empty-chat-state">
+        <i class="fas fa-comments"></i>
+        <p>Select a contact to view messages</p>
+      </div>
+    `;
+  }
+  
+  // Hide chat header
+  const chatHeader = document.getElementById('chatHeader');
+  if (chatHeader) chatHeader.style.display = 'none';
+  
+  // Update selected app name
+  const meta = SOCIAL_APP_METADATA[appPackage] || { name: appPackage };
+  document.getElementById('selectedAppName').textContent = meta.name;
+  
+  // Load contacts
+  const deviceId = getDeviceId(selectedDevice);
+  await loadSocialContacts(deviceId, appPackage);
+}
+
+// Load contacts for selected app
+async function loadSocialContacts(deviceId, appPackage) {
+  const contactList = document.getElementById('socialContactList');
+  if (!contactList) return;
+  
+  contactList.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> Loading contacts...</p>';
+  
+  try {
+    const response = await fetch(`${API_BASE}/social-media/${deviceId}/${appPackage}/contacts`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    if (!response.ok) throw new Error('Failed to fetch contacts');
+    
+    const data = await response.json();
+    socialContacts = data.contacts || [];
+    
+    // Update contact count
+    document.getElementById('contactCount').textContent = `${socialContacts.length} contacts`;
+    
+    if (socialContacts.length === 0) {
+      contactList.innerHTML = '<p class="empty-state">No contacts found</p>';
+      return;
+    }
+    
+    renderSocialContacts();
+    
+  } catch (error) {
+    console.error('Error loading contacts:', error);
+    contactList.innerHTML = '<p class="empty-state error">Failed to load contacts</p>';
+  }
+}
+
+// Render contacts list
+function renderSocialContacts() {
+  const contactList = document.getElementById('socialContactList');
+  if (!contactList) return;
+  
+  contactList.innerHTML = socialContacts.map(contact => {
+    const avatarBg = getContactColor(contact.contact_name);
+    const initial = contact.contact_name?.charAt(0).toUpperCase() || '?';
+    const lastTime = formatSocialTime(contact.last_message_time);
+    const lastMsg = contact.last_message_text?.substring(0, 40) || '';
+    
+    return `
+      <div class="social-contact-item ${selectedSocialContact === contact.contact_name ? 'active' : ''}"
+           data-contact="${escapeHtml(contact.contact_name)}"
+           onclick="selectSocialContact('${escapeHtml(contact.contact_name)}')">
+        <div class="contact-avatar" style="background: ${avatarBg}">
+          ${contact.profile_photo 
+            ? `<img src="data:image/jpeg;base64,${contact.profile_photo}" alt="${escapeHtml(contact.contact_name)}">`
+            : `<span>${initial}</span>`
+          }
+        </div>
+        <div class="contact-info">
+          <div class="contact-name-row">
+            <h4>${escapeHtml(contact.contact_name)}</h4>
+            <span class="last-time">${lastTime}</span>
+          </div>
+          <div class="last-message-row">
+            ${contact.last_message_type === 'SENT' ? '<i class="fas fa-check" style="color: #25D366; margin-right: 4px;"></i>' : ''}
+            <span class="last-message">${escapeHtml(lastMsg)}${lastMsg.length >= 40 ? '...' : ''}</span>
+          </div>
+        </div>
+        ${contact.message_count > 0 ? `<span class="contact-badge">${contact.message_count}</span>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+// Select a contact
+async function selectSocialContact(contactName) {
+  selectedSocialContact = contactName;
+  
+  // Update UI
+  renderSocialContacts();
+  
+  // Show chat header
+  const chatHeader = document.getElementById('chatHeader');
+  if (chatHeader) chatHeader.style.display = 'flex';
+  
+  // Update contact info in header
+  const contact = socialContacts.find(c => c.contact_name === contactName);
+  if (contact) {
+    const avatarEl = document.getElementById('chatContactAvatar');
+    const initial = contact.contact_name?.charAt(0).toUpperCase() || '?';
+    const avatarBg = getContactColor(contact.contact_name);
+    
+    if (contact.profile_photo) {
+      avatarEl.innerHTML = `<img src="data:image/jpeg;base64,${contact.profile_photo}" alt="${escapeHtml(contact.contact_name)}">`;
+    } else {
+      avatarEl.innerHTML = `<span class="avatar-letter" style="background: ${avatarBg}">${initial}</span>`;
+    }
+    
+    document.getElementById('chatContactName').textContent = contact.contact_name;
+    document.getElementById('chatContactId').textContent = contact.contact_identifier || '';
+  }
+  
+  // Load messages
+  const deviceId = getDeviceId(selectedDevice);
+  await loadSocialMessages(deviceId, selectedSocialApp, contactName);
+}
+
+// Load messages for contact
+async function loadSocialMessages(deviceId, appPackage, contactName) {
+  const chatMessages = document.getElementById('chatMessages');
+  if (!chatMessages) return;
+  
+  chatMessages.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> Loading messages...</p>';
+  
+  try {
+    const response = await fetch(
+      `${API_BASE}/social-media/${deviceId}/${appPackage}/contacts/${encodeURIComponent(contactName)}/messages`,
+      { headers: { 'Authorization': `Bearer ${authToken}` } }
+    );
+    
+    if (!response.ok) throw new Error('Failed to fetch messages');
+    
+    const data = await response.json();
+    socialMessages = data.messages || [];
+    
+    if (socialMessages.length === 0) {
+      chatMessages.innerHTML = '<div class="empty-chat-state"><i class="fas fa-comment-slash"></i><p>No messages yet</p></div>';
+      return;
+    }
+    
+    renderSocialMessages();
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+  } catch (error) {
+    console.error('Error loading messages:', error);
+    chatMessages.innerHTML = '<div class="empty-chat-state error"><i class="fas fa-exclamation-circle"></i><p>Failed to load messages</p></div>';
+  }
+}
+
+// Render messages
+function renderSocialMessages() {
+  const chatMessages = document.getElementById('chatMessages');
+  if (!chatMessages) return;
+  
+  let currentDate = null;
+  let html = '';
+  
+  socialMessages.forEach(msg => {
+    // Date separator
+    const msgDate = new Date(msg.timestamp).toDateString();
+    if (msgDate !== currentDate) {
+      currentDate = msgDate;
+      html += `<div class="date-separator"><span>${formatDateSeparator(msg.timestamp)}</span></div>`;
+    }
+    
+    const isSent = msg.message_type === 'SENT';
+    const time = formatMessageTime(msg.timestamp);
+    
+    html += `
+      <div class="message-bubble-wrapper ${isSent ? 'sent' : 'received'}">
+        <div class="message-bubble">
+          ${msg.is_group_chat && msg.sender_in_group && !isSent 
+            ? `<div class="sender-name">${escapeHtml(msg.sender_in_group)}</div>` 
+            : ''
+          }
+          ${msg.media_type 
+            ? `<div class="media-indicator"><i class="${getMediaIcon(msg.media_type)}"></i> ${msg.media_type}</div>` 
+            : ''
+          }
+          <div class="message-text">${escapeHtml(msg.message_text)}</div>
+          <div class="message-meta">
+            <span class="message-time">${time}</span>
+            ${isSent ? '<i class="fas fa-check"></i>' : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  });
+  
+  chatMessages.innerHTML = html;
+}
+
+// Load overall social stats
+async function loadSocialStats(deviceId) {
+  try {
+    const response = await fetch(`${API_BASE}/social-media/${deviceId}/stats`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    if (!response.ok) return;
+    
+    const data = await response.json();
+    const stats = data.stats || {};
+    
+    document.getElementById('totalSocialMessages').textContent = stats.total_messages || 0;
+    document.getElementById('totalSocialApps').textContent = stats.app_count || 0;
+    document.getElementById('totalSocialContacts').textContent = stats.contact_count || 0;
+    
+  } catch (error) {
+    console.error('Error loading social stats:', error);
+  }
+}
+
+// Handle contact search
+function handleContactSearch(e) {
+  const query = e.target.value.toLowerCase().trim();
+  const contactItems = document.querySelectorAll('.social-contact-item');
+  
+  contactItems.forEach(item => {
+    const contactName = item.dataset.contact?.toLowerCase() || '';
+    const visible = !query || contactName.includes(query);
+    item.style.display = visible ? 'flex' : 'none';
+  });
+}
+
+// Delete current chat
+async function deleteSocialChat() {
+  if (!selectedSocialApp || !selectedSocialContact) return;
+  
+  if (!confirm(`Delete all messages with ${selectedSocialContact}?`)) return;
+  
+  const deviceId = getDeviceId(selectedDevice);
+  
+  try {
+    const response = await fetch(
+      `${API_BASE}/social-media/${deviceId}/${selectedSocialApp}/contacts/${encodeURIComponent(selectedSocialContact)}`,
+      {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      }
+    );
+    
+    if (!response.ok) throw new Error('Delete failed');
+    
+    showToast('Chat deleted', 'success');
+    
+    // Reset selection
+    selectedSocialContact = null;
+    
+    // Reload contacts
+    await loadSocialContacts(deviceId, selectedSocialApp);
+    
+    // Clear chat view
+    const chatMessages = document.getElementById('chatMessages');
+    if (chatMessages) {
+      chatMessages.innerHTML = `
+        <div class="empty-chat-state">
+          <i class="fas fa-comments"></i>
+          <p>Select a contact to view messages</p>
+        </div>
+      `;
+    }
+    
+    // Hide header
+    const chatHeader = document.getElementById('chatHeader');
+    if (chatHeader) chatHeader.style.display = 'none';
+    
+  } catch (error) {
+    console.error('Error deleting chat:', error);
+    showToast('Failed to delete chat', 'error');
+  }
+}
+
+// Helper: Get consistent color for contact avatar
+function getContactColor(name) {
+  const colors = [
+    '#25D366', '#128C7E', '#075E54', // WhatsApp greens
+    '#0088CC', '#0077B5', '#1DA1F2', // Blues
+    '#E1306C', '#C13584', '#833AB4', // Instagram pinks/purples
+    '#FF6B6B', '#FF9F43', '#FECA57', // Warm colors
+    '#1DD1A1', '#10AC84', '#341f97'  // Others
+  ];
+  
+  if (!name) return colors[0];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
+// Helper: Format time for social messages
+function formatSocialTime(timestamp) {
+  if (!timestamp) return '';
+  
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) {
+    return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  } else if (diffDays === 1) {
+    return 'Yesterday';
+  } else if (diffDays < 7) {
+    return date.toLocaleDateString('en-IN', { weekday: 'short' });
+  } else {
+    return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  }
+}
+
+// Helper: Format message time
+function formatMessageTime(timestamp) {
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+// Helper: Format date separator
+function formatDateSeparator(timestamp) {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  
+  return date.toLocaleDateString('en-IN', { 
+    weekday: 'long', 
+    day: 'numeric', 
+    month: 'long',
+    year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+  });
+}
+
+// Helper: Get media type icon
+function getMediaIcon(mediaType) {
+  const icons = {
+    'PHOTO': 'fas fa-image',
+    'VIDEO': 'fas fa-video',
+    'VOICE': 'fas fa-microphone',
+    'STICKER': 'fas fa-sticky-note',
+    'FILE': 'fas fa-file',
+    'LOCATION': 'fas fa-map-marker-alt'
+  };
+  return icons[mediaType] || 'fas fa-paperclip';
+}
+
+// Handle real-time social message from WebSocket
+function handleRealtimeSocialMessage(message) {
+  // If currently viewing this app/contact, add to messages
+  if (selectedSocialApp === message.app_package && 
+      selectedSocialContact === message.contact_name) {
+    socialMessages.push(message);
+    renderSocialMessages();
+    
+    // Scroll to bottom
+    const chatMessages = document.getElementById('chatMessages');
+    if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+  
+  // Update badge
+  const badge = document.getElementById('socialBadge');
+  if (badge) {
+    const count = parseInt(badge.textContent) || 0;
+    badge.textContent = count + 1;
+    badge.style.display = 'flex';
+  }
+  
+  // Refresh apps and contacts if on social media page
+  if (!document.getElementById('socialmediaPage').classList.contains('hidden')) {
+    const deviceId = getDeviceId(selectedDevice);
+    loadSocialApps(deviceId);
+    if (selectedSocialApp) {
+      loadSocialContacts(deviceId, selectedSocialApp);
+    }
+  }
+}
+

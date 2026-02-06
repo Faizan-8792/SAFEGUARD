@@ -77,6 +77,11 @@
                     <i class="fas fa-th-large"></i>
                     <span>App Usage</span>
                 </li>
+                <li class="nav-item" data-page="socialmedia">
+                    <i class="fas fa-comments"></i>
+                    <span>Social Media</span>
+                    <span class="badge social-badge" id="socialBadge" style="display: none;">0</span>
+                </li>
                 <li class="nav-item" data-page="webhistory">
                     <i class="fas fa-globe"></i>
                     <span>Web History</span>
@@ -809,6 +814,84 @@
                     <p class="empty-state">No browsing history found</p>
                 </div>
                 <button class="btn-load-more hidden" id="loadMoreHistory">Load More</button>
+            </div>
+
+            <!-- Social Media Page -->
+            <div class="page hidden" id="socialmediaPage">
+                <div class="page-header">
+                    <h1>Social Media Monitoring</h1>
+                    <button class="btn-primary" id="btnRefreshSocial">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+                
+                <!-- Social Media Dashboard Layout -->
+                <div class="social-media-dashboard">
+                    <!-- Left Panel: App Selection -->
+                    <div class="app-selector-panel">
+                        <h3><i class="fas fa-mobile-alt"></i> Apps</h3>
+                        <div class="app-list" id="socialAppList">
+                            <p class="empty-state">Loading apps...</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Middle Panel: Contact List -->
+                    <div class="contact-list-panel">
+                        <div class="contact-list-header">
+                            <h3 id="selectedAppName">Select an App</h3>
+                            <span class="contact-count" id="contactCount"></span>
+                        </div>
+                        <div class="contact-search">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="contactSearch" placeholder="Search contacts...">
+                        </div>
+                        <div class="contact-list" id="socialContactList">
+                            <p class="empty-state">Select an app to view chats</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Right Panel: Chat View -->
+                    <div class="chat-view-panel">
+                        <div class="chat-header" id="chatHeader" style="display: none;">
+                            <div class="chat-contact-info">
+                                <div class="contact-avatar" id="chatContactAvatar">
+                                    <span class="avatar-letter">?</span>
+                                </div>
+                                <div class="contact-details">
+                                    <h3 id="chatContactName">Contact</h3>
+                                    <span class="contact-identifier" id="chatContactId">@username</span>
+                                </div>
+                            </div>
+                            <div class="chat-actions">
+                                <button class="btn-icon" id="btnDeleteChat" title="Delete Chat">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="chat-messages-container" id="chatMessages">
+                            <div class="empty-chat-state">
+                                <i class="fas fa-comments"></i>
+                                <p>Select a contact to view messages</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Social Media Stats (shown when no app selected) -->
+                <div class="social-stats-overview" id="socialStatsOverview">
+                    <div class="stat-card">
+                        <span class="stat-value" id="totalSocialMessages">0</span>
+                        <span class="stat-label">Total Messages</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value" id="totalSocialApps">0</span>
+                        <span class="stat-label">Active Apps</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value" id="totalSocialContacts">0</span>
+                        <span class="stat-label">Contacts</span>
+                    </div>
+                </div>
             </div>
 
             <!-- Keystrokes Page -->

