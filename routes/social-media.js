@@ -22,6 +22,173 @@ const APP_METADATA = {
 };
 
 /**
+ * POST /api/social-media/cleanup-duplicates
+ * Remove duplicate messages from database
+ * NOTE: This route MUST come before /:deviceId routes
+ */
+router.post('/cleanup-duplicates', async (req, res) => {
+  try {
+    const { deviceId } = req.body;
+    
+    // Find all messages grouped by content
+    const pipeline = [
+      ...(deviceId ? [{ $match: { device_id: deviceId } }] : []),
+      {
+        $group: {
+          _id: {
+            device_id: '$device_id',
+            app_package: '$app_package',
+            contact_name: '$contact_name',
+            message_text: '$message_text',
+            // Round timestamp to nearest second for grouping
+            timestamp_second: { $subtract: ['$timestamp', { $mod: ['$timestamp', 1000] }] }
+          },
+          count: { $sum: 1 },
+          docs: { $push: '$_id' },
+          firstDoc: { $first: '$_id' }
+        }
+      },
+      { $match: { count: { $gt: 1 } } }
+    ];
+    
+    const duplicates = await SocialMessage.aggregate(pipeline);
+    
+    let totalDeleted = 0;
+    
+    for (const dup of duplicates) {
+      // Keep the first document, delete the rest
+      const idsToDelete = dup.docs.filter(id => !id.equals(dup.firstDoc));
+      if (idsToDelete.length > 0) {
+        const result = await SocialMessage.deleteMany({ _id: { $in: idsToDelete } });
+        totalDeleted += result.deletedCount;
+      }
+    }
+    
+    console.log(`🧹 Cleaned up ${totalDeleted} duplicate messages`);
+    
+    res.json({
+      success: true,
+      duplicateGroupsFound: duplicates.length,
+      messagesDeleted: totalDeleted
+    });
+    
+  } catch (error) {
+    console.error('Error cleaning duplicates:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/social-media/message
+ * Upload a SENT message from accessibility service
+ * NOTE: Must be before /:deviceId routes
+ */
+router.post('/message', async (req, res) => {
+  try {
+    const {
+      deviceId,
+      appPackage,
+      appName,
+      contactName,
+      contactIdentifier,
+      messageText,
+      timestamp,
+      messageType,
+      isGroupChat,
+      groupName,
+      senderInGroup,
+      mediaType
+    } = req.body;
+    
+    if (!deviceId || !appPackage || !messageText) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: deviceId, appPackage, messageText'
+      });
+    }
+    
+    const msgTimestamp = timestamp || Date.now();
+    const msgContact = contactName || 'Unknown';
+    
+    // Check for duplicate (same content within 2 seconds)
+    const timestampWindow = 2000;
+    const existing = await SocialMessage.findOne({
+      device_id: deviceId,
+      app_package: appPackage,
+      contact_name: msgContact,
+      message_text: messageText,
+      timestamp: { $gte: msgTimestamp - timestampWindow, $lte: msgTimestamp + timestampWindow }
+    });
+    
+    if (existing) {
+      console.log(`⏭️ Duplicate SENT message skipped: ${messageText.substring(0, 30)}...`);
+      return res.json({ success: true, messageId: existing.message_id, duplicate: true });
+    }
+    
+    const APP_META = {
+      'com.whatsapp': { name: 'WhatsApp' },
+      'com.whatsapp.w4b': { name: 'WhatsApp Business' },
+      'com.instagram.android': { name: 'Instagram' },
+      'com.facebook.orca': { name: 'Messenger' },
+      'com.facebook.mlite': { name: 'Messenger Lite' },
+      'org.telegram.messenger': { name: 'Telegram' },
+      'com.snapchat.android': { name: 'Snapchat' },
+      'com.twitter.android': { name: 'Twitter/X' },
+      'com.zhiliaoapp.musically': { name: 'TikTok' }
+    };
+    
+    // Create the message
+    const message = new SocialMessage({
+      message_id: `sent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      device_id: deviceId,
+      app_package: appPackage,
+      app_name: appName || APP_META[appPackage]?.name || 'Unknown',
+      contact_name: msgContact,
+      contact_identifier: contactIdentifier || msgContact,
+      message_text: messageText,
+      timestamp: msgTimestamp,
+      message_type: messageType || 'SENT',
+      is_group_chat: isGroupChat || false,
+      group_name: groupName,
+      sender_in_group: senderInGroup,
+      media_type: mediaType
+    });
+    
+    await message.save();
+    
+    // Update or create contact
+    await SocialContact.findOneAndUpdate(
+      {
+        device_id: deviceId,
+        app_package: appPackage,
+        contact_name: msgContact
+      },
+      {
+        $set: {
+          contact_identifier: contactIdentifier || msgContact,
+          last_message_text: messageText,
+          last_message_time: msgTimestamp,
+          last_message_type: messageType || 'SENT'
+        },
+        $inc: { message_count: 1 }
+      },
+      { upsert: true, new: true }
+    );
+    
+    console.log(`📤 SENT message saved: ${appPackage} -> ${msgContact}: "${messageText.substring(0, 30)}..."`);
+    
+    res.json({
+      success: true,
+      messageId: message.message_id
+    });
+    
+  } catch (error) {
+    console.error('Error saving SENT message:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/social-media/:deviceId/apps
  * Get all social media apps with message stats
  */
@@ -388,159 +555,6 @@ router.get('/:deviceId/recent', async (req, res) => {
     
   } catch (error) {
     console.error('Error fetching recent messages:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * POST /api/social-media/cleanup-duplicates
- * Remove duplicate messages from database
- */
-router.post('/cleanup-duplicates', async (req, res) => {
-  try {
-    const { deviceId } = req.body;
-    
-    // Find all messages grouped by content
-    const pipeline = [
-      ...(deviceId ? [{ $match: { device_id: deviceId } }] : []),
-      {
-        $group: {
-          _id: {
-            device_id: '$device_id',
-            app_package: '$app_package',
-            contact_name: '$contact_name',
-            message_text: '$message_text',
-            // Round timestamp to nearest second for grouping
-            timestamp_second: { $subtract: ['$timestamp', { $mod: ['$timestamp', 1000] }] }
-          },
-          count: { $sum: 1 },
-          docs: { $push: '$_id' },
-          firstDoc: { $first: '$_id' }
-        }
-      },
-      { $match: { count: { $gt: 1 } } }
-    ];
-    
-    const duplicates = await SocialMessage.aggregate(pipeline);
-    
-    let totalDeleted = 0;
-    
-    for (const dup of duplicates) {
-      // Keep the first document, delete the rest
-      const idsToDelete = dup.docs.filter(id => !id.equals(dup.firstDoc));
-      if (idsToDelete.length > 0) {
-        const result = await SocialMessage.deleteMany({ _id: { $in: idsToDelete } });
-        totalDeleted += result.deletedCount;
-      }
-    }
-    
-    console.log(`🧹 Cleaned up ${totalDeleted} duplicate messages`);
-    
-    res.json({
-      success: true,
-      duplicateGroupsFound: duplicates.length,
-      messagesDeleted: totalDeleted
-    });
-    
-  } catch (error) {
-    console.error('Error cleaning duplicates:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * POST /api/social-media/message
- * Upload a SENT message from accessibility service
- */
-router.post('/message', async (req, res) => {
-  try {
-    const {
-      deviceId,
-      appPackage,
-      appName,
-      contactName,
-      contactIdentifier,
-      messageText,
-      timestamp,
-      messageType,
-      isGroupChat,
-      groupName,
-      senderInGroup,
-      mediaType
-    } = req.body;
-    
-    if (!deviceId || !appPackage || !messageText) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: deviceId, appPackage, messageText'
-      });
-    }
-    
-    const msgTimestamp = timestamp || Date.now();
-    const msgContact = contactName || 'Unknown';
-    
-    // Check for duplicate (same content within 2 seconds)
-    const timestampWindow = 2000;
-    const existing = await SocialMessage.findOne({
-      device_id: deviceId,
-      app_package: appPackage,
-      contact_name: msgContact,
-      message_text: messageText,
-      timestamp: { $gte: msgTimestamp - timestampWindow, $lte: msgTimestamp + timestampWindow }
-    });
-    
-    if (existing) {
-      console.log(`⏭️ Duplicate SENT message skipped: ${messageText.substring(0, 30)}...`);
-      return res.json({ success: true, messageId: existing.message_id, duplicate: true });
-    }
-    
-    // Create the message
-    const message = new SocialMessage({
-      message_id: `sent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      device_id: deviceId,
-      app_package: appPackage,
-      app_name: appName || APP_METADATA[appPackage]?.name || 'Unknown',
-      contact_name: msgContact,
-      contact_identifier: contactIdentifier || msgContact,
-      message_text: messageText,
-      timestamp: msgTimestamp,
-      message_type: messageType || 'SENT',
-      is_group_chat: isGroupChat || false,
-      group_name: groupName,
-      sender_in_group: senderInGroup,
-      media_type: mediaType
-    });
-    
-    await message.save();
-    
-    // Update or create contact
-    await SocialContact.findOneAndUpdate(
-      {
-        device_id: deviceId,
-        app_package: appPackage,
-        contact_name: msgContact
-      },
-      {
-        $set: {
-          contact_identifier: contactIdentifier || msgContact,
-          last_message_text: messageText,
-          last_message_time: msgTimestamp,
-          last_message_type: messageType || 'SENT'
-        },
-        $inc: { message_count: 1 }
-      },
-      { upsert: true, new: true }
-    );
-    
-    console.log(`📤 SENT message saved: ${appPackage} -> ${msgContact}: "${messageText.substring(0, 30)}..."`);
-    
-    res.json({
-      success: true,
-      messageId: message.message_id
-    });
-    
-  } catch (error) {
-    console.error('Error saving SENT message:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
