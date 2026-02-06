@@ -48,13 +48,7 @@ router.get('/:deviceId/apps', async (req, res) => {
           message_count: 1,
           last_message_time: 1,
           last_message_text: 1,
-          contact_count: { $size: '$contacts' },
-          metadata: {
-            $ifNull: [
-              { $arrayElemAt: [{ $objectToArray: APP_METADATA }, 0] },
-              { icon: '💬', color: '#667eea' }
-            ]
-          }
+          contact_count: { $size: '$contacts' }
         }
       },
       { $sort: { last_message_time: -1 } }
