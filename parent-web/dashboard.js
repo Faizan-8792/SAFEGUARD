@@ -314,17 +314,74 @@ function showAccessibilityWarning(deviceId) {
   
   const warning = document.createElement('div');
   warning.id = 'accessibility-warning';
-  warning.className = 'fixed top-0 left-0 right-0 bg-red-600 text-white p-4 z-50 flex items-center justify-between';
+  warning.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+    color: white;
+    padding: 16px 20px;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 4px 20px rgba(220, 38, 38, 0.4);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    animation: slideDown 0.3s ease-out;
+  `;
+  
   warning.innerHTML = `
-    <div class="flex items-center">
-      <span class="text-2xl mr-3">⚠️</span>
-      <div>
-        <div class="font-bold">Accessibility Service Disabled</div>
-        <div class="text-sm">Keystroke logging and app monitoring are not working. The child may have disabled the service.</div>
+    <style>
+      @keyframes slideDown {
+        from { transform: translateY(-100%); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+      #accessibility-warning .warning-content {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      #accessibility-warning .warning-icon {
+        font-size: 28px;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+      }
+      #accessibility-warning .warning-text h4 {
+        margin: 0 0 4px 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      #accessibility-warning .warning-text p {
+        margin: 0;
+        font-size: 13px;
+        opacity: 0.9;
+      }
+      #accessibility-warning .close-btn {
+        background: rgba(255,255,255,0.2);
+        border: none;
+        color: white;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s;
+      }
+      #accessibility-warning .close-btn:hover {
+        background: rgba(255,255,255,0.3);
+      }
+    </style>
+    <div class="warning-content">
+      <span class="warning-icon">⚠️</span>
+      <div class="warning-text">
+        <h4>Accessibility Service Disabled</h4>
+        <p>Keystroke logging and app monitoring are not working. The child may have disabled the service.</p>
       </div>
     </div>
-    <button onclick="this.parentElement.remove()" class="text-white hover:text-gray-200">
-      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <button class="close-btn" onclick="this.parentElement.remove()">
+      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
       </svg>
     </button>
