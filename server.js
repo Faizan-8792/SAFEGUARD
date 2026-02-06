@@ -346,6 +346,40 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Device heartbeat endpoint - updates device online status
+// Called by PersistentService every 2 minutes as WebSocket fallback
+app.post('/api/devices/:deviceId/heartbeat', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const { battery, timestamp } = req.body;
+    
+    const device = await Device.findOne({ deviceId });
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    // Update device status
+    device.isOnline = true;
+    device.lastSeen = new Date();
+    if (battery !== undefined && battery > 0) {
+      device.battery = battery;
+    }
+    await device.save();
+    
+    console.log(`[Heartbeat] Device ${deviceId} is online (battery: ${battery}%)`);
+    
+    res.json({ 
+      success: true, 
+      deviceId,
+      isOnline: true,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('[Heartbeat] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/', (req, res) => {
   res.json({
     name: 'FamilyGuard Pro API',
