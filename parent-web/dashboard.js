@@ -218,9 +218,9 @@ function setupEventListeners() {
   // Location
   document.getElementById('btnRefreshLocation')?.addEventListener('click', loadLocation);
   document.getElementById('btnLocationHistory')?.addEventListener('click', () => showToast('Location history coming soon', 'info'));
-  document.getElementById('btnZoomIn')?.addEventListener('click', () => { if (window.leafletMap) window.leafletMap.zoomIn(); });
-  document.getElementById('btnZoomOut')?.addEventListener('click', () => { if (window.leafletMap) window.leafletMap.zoomOut(); });
-  document.getElementById('btnCenterMap')?.addEventListener('click', centerMapOnDevice);
+  document.getElementById('btnZoomIn')?.addEventListener('click', mapZoomIn);
+  document.getElementById('btnZoomOut')?.addEventListener('click', mapZoomOut);
+  document.getElementById('btnCenterMap')?.addEventListener('click', mapCenter);
   
   // App Usage - Manage Blocked Apps
   document.getElementById('btnManageBlocked')?.addEventListener('click', showBlockedAppsModal);
@@ -1084,6 +1084,76 @@ function centerMapOnDevice() {
   }
 }
 
+// Map state for OpenStreetMap iframe controls
+let mapState = {
+  lat: null,
+  lng: null,
+  zoom: 16,
+  accuracy: 100
+};
+
+// Map zoom in
+function mapZoomIn() {
+  if (mapState.lat && mapState.lng) {
+    mapState.zoom = Math.min(mapState.zoom + 1, 19);
+    updateMapIframe();
+    showToast(`Zoom: ${mapState.zoom}`, 'info', 1000);
+  } else {
+    showToast('No location data available', 'warning');
+  }
+}
+
+// Map zoom out
+function mapZoomOut() {
+  if (mapState.lat && mapState.lng) {
+    mapState.zoom = Math.max(mapState.zoom - 1, 10);
+    updateMapIframe();
+    showToast(`Zoom: ${mapState.zoom}`, 'info', 1000);
+  } else {
+    showToast('No location data available', 'warning');
+  }
+}
+
+// Map center
+function mapCenter() {
+  if (mapState.lat && mapState.lng) {
+    mapState.zoom = 16;
+    updateMapIframe();
+    showToast('Map centered', 'success', 1000);
+  } else {
+    showToast('No location data available', 'warning');
+  }
+}
+
+// Update OpenStreetMap iframe with current state
+function updateMapIframe() {
+  const mapContainer = document.getElementById('mapContainer');
+  if (!mapContainer || !mapState.lat || !mapState.lng) return;
+  
+  const zoomFactor = 0.002 * Math.pow(2, 18 - mapState.zoom);
+  const mapsUrl = `https://www.google.com/maps?q=${mapState.lat},${mapState.lng}`;
+  
+  mapContainer.innerHTML = `
+    <div style="position: relative; width: 100%; height: 100%;">
+      <iframe 
+        width="100%" 
+        height="100%" 
+        frameborder="0" 
+        style="border:0; border-radius: 12px;" 
+        src="https://www.openstreetmap.org/export/embed.html?bbox=${mapState.lng - zoomFactor},${mapState.lat - zoomFactor},${mapState.lng + zoomFactor},${mapState.lat + zoomFactor}&layer=mapnik&marker=${mapState.lat},${mapState.lng}"
+        allowfullscreen>
+      </iframe>
+      <div style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 8px 12px; border-radius: 20px; font-size: 12px;">
+        <i class="fas fa-crosshairs" style="color: #4CAF50;"></i> 
+        Accuracy: ±${Math.round(mapState.accuracy)}m
+      </div>
+      <a href="${mapsUrl}" target="_blank" style="position: absolute; bottom: 10px; right: 10px; background: #4CAF50; color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; text-decoration: none;">
+        <i class="fas fa-external-link-alt"></i> Open in Google Maps
+      </a>
+    </div>
+  `;
+}
+
 // SMS Messages
 let currentSmsFilter = 'all';
 let smsPage = 1;
@@ -1195,7 +1265,6 @@ async function loadLocation() {
       document.getElementById('btnOpenMaps').href = mapsUrl;
       
       // Calculate appropriate zoom level based on accuracy
-      // Lower accuracy = wider view, higher accuracy = closer view
       const accuracy = location.accuracy || 100;
       let zoom = 18; // Default high zoom for good accuracy
       if (accuracy > 500) zoom = 14;
@@ -1203,36 +1272,24 @@ async function loadLocation() {
       else if (accuracy > 100) zoom = 16;
       else if (accuracy > 50) zoom = 17;
       
-      // Calculate bbox for exact zoom control
-      const zoomFactor = 0.002 * Math.pow(2, 18 - zoom);
+      // Store map state for zoom controls
+      mapState.lat = location.latitude;
+      mapState.lng = location.longitude;
+      mapState.zoom = zoom;
+      mapState.accuracy = accuracy;
       
-      // Update map using OpenStreetMap with improved view (like Snapchat's map style)
-      const mapContainer = document.getElementById('mapContainer');
-      mapContainer.innerHTML = `
-        <div style="position: relative; width: 100%; height: 100%;">
-          <iframe 
-            width="100%" 
-            height="100%" 
-            frameborder="0" 
-            style="border:0; border-radius: 12px;" 
-            src="https://www.openstreetmap.org/export/embed.html?bbox=${location.longitude - zoomFactor},${location.latitude - zoomFactor},${location.longitude + zoomFactor},${location.latitude + zoomFactor}&layer=mapnik&marker=${location.latitude},${location.longitude}"
-            allowfullscreen>
-          </iframe>
-          <div style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 8px 12px; border-radius: 20px; font-size: 12px;">
-            <i class="fas fa-crosshairs" style="color: #4CAF50;"></i> 
-            Accuracy: ±${Math.round(accuracy)}m
-          </div>
-          <a href="${mapsUrl}" target="_blank" style="position: absolute; bottom: 10px; right: 10px; background: #4CAF50; color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; text-decoration: none;">
-            <i class="fas fa-external-link-alt"></i> Open in Google Maps
-          </a>
-        </div>
-      `;
+      // Update map using the common function
+      updateMapIframe();
     } else {
       document.getElementById('currentAddress').textContent = 'Location not available';
       document.getElementById('latitude').textContent = '--';
       document.getElementById('longitude').textContent = '--';
       document.getElementById('accuracy').textContent = '--';
       document.getElementById('locationTime').textContent = '--';
+      
+      // Reset map state
+      mapState.lat = null;
+      mapState.lng = null;
       
       document.getElementById('mapContainer').innerHTML = `
         <p class="map-placeholder">
