@@ -357,15 +357,29 @@ app.get('/', (req, res) => {
 // WebSocket handling for real-time streaming
 const streamSessions = new Map();
 
+// === REAL-TIME SYNC CONNECTIONS ===
+// Maps for instant parent-child communication (WhatsApp-like)
+const syncChildConnections = new Map();  // deviceId -> WebSocket
+const syncParentConnections = new Map(); // userId -> { ws, devices[] }
+
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
+  
+  // Support both 'session' and 'device_id' for backward compatibility
   const sessionId = url.searchParams.get('session');
-  const role = url.searchParams.get('role'); // 'sender' (child) or 'receiver' (parent)
-  const deviceId = url.searchParams.get('deviceId');
+  const role = url.searchParams.get('role'); // 'sender', 'receiver', 'sync'
+  const deviceId = url.searchParams.get('deviceId') || url.searchParams.get('device_id');
   const type = url.searchParams.get('type'); // 'screen', 'camera', 'audio'
+  const deviceType = url.searchParams.get('device_type'); // 'child' or 'parent'
 
-  console.log(`WebSocket connection: ${role} for ${type} - Device: ${deviceId} - Path: ${pathname}`);
+  console.log(`WebSocket connection: role=${role} type=${type} device_type=${deviceType} deviceId=${deviceId}`);
+
+  // Handle real-time sync connections (from WebSocketSyncService)
+  if (role === 'sync' && deviceId) {
+    handleRealtimeSync(ws, deviceId, deviceType);
+    return;
+  }
 
   if (!sessionId || !role || !deviceId) {
     ws.close(1008, 'Missing parameters');
@@ -604,6 +618,265 @@ function handleWebRTCSignaling(ws, deviceId, type, role) {
       clearInterval(pingInterval);
     }
   }, 30000);
+}
+
+// === REAL-TIME SYNC HANDLER ===
+// Handles instant notifications and commands between child device and parent dashboard
+function handleRealtimeSync(ws, deviceId, deviceType) {
+  console.log(`[Sync] ${deviceType} device ${deviceId} connecting for real-time sync`);
+  
+  let authenticated = false;
+  let parentId = null;
+  
+  // Send ping every 20 seconds to keep MIUI connections alive
+  const pingInterval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+    } else {
+      clearInterval(pingInterval);
+    }
+  }, 20000);
+  
+  ws.on('message', async (data) => {
+    try {
+      const message = JSON.parse(data.toString());
+      const type = message.type;
+      
+      switch (type) {
+        case 'auth':
+          // Child or parent authenticating
+          if (message.device_type === 'child') {
+            syncChildConnections.set(deviceId, ws);
+            authenticated = true;
+            
+            // Get parent ID from database
+            const device = await Device.findOne({ deviceId });
+            if (device && device.owner) {
+              parentId = device.owner.toString();
+              
+              // Notify parent that child is online
+              const parentWs = syncParentConnections.get(parentId);
+              if (parentWs && parentWs.ws && parentWs.ws.readyState === WebSocket.OPEN) {
+                parentWs.ws.send(JSON.stringify({
+                  type: 'device_online',
+                  device_id: deviceId,
+                  timestamp: Date.now()
+                }));
+              }
+              
+              // Mark device as online
+              await Device.updateOne({ deviceId }, { isOnline: true, lastSeen: new Date() });
+            }
+            
+            ws.send(JSON.stringify({ type: 'auth_success', timestamp: Date.now() }));
+            console.log(`[Sync] Child ${deviceId} authenticated`);
+            
+          } else if (message.device_type === 'parent') {
+            // Parent connecting
+            const userId = message.user_id || message.parent_id;
+            if (userId) {
+              syncParentConnections.set(userId, { ws, devices: [] });
+              authenticated = true;
+              parentId = userId;
+              
+              // Check which of their devices are online
+              const devices = await Device.find({ owner: userId });
+              const onlineDevices = [];
+              for (const device of devices) {
+                if (syncChildConnections.has(device.deviceId)) {
+                  onlineDevices.push(device.deviceId);
+                }
+              }
+              
+              ws.send(JSON.stringify({
+                type: 'auth_success',
+                online_devices: onlineDevices,
+                timestamp: Date.now()
+              }));
+              console.log(`[Sync] Parent ${userId} authenticated`);
+            }
+          }
+          break;
+          
+        case 'notification':
+          // Child sending notification - forward to parent INSTANTLY
+          if (deviceType === 'child' && parentId) {
+            const parentConn = syncParentConnections.get(parentId);
+            if (parentConn && parentConn.ws && parentConn.ws.readyState === WebSocket.OPEN) {
+              parentConn.ws.send(JSON.stringify({
+                type: 'child_notification',
+                device_id: deviceId,
+                notification: message.data,
+                timestamp: message.timestamp
+              }));
+              console.log(`[Sync] Notification forwarded to parent ${parentId}`);
+            }
+            
+            // Save to database (async)
+            try {
+              const notification = new Notification({
+                deviceId,
+                packageName: message.data?.app || 'unknown',
+                appName: message.data?.appName || 'Unknown',
+                title: message.data?.title || '',
+                content: message.data?.text || '',
+                timestamp: new Date(message.data?.time || Date.now())
+              });
+              await notification.save();
+            } catch (dbErr) {
+              console.error('[Sync] Error saving notification:', dbErr);
+            }
+            
+            // Send acknowledgment
+            ws.send(JSON.stringify({
+              type: 'ack',
+              message_id: message.message_id || Date.now(),
+              timestamp: Date.now()
+            }));
+          }
+          break;
+          
+        case 'location':
+          // Child sending location update - forward to parent INSTANTLY
+          if (deviceType === 'child' && parentId) {
+            const parentConn = syncParentConnections.get(parentId);
+            if (parentConn && parentConn.ws && parentConn.ws.readyState === WebSocket.OPEN) {
+              parentConn.ws.send(JSON.stringify({
+                type: 'location_update',
+                device_id: deviceId,
+                location: message.data,
+                timestamp: message.timestamp
+              }));
+            }
+            
+            // Update device location in database
+            try {
+              await Device.updateOne({ deviceId }, {
+                location: {
+                  latitude: message.data.latitude,
+                  longitude: message.data.longitude,
+                  accuracy: message.data.accuracy,
+                  timestamp: new Date()
+                },
+                lastSeen: new Date()
+              });
+            } catch (dbErr) {
+              console.error('[Sync] Error updating location:', dbErr);
+            }
+          }
+          break;
+          
+        case 'command':
+          // Parent sending command - forward to child INSTANTLY
+          if (deviceType === 'parent') {
+            const targetDeviceId = message.target_device_id;
+            const childWs = syncChildConnections.get(targetDeviceId);
+            
+            if (childWs && childWs.readyState === WebSocket.OPEN) {
+              childWs.send(JSON.stringify({
+                type: 'command',
+                command: message.command,
+                params: message.params,
+                message_id: message.message_id,
+                timestamp: Date.now()
+              }));
+              console.log(`[Sync] Command ${message.command} sent to ${targetDeviceId}`);
+              
+              ws.send(JSON.stringify({
+                type: 'command_sent',
+                message_id: message.message_id,
+                timestamp: Date.now()
+              }));
+            } else {
+              // Child offline - try FCM
+              console.log(`[Sync] Child ${targetDeviceId} offline - using FCM`);
+              
+              try {
+                const device = await Device.findOne({ deviceId: targetDeviceId });
+                if (device && device.fcmToken && firebaseInitialized) {
+                  await admin.messaging().send({
+                    token: device.fcmToken,
+                    data: {
+                      command: message.command,
+                      params: JSON.stringify(message.params || {})
+                    }
+                  });
+                  ws.send(JSON.stringify({
+                    type: 'command_sent_fcm',
+                    message_id: message.message_id,
+                    timestamp: Date.now()
+                  }));
+                } else {
+                  ws.send(JSON.stringify({
+                    type: 'command_failed',
+                    error: 'Device offline and no FCM token',
+                    message_id: message.message_id,
+                    timestamp: Date.now()
+                  }));
+                }
+              } catch (fcmErr) {
+                console.error('[Sync] FCM error:', fcmErr);
+                ws.send(JSON.stringify({
+                  type: 'command_failed',
+                  error: 'Failed to send command',
+                  message_id: message.message_id,
+                  timestamp: Date.now()
+                }));
+              }
+            }
+          }
+          break;
+          
+        case 'pong':
+          // Child/parent responded to ping
+          console.log(`[Sync] Pong from ${deviceId || parentId}`);
+          break;
+          
+        case 'ack':
+          // Acknowledgment received
+          break;
+          
+        default:
+          console.log(`[Sync] Unknown message type: ${type}`);
+      }
+      
+    } catch (error) {
+      console.error('[Sync] Error handling message:', error);
+    }
+  });
+  
+  ws.on('close', async () => {
+    clearInterval(pingInterval);
+    
+    if (deviceType === 'child') {
+      syncChildConnections.delete(deviceId);
+      console.log(`[Sync] Child ${deviceId} disconnected`);
+      
+      // Mark device as offline
+      try {
+        await Device.updateOne({ deviceId }, { isOnline: false });
+      } catch (err) {}
+      
+      // Notify parent
+      if (parentId) {
+        const parentConn = syncParentConnections.get(parentId);
+        if (parentConn && parentConn.ws && parentConn.ws.readyState === WebSocket.OPEN) {
+          parentConn.ws.send(JSON.stringify({
+            type: 'device_offline',
+            device_id: deviceId,
+            timestamp: Date.now()
+          }));
+        }
+      }
+    } else if (deviceType === 'parent' && parentId) {
+      syncParentConnections.delete(parentId);
+      console.log(`[Sync] Parent ${parentId} disconnected`);
+    }
+  });
+  
+  ws.on('error', (error) => {
+    console.error('[Sync] WebSocket error:', error);
+  });
 }
 
 // Cron job - Mark devices offline after 5 minutes of no heartbeat

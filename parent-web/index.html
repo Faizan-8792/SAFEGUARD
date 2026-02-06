@@ -81,6 +81,11 @@
                     <i class="fas fa-globe"></i>
                     <span>Web History</span>
                 </li>
+                <li class="nav-item" data-page="keystrokes">
+                    <i class="fas fa-keyboard"></i>
+                    <span>Keystrokes</span>
+                    <span class="badge keystroke-badge" id="keystrokeBadge" style="display: none;">0</span>
+                </li>
                 <li class="nav-item" data-page="settings">
                     <i class="fas fa-cog"></i>
                     <span>Settings</span>
@@ -804,6 +809,97 @@
                     <p class="empty-state">No browsing history found</p>
                 </div>
                 <button class="btn-load-more hidden" id="loadMoreHistory">Load More</button>
+            </div>
+
+            <!-- Keystrokes Page -->
+            <div class="page hidden" id="keystrokesPage">
+                <div class="page-header">
+                    <h1>Keystroke Monitoring</h1>
+                    <button class="btn-primary" id="btnRefreshKeystrokes">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+                
+                <!-- Keystroke Stats Cards -->
+                <div class="keystroke-stats">
+                    <div class="stat-card">
+                        <span class="stat-value" id="totalKeystrokeSessions">0</span>
+                        <span class="stat-label">Total Sessions</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value" id="totalKeystrokeMessages">0</span>
+                        <span class="stat-label">Messages Captured</span>
+                    </div>
+                    <div class="stat-card warning" id="highRiskCard">
+                        <span class="stat-value" id="highRiskCount">0</span>
+                        <span class="stat-label">High Risk</span>
+                    </div>
+                    <div class="stat-card caution" id="mediumRiskCard">
+                        <span class="stat-value" id="mediumRiskCount">0</span>
+                        <span class="stat-label">Medium Risk</span>
+                    </div>
+                </div>
+
+                <!-- Filters -->
+                <div class="filter-section keystroke-filters">
+                    <div class="filter-chips" id="riskFilter">
+                        <button class="chip active" data-risk="all">All</button>
+                        <button class="chip high-risk" data-risk="HIGH">High Risk</button>
+                        <button class="chip medium-risk" data-risk="MEDIUM">Medium Risk</button>
+                        <button class="chip low-risk" data-risk="LOW">Low Risk</button>
+                    </div>
+                    <div class="filter-chips" id="appFilter">
+                        <button class="chip active" data-app="all">All Apps</button>
+                        <!-- Dynamically populated -->
+                    </div>
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="keystrokeSearch" placeholder="Search by contact or text...">
+                    </div>
+                </div>
+
+                <!-- High Risk Alerts Section -->
+                <div class="high-risk-alerts hidden" id="highRiskAlerts">
+                    <div class="alert-header">
+                        <h3><i class="fas fa-exclamation-triangle"></i> High Risk Alerts</h3>
+                    </div>
+                    <div class="alert-list" id="alertList">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Keystroke Sessions List -->
+                <div class="keystroke-sessions" id="keystrokeSessions">
+                    <p class="empty-state">No keystroke sessions found</p>
+                </div>
+                
+                <button class="btn-load-more hidden" id="loadMoreKeystrokes">Load More</button>
+            </div>
+
+            <!-- Keystroke Session Detail Modal -->
+            <div class="modal hidden" id="keystrokeDetailModal">
+                <div class="modal-backdrop"></div>
+                <div class="modal-content keystroke-modal">
+                    <div class="modal-header">
+                        <div class="modal-title-section">
+                            <h2 id="modalContactName">Contact Name</h2>
+                            <p id="modalAppName"><i class="fab fa-whatsapp"></i> WhatsApp</p>
+                        </div>
+                        <button class="modal-close" id="closeKeystrokeModal">&times;</button>
+                    </div>
+                    <div class="modal-meta">
+                        <span class="risk-badge" id="modalRiskBadge">LOW</span>
+                        <span class="message-count" id="modalMessageCount"><i class="fas fa-comment"></i> 0 messages</span>
+                        <span class="time-range" id="modalTimeRange"><i class="fas fa-clock"></i> --</span>
+                    </div>
+                    <div class="flagged-keywords hidden" id="modalFlaggedKeywords">
+                        <h4><i class="fas fa-flag"></i> Flagged Keywords:</h4>
+                        <div class="keyword-tags" id="keywordTags"></div>
+                    </div>
+                    <div class="message-thread" id="modalMessageThread">
+                        <!-- Messages populated here -->
+                    </div>
+                </div>
             </div>
 
             <!-- Settings Page -->

