@@ -5714,7 +5714,8 @@ async function deleteSocialChat() {
   
   if (!confirm(`Delete all messages with ${selectedSocialContact}?`)) return;
   
-  const deviceId = getDeviceId(selectedDevice);
+  // Use Android deviceId, not MongoDB _id
+  const deviceId = selectedDevice?.deviceId || getDeviceId(selectedDevice);
   
   try {
     const response = await fetch(
