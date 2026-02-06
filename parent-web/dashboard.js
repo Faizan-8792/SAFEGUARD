@@ -5360,7 +5360,9 @@ async function loadSocialMedia() {
     return;
   }
   
-  const deviceId = getDeviceId(selectedDevice);
+  // Use deviceId (Android device ID) if available, otherwise fall back to _id
+  const deviceId = selectedDevice.deviceId || getDeviceId(selectedDevice);
+  console.log('Loading social media for device:', deviceId);
   
   // Setup event listeners once
   setupSocialMediaListeners();
@@ -5487,8 +5489,8 @@ async function selectSocialApp(appPackage) {
   const meta = SOCIAL_APP_METADATA[appPackage] || { name: appPackage };
   document.getElementById('selectedAppName').textContent = meta.name;
   
-  // Load contacts
-  const deviceId = getDeviceId(selectedDevice);
+  // Load contacts - use Android deviceId
+  const deviceId = selectedDevice.deviceId || getDeviceId(selectedDevice);
   await loadSocialContacts(deviceId, appPackage);
 }
 
@@ -5590,8 +5592,8 @@ async function selectSocialContact(contactName) {
     document.getElementById('chatContactId').textContent = contact.contact_identifier || '';
   }
   
-  // Load messages
-  const deviceId = getDeviceId(selectedDevice);
+  // Load messages - use Android deviceId
+  const deviceId = selectedDevice.deviceId || getDeviceId(selectedDevice);
   await loadSocialMessages(deviceId, selectedSocialApp, contactName);
 }
 
@@ -5850,7 +5852,7 @@ function handleRealtimeSocialMessage(message) {
   
   // Refresh apps and contacts if on social media page
   if (!document.getElementById('socialmediaPage').classList.contains('hidden')) {
-    const deviceId = getDeviceId(selectedDevice);
+    const deviceId = selectedDevice?.deviceId || getDeviceId(selectedDevice);
     loadSocialApps(deviceId);
     if (selectedSocialApp) {
       loadSocialContacts(deviceId, selectedSocialApp);
