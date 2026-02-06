@@ -5650,7 +5650,6 @@ function renderSocialMessages() {
     const isSent = msg.message_type === 'SENT';
     const time = formatMessageTime(msg.timestamp);
     const bubbleClass = isSent ? 'sent' : 'received';
-    console.log(`Message: "${msg.message_text?.substring(0,20)}" | type: ${msg.message_type} | class: ${bubbleClass}`);
     
     html += `
       <div class="message-bubble-wrapper ${bubbleClass}">
