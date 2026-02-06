@@ -393,6 +393,62 @@ router.get('/:deviceId/recent', async (req, res) => {
 });
 
 /**
+ * POST /api/social-media/cleanup-duplicates
+ * Remove duplicate messages from database
+ */
+router.post('/cleanup-duplicates', async (req, res) => {
+  try {
+    const { deviceId } = req.body;
+    
+    // Find all messages grouped by content
+    const pipeline = [
+      ...(deviceId ? [{ $match: { device_id: deviceId } }] : []),
+      {
+        $group: {
+          _id: {
+            device_id: '$device_id',
+            app_package: '$app_package',
+            contact_name: '$contact_name',
+            message_text: '$message_text',
+            // Round timestamp to nearest second for grouping
+            timestamp_second: { $subtract: ['$timestamp', { $mod: ['$timestamp', 1000] }] }
+          },
+          count: { $sum: 1 },
+          docs: { $push: '$_id' },
+          firstDoc: { $first: '$_id' }
+        }
+      },
+      { $match: { count: { $gt: 1 } } }
+    ];
+    
+    const duplicates = await SocialMessage.aggregate(pipeline);
+    
+    let totalDeleted = 0;
+    
+    for (const dup of duplicates) {
+      // Keep the first document, delete the rest
+      const idsToDelete = dup.docs.filter(id => !id.equals(dup.firstDoc));
+      if (idsToDelete.length > 0) {
+        const result = await SocialMessage.deleteMany({ _id: { $in: idsToDelete } });
+        totalDeleted += result.deletedCount;
+      }
+    }
+    
+    console.log(`🧹 Cleaned up ${totalDeleted} duplicate messages`);
+    
+    res.json({
+      success: true,
+      duplicateGroupsFound: duplicates.length,
+      messagesDeleted: totalDeleted
+    });
+    
+  } catch (error) {
+    console.error('Error cleaning duplicates:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/social-media/message
  * Upload a SENT message from accessibility service
  */
@@ -420,16 +476,34 @@ router.post('/message', async (req, res) => {
       });
     }
     
+    const msgTimestamp = timestamp || Date.now();
+    const msgContact = contactName || 'Unknown';
+    
+    // Check for duplicate (same content within 2 seconds)
+    const timestampWindow = 2000;
+    const existing = await SocialMessage.findOne({
+      device_id: deviceId,
+      app_package: appPackage,
+      contact_name: msgContact,
+      message_text: messageText,
+      timestamp: { $gte: msgTimestamp - timestampWindow, $lte: msgTimestamp + timestampWindow }
+    });
+    
+    if (existing) {
+      console.log(`⏭️ Duplicate SENT message skipped: ${messageText.substring(0, 30)}...`);
+      return res.json({ success: true, messageId: existing.message_id, duplicate: true });
+    }
+    
     // Create the message
     const message = new SocialMessage({
       message_id: `sent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       device_id: deviceId,
       app_package: appPackage,
       app_name: appName || APP_METADATA[appPackage]?.name || 'Unknown',
-      contact_name: contactName || 'Unknown',
-      contact_identifier: contactIdentifier || contactName || 'Unknown',
+      contact_name: msgContact,
+      contact_identifier: contactIdentifier || msgContact,
       message_text: messageText,
-      timestamp: timestamp || Date.now(),
+      timestamp: msgTimestamp,
       message_type: messageType || 'SENT',
       is_group_chat: isGroupChat || false,
       group_name: groupName,
@@ -444,13 +518,13 @@ router.post('/message', async (req, res) => {
       {
         device_id: deviceId,
         app_package: appPackage,
-        contact_name: contactName || 'Unknown'
+        contact_name: msgContact
       },
       {
         $set: {
-          contact_identifier: contactIdentifier || contactName || 'Unknown',
+          contact_identifier: contactIdentifier || msgContact,
           last_message_text: messageText,
-          last_message_time: timestamp || Date.now(),
+          last_message_time: msgTimestamp,
           last_message_type: messageType || 'SENT'
         },
         $inc: { message_count: 1 }
@@ -458,7 +532,7 @@ router.post('/message', async (req, res) => {
       { upsert: true, new: true }
     );
     
-    console.log(`📤 SENT message saved: ${appPackage} -> ${contactName}: "${messageText.substring(0, 30)}..."`);
+    console.log(`📤 SENT message saved: ${appPackage} -> ${msgContact}: "${messageText.substring(0, 30)}..."`);
     
     res.json({
       success: true,

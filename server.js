@@ -1031,12 +1031,24 @@ function handleRealtimeSync(ws, deviceId, deviceType) {
               console.log(`[Sync] Social message forwarded: ${msgData?.app_name} - ${msgData?.contact_name}`);
             }
             
-            // Save to database
+            // Save to database with CONTENT-BASED deduplication
             try {
               const { SocialMessage, SocialContact } = require('./models');
               
-              // Check for duplicate
-              const existing = await SocialMessage.findOne({ message_id: msgData.message_id });
+              // Create a time window for duplicate detection (1 second)
+              const timestampWindow = 1000; // 1 second
+              const minTime = msgData.timestamp - timestampWindow;
+              const maxTime = msgData.timestamp + timestampWindow;
+              
+              // Check for duplicate based on CONTENT, not just message_id
+              const existing = await SocialMessage.findOne({ 
+                device_id: deviceId,
+                app_package: msgData.app_package,
+                contact_name: msgData.contact_name,
+                message_text: msgData.message_text,
+                timestamp: { $gte: minTime, $lte: maxTime }
+              });
+              
               if (!existing) {
                 const socialMsg = new SocialMessage({
                   message_id: msgData.message_id,
@@ -1079,6 +1091,8 @@ function handleRealtimeSync(ws, deviceId, deviceType) {
                 );
                 
                 console.log(`💬 Saved: ${msgData.app_name} - ${msgData.contact_name}`);
+              } else {
+                console.log(`⏭️ Duplicate skipped: ${msgData.app_name} - ${msgData.message_text?.substring(0, 20)}`);
               }
             } catch (dbErr) {
               console.error('[Sync] Error saving social message:', dbErr);
