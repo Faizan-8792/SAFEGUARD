@@ -988,21 +988,22 @@ function handleRealtimeSync(ws, deviceId, deviceType) {
     
     if (deviceType === 'child') {
       syncChildConnections.delete(deviceId);
-      console.log(`[Sync] Child ${deviceId} disconnected`);
+      console.log(`[Sync] Child ${deviceId} WebSocket closed (will use HTTP heartbeat fallback)`);
       
-      // Mark device as offline
-      try {
-        await Device.updateOne({ deviceId }, { isOnline: false });
-      } catch (err) {}
+      // DON'T immediately mark as offline - this causes status flickering!
+      // The device will send HTTP heartbeats every 2 minutes.
+      // The cron job will mark offline after 5 minutes of no activity.
+      // This prevents rapid online/offline/online status changes on B1 tier.
       
-      // Notify parent
+      // Only notify parent of WebSocket disconnect (not offline status)
       if (parentId) {
         const parentConn = syncParentConnections.get(parentId);
         if (parentConn && parentConn.ws && parentConn.ws.readyState === WebSocket.OPEN) {
           parentConn.ws.send(JSON.stringify({
-            type: 'device_offline',
+            type: 'device_ws_disconnected',
             device_id: deviceId,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            message: 'WebSocket disconnected, using HTTP fallback'
           }));
         }
       }
@@ -1017,12 +1018,13 @@ function handleRealtimeSync(ws, deviceId, deviceType) {
   });
 }
 
-// Cron job - Mark devices offline after 5 minutes of no heartbeat
+// Cron job - Mark devices offline after 10 minutes of no heartbeat
+// Extended from 5 mins to 10 mins to handle Azure B1 tier latency and WebSocket reconnection delays
 cron.schedule('*/2 * * * *', async () => {
   try {
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
     await Device.updateMany(
-      { lastSeen: { $lt: fiveMinutesAgo }, isOnline: true },
+      { lastSeen: { $lt: tenMinutesAgo }, isOnline: true },
       { isOnline: false }
     );
   } catch (error) {
