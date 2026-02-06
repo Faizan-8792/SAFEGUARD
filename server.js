@@ -133,13 +133,34 @@ app.get('/index.html', (req, res) => {
   res.redirect('/dashboard');
 });
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
-  message: { error: 'Too many requests, please try again later' }
+// Rate limiting - More lenient for mobile apps
+const generalLimiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 1 * 60 * 1000, // 1 minute window
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 200, // 200 requests per minute
+  message: { error: 'Too many requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limiting for sync endpoints (they have their own throttling)
+    return req.path.includes('/sync/') || req.path.includes('/social-media/');
+  }
 });
-app.use('/api/', limiter);
+
+// Stricter rate limit for auth endpoints only (prevent brute force)
+const authLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minute window
+  max: 20, // 20 login attempts per 5 minutes
+  message: { error: 'Too many login attempts, please try again in 5 minutes' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Apply general limiter to all API routes
+app.use('/api/', generalLimiter);
+
+// Apply stricter limiter only to auth routes
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
 
 // Direct browser history sync route (MUST be before syncRoutes to take precedence)
 app.post('/api/sync/browser-history', async (req, res) => {
