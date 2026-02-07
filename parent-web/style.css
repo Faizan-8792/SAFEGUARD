@@ -6433,3 +6433,87 @@ body {
     max-width: 85%;
   }
 }
+
+/* ====================================
+   Device Wakeup & Stream Modal Status
+   ==================================== */
+
+.device-wakeup-status,
+.device-offline-status {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.device-wakeup-status p.connecting,
+.device-offline-status p {
+  margin: 0 auto;
+}
+
+.wakeup-progress {
+  max-width: 200px;
+  margin: 12px auto 0;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--surface-light);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--primary);
+  transition: width 0.5s ease;
+}
+
+/* Connecting animation */
+.connecting {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Stream modal status icons */
+#streamVideo i.fa-satellite-dish,
+#streamVideo i.fa-check-circle,
+#streamVideo i.fa-stop-circle,
+#streamVideo i.fa-exclamation-circle,
+#streamVideo i.fa-exclamation-triangle {
+  display: block;
+  margin: 0 auto 12px;
+}
+
+#streamVideo .btn-primary,
+#streamVideo .btn-secondary {
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+}
+
+#streamVideo .btn-primary {
+  background: var(--primary);
+  color: white;
+}
+
+#streamVideo .btn-primary:hover {
+  background: var(--primary-dark);
+}
+
+#streamVideo .btn-secondary {
+  background: var(--surface-light);
+  color: var(--text-primary);
+}
+
+#streamVideo .btn-secondary:hover {
+  background: var(--surface);
+}
