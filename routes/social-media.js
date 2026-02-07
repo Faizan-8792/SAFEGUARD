@@ -79,6 +79,115 @@ router.post('/cleanup-duplicates', async (req, res) => {
 });
 
 /**
+ * POST /api/social-media/fix-contacts
+ * Fix duplicate contacts by merging variations (e.g., "Group (5 messages): Sender" -> "Group")
+ */
+router.post('/fix-contacts', async (req, res) => {
+  try {
+    const { deviceId } = req.body;
+    
+    // Get all contacts for device
+    const query = deviceId ? { device_id: deviceId } : {};
+    const contacts = await SocialContact.find(query).lean();
+    
+    console.log(`📋 Found ${contacts.length} contacts to check`);
+    
+    // Group contacts by normalized name
+    const normalized = {};
+    contacts.forEach(c => {
+      // Normalize: remove "(N messages)", "(N)", ": Sender" patterns
+      let cleanName = c.contact_name || '';
+      cleanName = cleanName.replace(/\s*\(\d+\s+messages?\)/gi, '').trim();
+      cleanName = cleanName.replace(/\s*\(\d+\)/g, '').trim();
+      // Remove ": Sender Name" suffix only if not an email/username
+      if (cleanName.includes(':') && !cleanName.includes('@')) {
+        cleanName = cleanName.split(':')[0].trim();
+      }
+      
+      const key = `${c.device_id}|${c.app_package}|${cleanName}`;
+      if (!normalized[key]) {
+        normalized[key] = { cleanName, contacts: [] };
+      }
+      normalized[key].contacts.push(c);
+    });
+    
+    let contactsMerged = 0;
+    let contactsDeleted = 0;
+    let messagesUpdated = 0;
+    
+    for (const [key, data] of Object.entries(normalized)) {
+      if (data.contacts.length > 1) {
+        console.log(`🔄 Merging ${data.contacts.length} contacts into "${data.cleanName}"`);
+        
+        // Get the main contact (highest message count or most recent)
+        const mainContact = data.contacts.sort((a, b) => 
+          (b.message_count || 0) - (a.message_count || 0)
+        )[0];
+        
+        // Update all messages from duplicate contacts to use clean name
+        for (const dupContact of data.contacts) {
+          if (dupContact.contact_name !== data.cleanName) {
+            // Update messages
+            const updateResult = await SocialMessage.updateMany(
+              {
+                device_id: dupContact.device_id,
+                app_package: dupContact.app_package,
+                contact_name: dupContact.contact_name
+              },
+              { $set: { contact_name: data.cleanName } }
+            );
+            messagesUpdated += updateResult.modifiedCount;
+            
+            // Delete duplicate contact
+            await SocialContact.deleteOne({ _id: dupContact._id });
+            contactsDeleted++;
+          }
+        }
+        
+        // Ensure main contact has clean name
+        if (mainContact.contact_name !== data.cleanName) {
+          await SocialContact.findByIdAndUpdate(mainContact._id, {
+            $set: { contact_name: data.cleanName }
+          });
+        }
+        
+        // Recalculate message count for main contact
+        const msgCount = await SocialMessage.countDocuments({
+          device_id: mainContact.device_id,
+          app_package: mainContact.app_package,
+          contact_name: data.cleanName
+        });
+        
+        await SocialContact.findOneAndUpdate(
+          {
+            device_id: mainContact.device_id,
+            app_package: mainContact.app_package,
+            contact_name: data.cleanName
+          },
+          { $set: { message_count: msgCount } },
+          { upsert: true }
+        );
+        
+        contactsMerged++;
+      }
+    }
+    
+    console.log(`✅ Fixed contacts: ${contactsMerged} merged, ${contactsDeleted} deleted, ${messagesUpdated} messages updated`);
+    
+    res.json({
+      success: true,
+      contactsMerged,
+      contactsDeleted,
+      messagesUpdated
+    });
+    
+  } catch (error) {
+    console.error('Error fixing contacts:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/social-media/message
  * Upload a SENT message from accessibility service
  * NOTE: Must be before /:deviceId routes
