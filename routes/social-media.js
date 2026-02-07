@@ -456,6 +456,34 @@ router.get('/:deviceId/:appPackage/contacts/:contactName/messages', async (req, 
 });
 
 /**
+ * POST /api/social-media/:deviceId/:appPackage/contacts/:contactName/mark-read
+ * Mark all messages from a contact as read (reset unread count)
+ */
+router.post('/:deviceId/:appPackage/contacts/:contactName/mark-read', async (req, res) => {
+  try {
+    const { deviceId, appPackage, contactName } = req.params;
+    
+    // Reset unread count to 0 for this contact
+    await SocialContact.findOneAndUpdate(
+      {
+        device_id: deviceId,
+        app_package: appPackage,
+        contact_name: decodeURIComponent(contactName)
+      },
+      { $set: { unread_count: 0 } }
+    );
+    
+    console.log(`✅ Marked as read: ${appPackage} - ${contactName}`);
+    
+    res.json({ success: true });
+    
+  } catch (error) {
+    console.error('Error marking as read:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/social-media/:deviceId/message
  * Save new message from Android device
  */
@@ -477,6 +505,9 @@ router.post('/:deviceId/message', async (req, res) => {
     });
     await message.save();
     
+    // Determine if this is a RECEIVED message (should increment unread count)
+    const isReceived = messageData.message_type === 'RECEIVED';
+    
     // Update or create contact
     await SocialContact.findOneAndUpdate(
       {
@@ -492,7 +523,11 @@ router.post('/:deviceId/message', async (req, res) => {
           last_message_type: messageData.message_type,
           updated_at: new Date()
         },
-        $inc: { message_count: 1 },
+        $inc: { 
+          message_count: 1,
+          // Only increment unread_count for RECEIVED messages
+          ...(isReceived ? { unread_count: 1 } : {})
+        },
         $setOnInsert: {
           profile_photo: messageData.profile_photo
         }

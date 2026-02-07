@@ -5824,6 +5824,7 @@ function renderSocialContacts() {
     const initial = contact.contact_name?.charAt(0).toUpperCase() || '?';
     const lastTime = formatSocialTime(contact.last_message_time);
     const lastMsg = contact.last_message_text?.substring(0, 40) || '';
+    const unreadCount = contact.unread_count || 0;
     
     return `
       <div class="social-contact-item ${selectedSocialContact === contact.contact_name ? 'active' : ''}"
@@ -5845,7 +5846,7 @@ function renderSocialContacts() {
             <span class="last-message">${escapeHtml(lastMsg)}${lastMsg.length >= 40 ? '...' : ''}</span>
           </div>
         </div>
-        ${contact.message_count > 0 ? `<span class="contact-badge">${contact.message_count}</span>` : ''}
+        ${unreadCount > 0 ? `<span class="contact-badge">${unreadCount}</span>` : ''}
       </div>
     `;
   }).join('');
@@ -5911,6 +5912,22 @@ async function loadSocialMessages(deviceId, appPackage, contactName) {
     
     // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // Mark messages as read (reset unread count) - fire and forget
+    fetch(
+      `${API_BASE}/social-media/${deviceId}/${appPackage}/contacts/${encodeURIComponent(contactName)}/mark-read`,
+      { 
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${authToken}` } 
+      }
+    ).then(() => {
+      // Update local unread count
+      const contact = socialContacts.find(c => c.contact_name === contactName);
+      if (contact) {
+        contact.unread_count = 0;
+        renderSocialContacts();
+      }
+    }).catch(() => {}); // Silent fail
     
   } catch (error) {
     console.error('Error loading messages:', error);

@@ -1069,6 +1069,9 @@ function handleRealtimeSync(ws, deviceId, deviceType) {
                 });
                 await socialMsg.save();
                 
+                // Determine if this is a RECEIVED message (should increment unread count)
+                const isReceived = msgData.message_type === 'RECEIVED';
+                
                 // Update contact
                 await SocialContact.findOneAndUpdate(
                   {
@@ -1084,7 +1087,11 @@ function handleRealtimeSync(ws, deviceId, deviceType) {
                       last_message_type: msgData.message_type,
                       updated_at: new Date()
                     },
-                    $inc: { message_count: 1 },
+                    $inc: { 
+                      message_count: 1,
+                      // Only increment unread_count for RECEIVED messages
+                      ...(isReceived ? { unread_count: 1 } : {})
+                    },
                     $setOnInsert: {
                       profile_photo: msgData.profile_photo
                     }
