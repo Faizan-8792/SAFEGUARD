@@ -988,7 +988,7 @@ router.delete('/:deviceId/photos/delete-all', protect, async (req, res) => {
       { _id: req.user._id, photoStorageUsed: { $lt: 0 } },
       { $set: { photoStorageUsed: 0 } }
     );
-    
+  
     console.log(`[Photos] Deleted ${result.deletedCount} photos (${(totalSize / 1024 / 1024).toFixed(2)}MB) for device ${device.name}`);
     
     res.json({

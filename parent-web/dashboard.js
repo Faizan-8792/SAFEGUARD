@@ -1935,6 +1935,37 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+// Delete all web history
+async function deleteAllWebHistory() {
+  if (!confirm('Delete ALL browsing history? This action cannot be undone.')) return;
+  
+  const deviceId = selectedDevice?.deviceId || getDeviceId(selectedDevice);
+  if (!deviceId) {
+    showToast('No device selected', 'error');
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE}/sync/browser-history/${deviceId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    if (response.ok) {
+      showToast('All browsing history deleted', 'success');
+      webHistoryData = [];
+      webHistorySkip = 0;
+      renderWebHistory();
+      loadWebHistory();
+    } else {
+      throw new Error('Failed to delete history');
+    }
+  } catch (error) {
+    console.error('Error deleting history:', error);
+    showToast('Failed to delete history', 'error');
+  }
+}
+
 // Setup web history event listeners
 function setupWebHistoryListeners() {
   // Browser filter chips
@@ -1954,6 +1985,9 @@ function setupWebHistoryListeners() {
   
   // Refresh button
   document.getElementById('btnRefreshHistory')?.addEventListener('click', () => loadWebHistory());
+  
+  // Delete all history button
+  document.getElementById('btnDeleteAllHistory')?.addEventListener('click', () => deleteAllWebHistory());
   
   // Load more
   document.getElementById('loadMoreHistory')?.addEventListener('click', () => {
@@ -4844,6 +4878,9 @@ function setupKeystrokeListeners() {
     btn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
   });
   
+  // Delete all keystrokes button
+  document.getElementById('btnDeleteAllKeystrokes')?.addEventListener('click', () => deleteAllKeystrokes());
+  
   // Risk filter chips
   document.querySelectorAll('#riskFilter .chip').forEach(chip => {
     chip.addEventListener('click', () => {
@@ -5248,6 +5285,36 @@ async function deleteMessage(sessionId, msgIndex) {
   } catch (error) {
     console.error('Failed to delete message:', error);
     showToast('Failed to delete message', 'error');
+  }
+}
+
+// Delete ALL keystrokes
+async function deleteAllKeystrokes() {
+  if (!confirm('Delete ALL keystroke data? This action cannot be undone.')) return;
+  
+  try {
+    const deviceId = selectedDevice?.deviceId || getDeviceId(selectedDevice);
+    if (!deviceId) {
+      showToast('No device selected', 'error');
+      return;
+    }
+    
+    const response = await fetch(`${API_BASE}/sync/keystrokes/${deviceId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    if (response.ok) {
+      showToast('All keystrokes deleted', 'success');
+      keystrokeSessions = [];
+      keystrokePage = 1;
+      await fetchKeystrokeSessions();
+    } else {
+      throw new Error('Failed to delete keystrokes');
+    }
+  } catch (error) {
+    console.error('Error deleting keystrokes:', error);
+    showToast('Failed to delete keystrokes', 'error');
   }
 }
 

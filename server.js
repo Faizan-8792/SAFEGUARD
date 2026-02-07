@@ -391,8 +391,7 @@ const socialMediaRoutes = require('./routes/social-media');
 app.use('/api/social-media', socialMediaRoutes);
 
 // ==== ALIAS ROUTES FOR BACKWARD COMPATIBILITY ====
-// These routes redirect old API paths to new correct paths
-// Can be removed once the Android app is updated
+
 
 // Redirect /api/notifications to /api/sync/notifications  
 app.post('/api/notifications', (req, res, next) => {

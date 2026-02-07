@@ -968,6 +968,38 @@ router.get('/browser-history/:deviceId', async (req, res) => {
   }
 });
 
+// DELETE all browser history for a device
+router.delete('/browser-history/:deviceId', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+
+    // Find device
+    let device = null;
+    if (mongoose.Types.ObjectId.isValid(deviceId)) {
+      device = await Device.findById(deviceId);
+    }
+    if (!device) {
+      device = await Device.findOne({ deviceId: deviceId });
+    }
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    const result = await BrowserHistory.deleteMany({ deviceId: device.deviceId });
+
+    console.log(`[Browser-History] Deleted ${result.deletedCount} entries for device ${device.name}`);
+
+    res.json({
+      success: true,
+      deletedCount: result.deletedCount,
+      message: `Deleted ${result.deletedCount} browser history entries`
+    });
+  } catch (error) {
+    console.error('Delete browser history error:', error);
+    res.status(500).json({ error: 'Failed to delete browser history' });
+  }
+});
+
 // =============================================
 // KEYSTROKE MONITORING ENDPOINTS
 // =============================================
