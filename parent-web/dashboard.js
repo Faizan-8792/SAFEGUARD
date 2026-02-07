@@ -4990,10 +4990,16 @@ async function fetchKeystrokeSessions(append = false) {
 function updateKeystrokeStats(stats) {
   if (!stats) return;
   
-  document.getElementById('totalKeystrokeSessions').textContent = stats.totalSessions || 0;
-  document.getElementById('totalKeystrokeMessages').textContent = stats.totalMessages || 0;
-  document.getElementById('highRiskCount').textContent = stats.highRiskCount || 0;
-  document.getElementById('mediumRiskCount').textContent = stats.mediumRiskCount || 0;
+  // Safely update stats elements (some may not exist in the DOM)
+  const totalSessionsEl = document.getElementById('totalKeystrokeSessions');
+  const totalMessagesEl = document.getElementById('totalKeystrokeMessages');
+  const highRiskCountEl = document.getElementById('highRiskCount');
+  const mediumRiskCountEl = document.getElementById('mediumRiskCount');
+  
+  if (totalSessionsEl) totalSessionsEl.textContent = stats.totalSessions || 0;
+  if (totalMessagesEl) totalMessagesEl.textContent = stats.totalMessages || 0;
+  if (highRiskCountEl) highRiskCountEl.textContent = stats.highRiskCount || 0;
+  if (mediumRiskCountEl) mediumRiskCountEl.textContent = stats.mediumRiskCount || 0;
   
   // Highlight cards if there are risks
   document.getElementById('highRiskCard')?.classList.toggle('highlight', stats.highRiskCount > 0);
@@ -5718,6 +5724,12 @@ function renderSocialMessages() {
     const time = formatMessageTime(msg.timestamp);
     const bubbleClass = isSent ? 'sent' : 'received';
     
+    // Capture method badge for SENT messages (keystroke correlation)
+    const captureMethod = msg.capture_method || (isSent ? 'keystroke_correlation' : 'notification');
+    const captureBadge = isSent && captureMethod.includes('keystroke') 
+      ? '<span class="capture-badge keystroke" title="Captured via keystroke tracking"><i class="fas fa-keyboard"></i></span>'
+      : (!isSent ? '<span class="capture-badge notification" title="Captured via notification"><i class="fas fa-bell"></i></span>' : '');
+    
     html += `
       <div class="message-bubble-wrapper ${bubbleClass}">
         <div class="message-bubble ${bubbleClass}-bubble">
@@ -5732,6 +5744,7 @@ function renderSocialMessages() {
           <div class="message-text">${escapeHtml(msg.message_text)}</div>
           <div class="message-meta">
             <span class="message-time">${time}</span>
+            ${captureBadge}
             ${isSent ? '<i class="fas fa-check"></i>' : ''}
           </div>
         </div>

