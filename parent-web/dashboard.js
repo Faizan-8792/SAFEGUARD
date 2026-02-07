@@ -5289,7 +5289,7 @@ function renderKeystrokeSessions() {
   );
   
   container.innerHTML = sortedGroups.map(group => {
-    const appIcon = getAppIcon(group.appPackage);
+    const appIcon = getAppIconClassString(group.appPackage);
     const appIconClass = getAppIconClass(group.appPackage);
     const timeRange = formatTimeRange(group.sessions[0]?.firstMessageTime, group.lastActivity);
     
@@ -5360,7 +5360,7 @@ function openChatThread(appNameEncoded, contactNameEncoded) {
   // Populate modal header
   document.getElementById('modalContactName').textContent = contactName;
   document.getElementById('modalAppName').innerHTML = 
-    `<i class="${getAppIcon(firstSession.appPackage)}"></i> ${appName}`;
+    `<i class="${getAppIconClassString(firstSession.appPackage)}"></i> ${appName}`;
   
   const riskBadge = document.getElementById('modalRiskBadge');
   riskBadge.textContent = highestRisk;
@@ -5524,8 +5524,8 @@ async function deleteAllKeystrokes() {
   }
 }
 
-// Get app icon based on package name
-function getAppIcon(packageName) {
+// Get app icon CSS class string (for keystrokes)
+function getAppIconClassString(packageName) {
   const iconMap = {
     'com.whatsapp': 'fab fa-whatsapp',
     'com.whatsapp.w4b': 'fab fa-whatsapp',
@@ -5631,6 +5631,13 @@ async function loadSocialMedia() {
   if (!selectedDevice) {
     showToast('Please select a device first', 'warning');
     return;
+  }
+  
+  // Clear social badge when user opens social media page
+  const socialBadge = document.getElementById('socialBadge');
+  if (socialBadge) {
+    socialBadge.textContent = '0';
+    socialBadge.style.display = 'none';
   }
   
   // Use deviceId (Android device ID) if available, otherwise fall back to _id
@@ -5739,6 +5746,13 @@ function renderSocialApps() {
 async function selectSocialApp(appPackage) {
   selectedSocialApp = appPackage;
   selectedSocialContact = null;
+  
+  // Clear social badge when user views messages
+  const socialBadge = document.getElementById('socialBadge');
+  if (socialBadge) {
+    socialBadge.textContent = '0';
+    socialBadge.style.display = 'none';
+  }
   
   // Update UI
   renderSocialApps();
