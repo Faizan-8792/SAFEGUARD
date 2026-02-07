@@ -5451,6 +5451,29 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  max-height: 50vh;
+  min-height: 200px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--primary) var(--surface);
+}
+
+/* Custom scrollbar for message thread */
+.message-thread::-webkit-scrollbar {
+  width: 8px;
+}
+
+.message-thread::-webkit-scrollbar-track {
+  background: var(--surface);
+  border-radius: 4px;
+}
+
+.message-thread::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: 4px;
+}
+
+.message-thread::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-light);
 }
 
 .message-bubble {
