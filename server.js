@@ -123,6 +123,9 @@ app.use(express.urlencoded({ extended: true }));
 // Serve parent-web dashboard static files
 app.use('/dashboard', express.static(path.join(__dirname, 'parent-web')));
 
+// Serve icon.png at root level for notifications
+app.use('/icon.png', express.static(path.join(__dirname, 'parent-web', 'icon.png')));
+
 // Redirect root to dashboard
 app.get('/', (req, res) => {
   res.redirect('/dashboard');

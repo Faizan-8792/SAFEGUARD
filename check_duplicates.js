@@ -1,52 +1,64 @@
 const mongoose = require('mongoose');
 require('dotenv').config();
 
-// Use online connection (Azure/Atlas)
-const MONGO_URI = 'mongodb+srv://faizansiddiqui4292:Allah%40%40011@cluster0.tirkwow.mongodb.net/familyguard?retryWrites=true&w=majority&appName=Cluster0';
-
-mongoose.connect(MONGO_URI).then(async () => {
+mongoose.connect(process.env.MONGODB_URI).then(async () => {
   console.log('Connected to MongoDB');
   
   const SocialContact = mongoose.model('SocialContact', new mongoose.Schema({}, { strict: false }));
   const SocialMessage = mongoose.model('SocialMessage', new mongoose.Schema({}, { strict: false }));
   
-  // Get all contacts for device
-  const contacts = await SocialContact.find({ device_id: '2e5751b3cf41e796' }).lean();
+  const deviceId = '2e5751b3cf41e796';
+  const contacts = await SocialContact.find({ device_id: deviceId }).lean();
   
-  console.log('=== All Contacts ===');
-  contacts.forEach(c => {
-    const name = c.contact_name || 'NO_NAME';
-    const nameHex = Buffer.from(name).toString('hex');
-    console.log(`[${c.app_package}] "${name}" (length: ${name.length}) | hex: ${nameHex.substring(0, 40)}`);
-  });
+  console.log(`Found ${contacts.length} contacts`);
   
-  // Check for similar names (possible duplicates due to whitespace or invisible chars)
-  console.log('\n=== Checking for Similar Names ===');
+  // Group contacts by normalized name
   const normalized = {};
   contacts.forEach(c => {
-    const name = c.contact_name || 'NO_NAME';
-    // Normalize: lowercase, remove extra spaces, trim
-    const normalizedName = name.toLowerCase().replace(/\s+/g, ' ').trim();
-    if (!normalized[normalizedName]) normalized[normalizedName] = [];
-    normalized[normalizedName].push(c.contact_name);
+    let cleanName = c.contact_name || '';
+    // Remove "(N messages)" pattern
+    cleanName = cleanName.replace(/\s*\(\d+\s+messages?\)/gi, '').trim();
+    // Remove "(N)" pattern
+    cleanName = cleanName.replace(/\s*\(\d+\)/g, '').trim();
+    // Remove ": Sender Name" suffix only if not an email/username
+    if (cleanName.includes(':') && !cleanName.includes('@')) {
+      cleanName = cleanName.split(':')[0].trim();
+    }
+    
+    const key = `${c.device_id}|${c.app_package}|${cleanName}`;
+    if (!normalized[key]) {
+      normalized[key] = { cleanName, contacts: [] };
+    }
+    normalized[key].contacts.push(c);
   });
   
-  Object.entries(normalized).filter(([k, v]) => v.length > 1).forEach(([k, v]) => {
-    console.log(`POSSIBLE DUPLICATES for "${k}": ${JSON.stringify(v)}`);
-  });
+  let merged = 0;
+  let deleted = 0;
+  let updated = 0;
   
-  // Get message count by contact_name
-  console.log('\n=== Message Count Per Contact ===');
-  const msgCounts = await SocialMessage.aggregate([
-    { $match: { device_id: '2e5751b3cf41e796' } },
-    { $group: { _id: '$contact_name', count: { $sum: 1 } } },
-    { $sort: { count: -1 } },
-    { $limit: 20 }
-  ]);
+  for (const [key, data] of Object.entries(normalized)) {
+    if (data.contacts.length > 1) {
+      console.log(`Merging ${data.contacts.length} contacts into "${data.cleanName}"`);
+      
+      for (const dup of data.contacts) {
+        if (dup.contact_name !== data.cleanName) {
+          // Update all messages
+          const upd = await SocialMessage.updateMany(
+            { device_id: dup.device_id, app_package: dup.app_package, contact_name: dup.contact_name },
+            { $set: { contact_name: data.cleanName } }
+          );
+          updated += upd.modifiedCount || 0;
+          console.log(`  - Updated ${upd.modifiedCount} messages from "${dup.contact_name}"`);
+          
+          // Delete duplicate contact
+          await SocialContact.deleteOne({ _id: dup._id });
+          deleted++;
+        }
+      }
+      merged++;
+    }
+  }
   
-  msgCounts.forEach(c => {
-    console.log(`"${c._id}": ${c.count} messages`);
-  });
-  
+  console.log(`\n✅ Done! Merged: ${merged} groups, Deleted: ${deleted} duplicate contacts, Updated: ${updated} messages`);
   process.exit(0);
-}).catch(e => { console.error(e); process.exit(1); });
+}).catch(e => { console.error('Error:', e.message); process.exit(1); });

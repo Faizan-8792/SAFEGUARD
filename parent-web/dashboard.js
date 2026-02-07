@@ -303,7 +303,7 @@ function handleChildAlert(deviceId, alertType, message, health) {
   if (Notification.permission === 'granted') {
     new Notification(`${style.icon} Child Device Alert`, {
       body: message,
-      icon: '/icon.png',
+      icon: './icon.png',
       tag: `alert-${alertType}-${deviceId}`,
       requireInteraction: style.priority === 'critical'
     });
@@ -417,7 +417,7 @@ function handleInstantNotification(deviceId, notification) {
   if (Notification.permission === 'granted') {
     new Notification(`${notification.appName || 'Notification'}`, {
       body: `${notification.title || ''}\n${notification.text || ''}`,
-      icon: '/icon.png',
+      icon: './icon.png',
       tag: `notif-${Date.now()}`
     });
   }
