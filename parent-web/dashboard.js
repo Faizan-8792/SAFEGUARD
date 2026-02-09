@@ -11,20 +11,77 @@ function debugLog(...args) {
   if (DEBUG_MODE) console.log(...args);
 }
 
-// Check for token in URL parameter (from Android app) or localStorage
+const TOKEN_STORAGE_KEY = 'authToken';
+const LAST_PAGE_KEY = 'lastPage';
+const TOKEN_SOURCE_KEY = 'authTokenSource';
+
+const VALID_PAGES = new Set([
+  'dashboard',
+  'notifications',
+  'calls',
+  'sms',
+  'gallery',
+  'screenshots',
+  'location',
+  'apps',
+  'socialmedia',
+  'webhistory',
+  'keystrokes',
+  'settings'
+]);
+
+function isTrustedUrlTokenSource() {
+  const ua = navigator.userAgent || '';
+  return /Android/i.test(ua) || /wv/i.test(ua);
+}
+
+function sanitizePage(page) {
+  return VALID_PAGES.has(page) ? page : 'dashboard';
+}
+
+function storeLastPage(page) {
+  const safePage = sanitizePage(page);
+  sessionStorage.setItem(LAST_PAGE_KEY, safePage);
+  const newUrl = safePage === 'dashboard'
+    ? window.location.pathname
+    : `${window.location.pathname}#${safePage}`;
+  window.history.replaceState({}, document.title, newUrl);
+}
+
+function getInitialPage() {
+  const hashPage = (window.location.hash || '').replace('#', '').trim();
+  const storedPage = sessionStorage.getItem(LAST_PAGE_KEY) || '';
+  return sanitizePage(hashPage || storedPage || 'dashboard');
+}
+
+// Check for token in URL parameter (from Android app) or sessionStorage
 function getAuthToken() {
   // Check URL params first (for Android WebView injection)
   const urlParams = new URLSearchParams(window.location.search);
   const urlToken = urlParams.get('token');
   if (urlToken) {
-    // Save to localStorage and clean URL
-    localStorage.setItem('authToken', urlToken);
+    if (isTrustedUrlTokenSource()) {
+      sessionStorage.setItem(TOKEN_STORAGE_KEY, urlToken);
+      sessionStorage.setItem(TOKEN_SOURCE_KEY, 'url');
+    } else {
+      console.warn('Ignoring auth token from URL in non-webview context');
+    }
     // Remove token from URL without reload
-    window.history.replaceState({}, document.title, window.location.pathname);
-    return urlToken;
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
   }
-  // Fall back to localStorage
-  return localStorage.getItem('authToken');
+
+  const sessionToken = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+  if (sessionToken) return sessionToken;
+
+  // Migrate legacy localStorage token to session-only storage
+  const legacyToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (legacyToken) {
+    sessionStorage.setItem(TOKEN_STORAGE_KEY, legacyToken);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    return legacyToken;
+  }
+
+  return null;
 }
 
 let authToken = getAuthToken();
@@ -94,6 +151,8 @@ function showToast(message, type = 'info', duration = 4000) {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+  authToken = getAuthToken();
+  
   if (authToken) {
     loadUserData();
   } else {
@@ -102,6 +161,16 @@ document.addEventListener('DOMContentLoaded', () => {
   
   setupEventListeners();
   setupWebHistoryListeners();
+  
+  // Handle hash-based navigation for page refresh
+  window.addEventListener('hashchange', (e) => {
+    if (authToken) {
+      const page = window.location.hash.replace('#', '').trim();
+      if (page && VALID_PAGES.has(page)) {
+        navigateTo(page);
+      }
+    }
+  });
 });
 
 // Start auto-refresh
@@ -120,6 +189,44 @@ function stopAutoRefresh() {
   if (autoRefreshInterval) {
     clearInterval(autoRefreshInterval);
     autoRefreshInterval = null;
+  }
+}
+
+// Session Validation - verify authentication periodically
+let sessionValidationInterval = null;
+const SESSION_VALIDATION_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+function startSessionValidation() {
+  if (sessionValidationInterval) clearInterval(sessionValidationInterval);
+  
+  sessionValidationInterval = setInterval(async () => {
+    if (!authToken) return;
+    
+    try {
+      // Verify token is still valid with server
+      const currentToken = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+      if (!currentToken || currentToken !== authToken) {
+        console.warn('Session token mismatch');
+        handleLogout();
+        return;
+      }
+      
+      // Quick validation call to ensure auth is still valid
+      await api('/auth/me');
+      debugLog('[Session] Token validation successful');
+    } catch (error) {
+      console.warn('[Session] Validation failed:', error.message);
+      if (error.status === 401) {
+        handleLogout();
+      }
+    }
+  }, SESSION_VALIDATION_INTERVAL);
+}
+
+function stopSessionValidation() {
+  if (sessionValidationInterval) {
+    clearInterval(sessionValidationInterval);
+    sessionValidationInterval = null;
   }
 }
 
@@ -750,6 +857,14 @@ function setupEventListeners() {
 
 // API Functions
 async function api(endpoint, options = {}) {
+  // Security: Check authentication token before making request
+  const currentToken = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+  if (!currentToken || currentToken !== authToken) {
+    console.warn('Auth token mismatch or missing - forcing logout');
+    handleLogout();
+    throw new Error('Authentication required');
+  }
+
   const headers = {
     'Content-Type': 'application/json',
     ...options.headers
@@ -768,6 +883,13 @@ async function api(endpoint, options = {}) {
     const data = await response.json();
     
     if (!response.ok) {
+      // Handle 401 Unauthorized - token expired or invalid
+      if (response.status === 401) {
+        console.warn('Token expired or unauthorized');
+        handleLogout();
+        throw new Error('Session expired. Please login again.');
+      }
+      
       // Extract error message properly - handle both string and object errors
       let errorMessage = 'Request failed';
       if (typeof data.error === 'string') {
@@ -808,7 +930,7 @@ async function handleLogin(e) {
     });
     
     authToken = data.token;
-    localStorage.setItem('authToken', authToken);
+    sessionStorage.setItem(TOKEN_STORAGE_KEY, authToken);
     currentUser = data.user;
     
     loadUserData();
@@ -819,7 +941,10 @@ async function handleLogin(e) {
 
 function handleLogout() {
   authToken = null;
-  localStorage.removeItem('authToken');
+  sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  sessionStorage.removeItem(LAST_PAGE_KEY);
+  sessionStorage.removeItem(TOKEN_SOURCE_KEY);
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
   currentUser = null;
   devices = [];
   selectedDevice = null;
@@ -827,15 +952,22 @@ function handleLogout() {
   // Disconnect from real-time sync
   disconnectRealtimeSync();
   
-  // Stop auto-refresh
+  // Stop auto-refresh and session validation
   stopAutoRefresh();
+  stopSessionValidation();
   
   showLoginPage();
 }
 
 async function loadUserData() {
   try {
+    // Verify token is still valid with server
     const data = await api('/auth/me');
+    
+    if (!data || !data.user) {
+      throw new Error('Invalid auth response');
+    }
+    
     currentUser = data.user;
     document.getElementById('userName').textContent = currentUser.name;
     
@@ -935,21 +1067,32 @@ async function loadDevices() {
 
 // Navigation
 function navigateTo(page) {
+  // Security: Verify authentication before navigation
+  if (!authToken || !sessionStorage.getItem(TOKEN_STORAGE_KEY)) {
+    console.warn('Unauthorized navigation attempt');
+    handleLogout();
+    showLoginPage();
+    return;
+  }
+
+  const safePage = sanitizePage(page);
+  storeLastPage(safePage);
+
   // Update nav items
   document.querySelectorAll('.nav-item').forEach(item => {
-    item.classList.toggle('active', item.dataset.page === page);
+    item.classList.toggle('active', item.dataset.page === safePage);
   });
   
   // Hide all pages
   document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
   
   // Show selected page
-  const pageElement = document.getElementById(`${page}Page`);
+  const pageElement = document.getElementById(`${safePage}Page`);
   if (pageElement) {
     pageElement.classList.remove('hidden');
     
     // Load page data
-    switch (page) {
+    switch (safePage) {
       case 'dashboard':
         loadDashboard();
         break;
@@ -1049,7 +1192,7 @@ async function handleRegister(e) {
     
     // Registration successful - save token and redirect
     authToken = data.token;
-    localStorage.setItem('authToken', authToken);
+    sessionStorage.setItem(TOKEN_STORAGE_KEY, authToken);
     currentUser = data.user;
     
     alert('Account created successfully! Welcome to FamilyGuard Pro.');
@@ -1064,8 +1207,9 @@ async function handleRegister(e) {
 function showDashboard() {
   document.querySelector('.sidebar').style.display = 'flex';
   document.querySelector('.header').style.display = 'flex';
-  navigateTo('dashboard');
+  navigateTo(getInitialPage());
   startAutoRefresh();
+  startSessionValidation();
 }
 
 // Dashboard
