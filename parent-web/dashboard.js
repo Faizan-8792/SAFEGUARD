@@ -5954,6 +5954,42 @@ function setupSocialMediaListeners() {
   
   // Delete chat button
   document.getElementById('btnDeleteChat')?.addEventListener('click', deleteSocialChat);
+  
+  // Event delegation for contact list clicks
+  const contactList = document.getElementById('socialContactList');
+  if (contactList) {
+    contactList.removeEventListener('click', handleContactClick);
+    contactList.addEventListener('click', handleContactClick);
+  }
+  
+  // Event delegation for app list clicks
+  const appList = document.getElementById('socialAppList');
+  if (appList) {
+    appList.removeEventListener('click', handleAppClick);
+    appList.addEventListener('click', handleAppClick);
+  }
+}
+
+// Handle contact click via event delegation
+function handleContactClick(e) {
+  const contactItem = e.target.closest('.social-contact-item');
+  if (contactItem) {
+    const contactName = contactItem.getAttribute('data-contact');
+    if (contactName) {
+      selectSocialContact(contactName);
+    }
+  }
+}
+
+// Handle app click via event delegation
+function handleAppClick(e) {
+  const appCard = e.target.closest('.social-app-card');
+  if (appCard) {
+    const appPackage = appCard.getAttribute('data-package');
+    if (appPackage) {
+      selectSocialApp(appPackage);
+    }
+  }
 }
 
 // Load social media apps for device
@@ -6012,8 +6048,7 @@ function renderSocialApps() {
     
     return `
       <div class="social-app-card ${selectedSocialApp === app.app_package ? 'active' : ''}" 
-           data-package="${app.app_package}"
-           onclick="selectSocialApp('${app.app_package}')">
+           data-package="${app.app_package}">
         <div class="app-icon-wrapper" style="background-color: ${meta.color}20; color: ${meta.color}">
           <i class="${meta.icon}"></i>
         </div>
@@ -6116,8 +6151,7 @@ function renderSocialContacts() {
     
     return `
       <div class="social-contact-item ${selectedSocialContact === contact.contact_name ? 'active' : ''}"
-           data-contact="${escapeHtml(contact.contact_name)}"
-           onclick="selectSocialContact('${escapeHtml(contact.contact_name)}')">
+           data-contact="${escapeHtml(contact.contact_name)}">
         <div class="contact-avatar" style="background: ${avatarBg}">
           ${contact.profile_photo 
             ? `<img src="data:image/jpeg;base64,${contact.profile_photo}" alt="${escapeHtml(contact.contact_name)}">`
