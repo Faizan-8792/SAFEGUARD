@@ -346,13 +346,35 @@ router.post('/:deviceId/command', protect, async (req, res) => {
     };
 
     console.log(`Sending ${command} command to device ${device.name} (${device.deviceId})`);
-    const messageId = await admin.messaging().send(message);
-    console.log(`Command sent successfully, messageId: ${messageId}`);
+    console.log(`FCM Token (first 20 chars): ${device.fcmToken?.substring(0, 20)}...`);
+    
+    try {
+      const messageId = await admin.messaging().send(message);
+      console.log(`Command sent successfully, messageId: ${messageId}`);
 
-    res.json({
-      success: true,
-      message: `Command '${command}' sent to device`
-    });
+      res.json({
+        success: true,
+        message: `Command '${command}' sent to device`
+      });
+    } catch (fcmError) {
+      console.error('FCM send error:', fcmError.code, fcmError.message);
+      
+      // Handle specific FCM errors
+      if (fcmError.code === 'messaging/invalid-registration-token' || 
+          fcmError.code === 'messaging/registration-token-not-registered') {
+        // Token is invalid or expired - clear it from device record
+        device.fcmToken = null;
+        await device.save();
+        
+        return res.status(400).json({ 
+          error: 'Device FCM token expired',
+          hint: 'The device app needs to reconnect and register a new token',
+          code: 'FCM_TOKEN_EXPIRED'
+        });
+      }
+      
+      throw fcmError;
+    }
   } catch (error) {
     console.error('Command error:', error);
     res.status(500).json({ error: 'Failed to send command', details: error.message });
