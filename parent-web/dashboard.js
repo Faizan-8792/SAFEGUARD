@@ -856,13 +856,21 @@ function setupEventListeners() {
 }
 
 // API Functions
+// Public endpoints that don't require authentication
+const PUBLIC_ENDPOINTS = ['/auth/login', '/auth/register', '/auth/forgot-password'];
+
 async function api(endpoint, options = {}) {
-  // Security: Check authentication token before making request
-  const currentToken = sessionStorage.getItem(TOKEN_STORAGE_KEY);
-  if (!currentToken || currentToken !== authToken) {
-    console.warn('Auth token mismatch or missing - forcing logout');
-    handleLogout();
-    throw new Error('Authentication required');
+  // Skip auth check for public endpoints (login, register, etc.)
+  const isPublicEndpoint = PUBLIC_ENDPOINTS.some(pub => endpoint.startsWith(pub));
+  
+  if (!isPublicEndpoint) {
+    // Security: Check authentication token before making request
+    const currentToken = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+    if (!currentToken || currentToken !== authToken) {
+      console.warn('Auth token mismatch or missing - forcing logout');
+      handleLogout();
+      throw new Error('Authentication required');
+    }
   }
 
   const headers = {
