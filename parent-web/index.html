@@ -843,6 +843,9 @@
                     <!-- Middle Panel: Contact List -->
                     <div class="contact-list-panel">
                         <div class="contact-list-header">
+                            <button class="mobile-back-btn" id="backToApps" onclick="showAppSelector()">
+                                <i class="fas fa-arrow-left"></i>
+                            </button>
                             <h3 id="selectedAppName">Select an App</h3>
                             <span class="contact-count" id="contactCount"></span>
                         </div>
@@ -859,12 +862,14 @@
                     <div class="chat-view-panel">
                         <div class="chat-header" id="chatHeader" style="display: none;">
                             <div class="chat-contact-info">
+                                <button class="mobile-back-btn" id="backToContacts" onclick="showContactList()">
+                                    <i class="fas fa-arrow-left"></i>
+                                </button>
                                 <div class="contact-avatar" id="chatContactAvatar">
                                     <span class="avatar-letter">?</span>
                                 </div>
                                 <div class="contact-details">
                                     <h3 id="chatContactName">Contact</h3>
-                                    <span class="contact-identifier" id="chatContactId">@username</span>
                                 </div>
                             </div>
                             <div class="chat-actions">

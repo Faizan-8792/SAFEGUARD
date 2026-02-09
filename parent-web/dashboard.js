@@ -5792,6 +5792,9 @@ async function loadSocialMedia() {
     socialBadge.style.display = 'none';
   }
   
+  // Reset mobile view to app selector
+  resetSocialMediaMobileView();
+  
   // Use deviceId (Android device ID) if available, otherwise fall back to _id
   const deviceId = selectedDevice.deviceId || getDeviceId(selectedDevice);
   console.log('Loading social media for device:', deviceId);
@@ -5804,6 +5807,74 @@ async function loadSocialMedia() {
   
   // Load stats
   await loadSocialStats(deviceId);
+}
+
+// Mobile Panel Navigation Functions
+function isMobileView() {
+  return window.innerWidth <= 768;
+}
+
+function resetSocialMediaMobileView() {
+  if (!isMobileView()) return;
+  
+  const dashboard = document.querySelector('.social-media-dashboard');
+  const appPanel = document.querySelector('.app-selector-panel');
+  const contactPanel = document.querySelector('.contact-list-panel');
+  const chatPanel = document.querySelector('.chat-view-panel');
+  
+  if (!dashboard || !appPanel || !contactPanel || !chatPanel) return;
+  
+  dashboard.classList.remove('viewing-contacts', 'viewing-chat');
+  appPanel.classList.remove('slide-out');
+  contactPanel.classList.remove('slide-in');
+  chatPanel.classList.remove('slide-in');
+}
+
+function showContactListMobile() {
+  if (!isMobileView()) return;
+  
+  const dashboard = document.querySelector('.social-media-dashboard');
+  const appPanel = document.querySelector('.app-selector-panel');
+  const contactPanel = document.querySelector('.contact-list-panel');
+  const chatPanel = document.querySelector('.chat-view-panel');
+  
+  if (!dashboard || !appPanel || !contactPanel || !chatPanel) return;
+  
+  dashboard.classList.add('viewing-contacts');
+  dashboard.classList.remove('viewing-chat');
+  appPanel.classList.add('slide-out');
+  contactPanel.classList.add('slide-in');
+  chatPanel.classList.remove('slide-in');
+}
+
+function showChatViewMobile() {
+  if (!isMobileView()) return;
+  
+  const dashboard = document.querySelector('.social-media-dashboard');
+  const chatPanel = document.querySelector('.chat-view-panel');
+  
+  if (!dashboard || !chatPanel) return;
+  
+  dashboard.classList.add('viewing-chat');
+  chatPanel.classList.add('slide-in');
+}
+
+function showAppSelector() {
+  if (!isMobileView()) return;
+  
+  resetSocialMediaMobileView();
+}
+
+function showContactList() {
+  if (!isMobileView()) return;
+  
+  const dashboard = document.querySelector('.social-media-dashboard');
+  const chatPanel = document.querySelector('.chat-view-panel');
+  
+  if (!dashboard || !chatPanel) return;
+  
+  dashboard.classList.remove('viewing-chat');
+  chatPanel.classList.remove('slide-in');
 }
 
 // Setup event listeners for social media page
@@ -5928,6 +5999,9 @@ async function selectSocialApp(appPackage) {
   const meta = SOCIAL_APP_METADATA[appPackage] || { name: appPackage };
   document.getElementById('selectedAppName').textContent = meta.name;
   
+  // Mobile: Show contact list panel with slide animation
+  showContactListMobile();
+  
   // Load contacts - use Android deviceId
   const deviceId = selectedDevice.deviceId || getDeviceId(selectedDevice);
   await loadSocialContacts(deviceId, appPackage);
@@ -6014,6 +6088,9 @@ async function selectSocialContact(contactName) {
   // Show chat header
   const chatHeader = document.getElementById('chatHeader');
   if (chatHeader) chatHeader.style.display = 'flex';
+  
+  // Mobile: Show chat view panel with slide animation
+  showChatViewMobile();
   
   // Update contact info in header
   const contact = socialContacts.find(c => c.contact_name === contactName);
