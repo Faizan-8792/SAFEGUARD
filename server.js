@@ -126,6 +126,18 @@ app.use('/dashboard', express.static(path.join(__dirname, 'parent-web')));
 // Serve icon.png at root level for notifications
 app.use('/icon.png', express.static(path.join(__dirname, 'parent-web', 'icon.png')));
 
+// Health check endpoint with Firebase status
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    firebase: {
+      initialized: admin.apps.length > 0,
+      projectId: process.env.FIREBASE_PROJECT_ID ? 'set' : 'not set'
+    }
+  });
+});
+
 // Redirect root to dashboard
 app.get('/', (req, res) => {
   res.redirect('/dashboard');
