@@ -3378,14 +3378,9 @@ async function removeDevice() {
   
   // Show comprehensive warning about data deletion
   const deviceName = selectedDevice.name || selectedDevice.deviceName || 'this device';
-  const warningMessage = `⚠️ IMPORTANT WARNING ⚠️\n\nUnpairing "${deviceName}" will PERMANENTLY DELETE all data collected from this device:\n\n• All photos synced\n• All call logs\n• All SMS messages\n• All notifications\n• All browser history\n• All keystroke sessions\n• All social media messages\n• All location history\n• All app usage data\n• All screenshots\n\nThis action CANNOT be undone!\n\nAre you sure you want to continue?`;
+  const warningMessage = `⚠️ WARNING ⚠️\n\nUnpairing "${deviceName}" will PERMANENTLY DELETE all data collected from this device:\n\n• All photos synced\n• All call logs\n• All SMS messages\n• All notifications\n• All browser history\n• All keystroke sessions\n• All social media messages\n• All location history\n• All app usage data\n• All screenshots\n\nThis action CANNOT be undone!\n\nAre you sure you want to proceed?`;
   
   if (!confirm(warningMessage)) {
-    return;
-  }
-  
-  // Double confirmation
-  if (!confirm('This is your FINAL confirmation.\n\nAll data from this device will be deleted permanently.\n\nProceed?')) {
     return;
   }
   
