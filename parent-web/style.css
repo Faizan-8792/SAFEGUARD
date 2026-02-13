@@ -5621,45 +5621,59 @@ body {
    WhatsApp-Style Chat View for Keystrokes
    ==================================== */
 
+/* Compact Keystroke Chat Cards */
+.keystroke-sessions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+
 .keystroke-chat-card {
   background: var(--card-bg);
-  border-radius: 12px;
-  padding: 1rem;
-  margin-bottom: 0.75rem;
+  border-radius: 10px;
+  padding: 0.75rem;
   cursor: pointer;
   transition: all 0.2s;
   position: relative;
   border: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .keystroke-chat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  border-color: var(--primary-light);
 }
 
 .keystroke-chat-card.high-risk {
-  border-left: 4px solid var(--error);
+  border-left: 3px solid var(--error);
+  background: linear-gradient(to right, rgba(244, 67, 54, 0.05), transparent);
 }
 
 .keystroke-chat-card.medium-risk {
-  border-left: 4px solid var(--warning);
+  border-left: 3px solid var(--warning);
+  background: linear-gradient(to right, rgba(255, 152, 0, 0.05), transparent);
 }
 
 .keystroke-chat-card .chat-header {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.6rem;
 }
 
 .keystroke-chat-card .chat-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--surface-light);
-  font-size: 1.25rem;
+  font-size: 1rem;
 }
 
 .keystroke-chat-card .chat-avatar.whatsapp {
@@ -5673,7 +5687,7 @@ body {
 }
 
 .keystroke-chat-card .chat-avatar.instagram {
-  background: linear-gradient(45deg, #f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%);
+  background: linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
   color: white;
 }
 
@@ -5682,78 +5696,118 @@ body {
   color: white;
 }
 
+.keystroke-chat-card .chat-avatar.snapchat {
+  background: #FFFC00;
+  color: #000;
+}
+
+.keystroke-chat-card .chat-avatar.twitter {
+  background: #1DA1F2;
+  color: white;
+}
+
 .keystroke-chat-card .chat-info {
   flex: 1;
+  min-width: 0;
 }
 
 .keystroke-chat-card .chat-name {
   font-weight: 600;
   color: var(--text-primary);
-  font-size: 1rem;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .keystroke-chat-card .chat-app {
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .keystroke-chat-card .chat-meta {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.25rem;
+  gap: 0.15rem;
+  margin-left: auto;
 }
 
 .keystroke-chat-card .chat-time {
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   color: var(--text-hint);
+  white-space: nowrap;
 }
 
 .keystroke-chat-card .chat-count {
-  font-size: 0.7rem;
-  padding: 2px 8px;
+  font-size: 0.65rem;
+  padding: 2px 6px;
   background: var(--primary);
   color: white;
-  border-radius: 10px;
+  border-radius: 8px;
+  font-weight: 500;
 }
 
 .keystroke-chat-card .chat-preview {
-  margin-top: 0.75rem;
   color: var(--text-secondary);
-  font-size: 0.9rem;
-  line-height: 1.4;
+  font-size: 0.8rem;
+  line-height: 1.3;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+  background: var(--surface-light);
+  padding: 0.5rem;
+  border-radius: 6px;
+  border-left: 2px solid var(--primary-light);
 }
 
 .keystroke-chat-card .risk-badge {
   position: absolute;
-  top: 0.75rem;
-  right: 3.5rem;
-  font-size: 0.65rem;
-  padding: 2px 6px;
+  top: 0.5rem;
+  right: 2.5rem;
+  font-size: 0.6rem;
+  padding: 2px 5px;
   border-radius: 4px;
   font-weight: 600;
+  text-transform: uppercase;
 }
 
 .keystroke-chat-card .btn-delete-chat {
   position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
+  top: 0.4rem;
+  right: 0.4rem;
   background: none;
   border: none;
   color: var(--text-hint);
   cursor: pointer;
-  padding: 0.5rem;
-  border-radius: 50%;
+  padding: 0.35rem;
+  border-radius: 6px;
   transition: all 0.2s;
+  font-size: 0.75rem;
+  opacity: 0;
+}
+
+.keystroke-chat-card:hover .btn-delete-chat {
+  opacity: 1;
 }
 
 .keystroke-chat-card .btn-delete-chat:hover {
   background: var(--error);
   color: white;
+}
+
+@media (max-width: 768px) {
+  .keystroke-sessions {
+    grid-template-columns: 1fr;
+  }
+  
+  .keystroke-chat-card .btn-delete-chat {
+    opacity: 1;
+  }
 }
 
 /* Message Thread WhatsApp Style */
@@ -5982,6 +6036,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
 }
 
 .contact-list-header h3 {
@@ -5989,6 +6044,23 @@ body {
   font-size: 1.1rem;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.btn-delete-app-all {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-hint);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  transition: all 0.2s;
+  font-size: 0.9rem;
+}
+
+.btn-delete-app-all:hover {
+  background: var(--error);
+  color: white;
 }
 
 .contact-count {

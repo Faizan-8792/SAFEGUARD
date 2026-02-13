@@ -5924,6 +5924,10 @@ function showChatViewMobile() {
 function showAppSelector() {
   if (!isMobileView()) return;
   
+  // Hide delete app button when going back
+  const deleteAppBtn = document.getElementById('btnDeleteAppMessages');
+  if (deleteAppBtn) deleteAppBtn.classList.add('hidden');
+  
   resetSocialMediaMobileView();
 }
 
@@ -6098,6 +6102,13 @@ async function selectSocialApp(appPackage) {
   // Update selected app name
   const meta = SOCIAL_APP_METADATA[appPackage] || { name: appPackage };
   document.getElementById('selectedAppName').textContent = meta.name;
+  
+  // Show delete all button for this app
+  const deleteAppBtn = document.getElementById('btnDeleteAppMessages');
+  if (deleteAppBtn) {
+    deleteAppBtn.classList.remove('hidden');
+    deleteAppBtn.onclick = () => deleteAllAppMessages(appPackage);
+  }
   
   // Mobile: Show contact list panel with slide animation
   showContactListMobile();
@@ -6476,6 +6487,56 @@ function getMediaIcon(mediaType) {
     'LOCATION': 'fas fa-map-marker-alt'
   };
   return icons[mediaType] || 'fas fa-paperclip';
+}
+
+// Delete all messages for a specific app
+async function deleteAllAppMessages(appPackage) {
+  const meta = SOCIAL_APP_METADATA[appPackage] || { name: appPackage };
+  
+  if (!confirm(`Delete ALL messages from ${meta.name}? This cannot be undone.`)) return;
+  
+  const deviceId = selectedDevice?.deviceId || getDeviceId(selectedDevice);
+  
+  try {
+    const response = await fetch(
+      `${API_BASE}/social-media/${deviceId}/${appPackage}`,
+      {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      }
+    );
+    
+    if (!response.ok) throw new Error('Delete failed');
+    
+    showToast(`All ${meta.name} messages deleted`, 'success');
+    
+    // Reset selection and reload
+    selectedSocialApp = null;
+    selectedSocialContact = null;
+    
+    // Hide delete button
+    const deleteAppBtn = document.getElementById('btnDeleteAppMessages');
+    if (deleteAppBtn) deleteAppBtn.classList.add('hidden');
+    
+    // Reload apps list
+    await loadSocialApps(deviceId);
+    
+    // Clear contact list and chat view
+    document.getElementById('socialContactList').innerHTML = '<p class="empty-state">Select an app to view chats</p>';
+    document.getElementById('selectedAppName').textContent = 'Select an App';
+    document.getElementById('contactCount').textContent = '';
+    document.getElementById('chatMessages').innerHTML = `
+      <div class="empty-chat-state">
+        <i class="fas fa-comments"></i>
+        <p>Select a contact to view messages</p>
+      </div>
+    `;
+    document.getElementById('chatHeader').style.display = 'none';
+    
+  } catch (error) {
+    console.error('Error deleting app messages:', error);
+    showToast('Failed to delete messages', 'error');
+  }
 }
 
 // Handle real-time social message from WebSocket
