@@ -59,6 +59,35 @@
   box-sizing: border-box;
 }
 
+/* Mobile Touch Optimizations */
+button,
+a,
+input,
+select,
+textarea,
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.nav-link,
+.social-app-card,
+.social-contact-item,
+.message-bubble,
+.keystroke-card,
+[onclick],
+[role="button"] {
+  -webkit-tap-highlight-color: rgba(102, 126, 234, 0.3);
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+}
+
+/* Ensure buttons respond on touch */
+button:active,
+.btn-primary:active,
+.btn-secondary:active {
+  transform: scale(0.97);
+  opacity: 0.9;
+}
+
 html {
   width: 100%;
   overflow-x: hidden;

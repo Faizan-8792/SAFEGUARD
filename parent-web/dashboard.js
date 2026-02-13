@@ -642,9 +642,33 @@ function setupEventListeners() {
   try {
     // Login form
     document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
+    
+    // MOBILE FIX: Also add click handler to login button for WebView
+    const loginBtn = document.querySelector('#loginForm button[type="submit"]');
+    if (loginBtn) {
+      loginBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const form = document.getElementById('loginForm');
+        if (form) {
+          form.dispatchEvent(new Event('submit', { cancelable: true }));
+        }
+      });
+    }
   
     // Register form
     document.getElementById('registerForm')?.addEventListener('submit', handleRegister);
+    
+    // MOBILE FIX: Also add click handler to register button
+    const registerBtn = document.querySelector('#registerForm button[type="submit"]');
+    if (registerBtn) {
+      registerBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const form = document.getElementById('registerForm');
+        if (form) {
+          form.dispatchEvent(new Event('submit', { cancelable: true }));
+        }
+      });
+    }
   
   // Show register page
   document.getElementById('showRegister')?.addEventListener('click', (e) => {
@@ -850,6 +874,32 @@ function setupEventListeners() {
       radio.checked = true;
     });
   });
+  
+  // === MOBILE TOUCH SUPPORT ===
+  // Ensure buttons work correctly on mobile WebView
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  if (isMobile) {
+    // Add touchend fallback for all buttons to ensure they trigger on mobile
+    document.querySelectorAll('button, .btn-primary, .btn-secondary, .btn-danger, .nav-item').forEach(el => {
+      el.addEventListener('touchend', (e) => {
+        // Small delay to allow the tap to register
+        setTimeout(() => {
+          e.target.click();
+        }, 10);
+      }, { passive: true });
+    });
+    
+    // Make sure form inputs can receive focus on mobile
+    document.querySelectorAll('input, select, textarea').forEach(el => {
+      el.addEventListener('touchstart', (e) => {
+        el.focus();
+      }, { passive: true });
+    });
+    
+    console.log('[Mobile] Touch event handlers initialized');
+  }
+  
   } catch (error) {
     console.error('Error setting up event listeners:', error);
   }
@@ -926,10 +976,28 @@ async function api(endpoint, options = {}) {
 
 // Auth Functions
 async function handleLogin(e) {
-  e.preventDefault();
+  if (e) e.preventDefault();
   
-  const email = document.getElementById('email').value;
-  const password = document.getElementById('password').value;
+  console.log('[Login] Starting login...');
+  
+  const emailInput = document.getElementById('email');
+  const passwordInput = document.getElementById('password');
+  
+  if (!emailInput || !passwordInput) {
+    console.error('[Login] Form inputs not found');
+    alert('Error: Form elements not found. Please refresh the page.');
+    return;
+  }
+  
+  const email = emailInput.value.trim();
+  const password = passwordInput.value;
+  
+  if (!email || !password) {
+    alert('Please enter both email and password');
+    return;
+  }
+  
+  console.log('[Login] Attempting login for:', email);
   
   try {
     const data = await api('/auth/login', {
@@ -937,6 +1005,7 @@ async function handleLogin(e) {
       body: JSON.stringify({ email, password })
     });
     
+    console.log('[Login] Login successful');
     authToken = data.token;
     sessionStorage.setItem(TOKEN_STORAGE_KEY, authToken);
     currentUser = data.user;
