@@ -986,7 +986,9 @@ function setupEventListeners() {
   
   if (isMobile) {
     // Add touchend fallback for all buttons to ensure they trigger on mobile
+    // Exclude btnMenu since it already handles touch events properly via click handler
     document.querySelectorAll('button, .btn-primary, .btn-secondary, .btn-danger, .nav-item').forEach(el => {
+      if (el.id === 'btnMenu') return; // Skip hamburger - prevent double-toggle
       el.addEventListener('touchend', (e) => {
         // Small delay to allow the tap to register
         setTimeout(() => {
