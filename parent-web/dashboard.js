@@ -1033,8 +1033,8 @@ async function api(endpoint, options = {}) {
     const data = await response.json();
     
     if (!response.ok) {
-      // Handle 401 Unauthorized - token expired or invalid
-      if (response.status === 401) {
+      // Handle 401 Unauthorized - but NOT for login/register endpoints (they return 401 for wrong credentials)
+      if (response.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/register')) {
         console.warn('Token expired or unauthorized');
         handleLogout();
         throw new Error('Session expired. Please login again.');
