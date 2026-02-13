@@ -293,9 +293,11 @@ body {
   color: var(--text-primary);
   font-size: 18px;
   width: 44px;
+  min-width: 44px;
   height: 44px;
   border-radius: 12px;
   cursor: pointer;
+  flex-shrink: 0;
   transition: all var(--transition-normal);
 }
 
@@ -308,6 +310,8 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  flex: 1;
 }
 
 .device-selector select {
@@ -2829,9 +2833,12 @@ body {
   }
   
   .device-selector select {
-    min-width: 140px;
+    min-width: 0;
+    max-width: 140px;
     padding: 10px 12px;
     font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   
   .header-actions {
@@ -4226,9 +4233,12 @@ body {
   }
   
   .device-selector select {
-    min-width: 140px;
+    min-width: 0;
+    max-width: 140px;
     padding: 8px 12px;
     font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   
   .page {

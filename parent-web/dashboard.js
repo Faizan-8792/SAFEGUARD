@@ -54,13 +54,18 @@ function getInitialPage() {
   return sanitizePage(hashPage || storedPage || 'dashboard');
 }
 
-// Check for token in URL parameter (from Android app) or sessionStorage
+// Check for token in URL parameter (from Android app) or sessionStorage/localStorage
 function getAuthToken() {
+  const isWebView = isTrustedUrlTokenSource();
+
   // Check URL params first (for Android WebView injection)
   const urlParams = new URLSearchParams(window.location.search);
   const urlToken = urlParams.get('token');
   if (urlToken) {
-    if (isTrustedUrlTokenSource()) {
+    if (isWebView) {
+      // In WebView: store in BOTH localStorage (persists across app restarts)
+      // and sessionStorage (for current session quick access)
+      localStorage.setItem(TOKEN_STORAGE_KEY, urlToken);
       sessionStorage.setItem(TOKEN_STORAGE_KEY, urlToken);
       sessionStorage.setItem(TOKEN_SOURCE_KEY, 'url');
     } else {
@@ -70,15 +75,16 @@ function getAuthToken() {
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
   }
 
+  // Check sessionStorage first (fast, current session)
   const sessionToken = sessionStorage.getItem(TOKEN_STORAGE_KEY);
   if (sessionToken) return sessionToken;
 
-  // Migrate legacy localStorage token to session-only storage
-  const legacyToken = localStorage.getItem(TOKEN_STORAGE_KEY);
-  if (legacyToken) {
-    sessionStorage.setItem(TOKEN_STORAGE_KEY, legacyToken);
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
-    return legacyToken;
+  // Check localStorage (persists across app restarts in WebView)
+  const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (storedToken) {
+    // Restore to sessionStorage for current session
+    sessionStorage.setItem(TOKEN_STORAGE_KEY, storedToken);
+    return storedToken;
   }
 
   return null;
@@ -799,8 +805,10 @@ function setupEventListeners() {
   });
   
   // Mobile menu
-  document.getElementById('btnMenu')?.addEventListener('click', (e) => {
+  const btnMenu = document.getElementById('btnMenu');
+  btnMenu?.addEventListener('click', (e) => {
     e.stopPropagation();
+    e.preventDefault();
     sidebar.classList.toggle('open');
   });
   
@@ -808,7 +816,7 @@ function setupEventListeners() {
   document.addEventListener('click', (e) => {
     if (sidebar.classList.contains('open') && 
         !sidebar.contains(e.target) && 
-        e.target.id !== 'btnMenu') {
+        !btnMenu?.contains(e.target)) {
       sidebar.classList.remove('open');
     }
   });
@@ -3541,7 +3549,7 @@ async function loadDeviceOwnerStatus() {
   try {
     const data = await api(`/device-owner/${deviceId}/status`);
     
-    if (data.isDeviceOwner) {
+    if (data.mode === 'deviceOwner' && data.deviceOwnerProvisioned) {
       // Show DO controls, hide provisioning
       doSection.classList.remove('hidden');
       doProvSection.classList.add('hidden');
