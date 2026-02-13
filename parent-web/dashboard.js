@@ -6046,6 +6046,9 @@ function renderSocialApps() {
       emoji: '💬'
     };
     
+    // Show unread contact count (number of contacts with unread messages) instead of total messages
+    const unreadContacts = app.unread_contact_count || 0;
+    
     return `
       <div class="social-app-card ${selectedSocialApp === app.app_package ? 'active' : ''}" 
            data-package="${app.app_package}">
@@ -6056,7 +6059,7 @@ function renderSocialApps() {
           <h4>${meta.name}</h4>
           <span class="app-stats">${app.contact_count} chats • ${app.message_count} msgs</span>
         </div>
-        ${app.message_count > 0 ? `<span class="app-badge">${app.message_count}</span>` : ''}
+        ${unreadContacts > 0 ? `<span class="app-badge">${unreadContacts}</span>` : ''}
       </div>
     `;
   }).join('');
@@ -6202,7 +6205,8 @@ async function selectSocialContact(contactName) {
     }
     
     document.getElementById('chatContactName').textContent = contact.contact_name;
-    document.getElementById('chatContactId').textContent = contact.contact_identifier || '';
+    const contactIdEl = document.getElementById('chatContactId');
+    if (contactIdEl) contactIdEl.textContent = contact.contact_identifier || '';
   }
   
   // Load messages - use Android deviceId
@@ -6246,11 +6250,18 @@ async function loadSocialMessages(deviceId, appPackage, contactName) {
         headers: { 'Authorization': `Bearer ${authToken}` } 
       }
     ).then(() => {
-      // Update local unread count
+      // Update local unread count for the contact
       const contact = socialContacts.find(c => c.contact_name === contactName);
-      if (contact) {
+      if (contact && contact.unread_count > 0) {
         contact.unread_count = 0;
         renderSocialContacts();
+        
+        // Update the app's unread_contact_count in socialApps array
+        const app = socialApps.find(a => a.app_package === appPackage);
+        if (app && app.unread_contact_count > 0) {
+          app.unread_contact_count--;
+          renderSocialApps();
+        }
       }
     }).catch(() => {}); // Silent fail
     

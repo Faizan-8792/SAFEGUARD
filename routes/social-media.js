@@ -330,11 +330,29 @@ router.get('/:deviceId/apps', async (req, res) => {
       { $sort: { last_message_time: -1 } }
     ]);
     
-    // Add metadata
+    // Get unread contact count for each app from SocialContact collection
+    const unreadCounts = await SocialContact.aggregate([
+      { $match: { device_id: deviceId, unread_count: { $gt: 0 } } },
+      {
+        $group: {
+          _id: '$app_package',
+          unread_contact_count: { $sum: 1 }
+        }
+      }
+    ]);
+    
+    // Create a map of app_package -> unread_contact_count
+    const unreadMap = {};
+    unreadCounts.forEach(uc => {
+      unreadMap[uc._id] = uc.unread_contact_count;
+    });
+    
+    // Add metadata and unread counts
     const appsWithMetadata = appStats.map(app => ({
       ...app,
       icon: APP_METADATA[app.app_package]?.icon || '💬',
-      color: APP_METADATA[app.app_package]?.color || '#667eea'
+      color: APP_METADATA[app.app_package]?.color || '#667eea',
+      unread_contact_count: unreadMap[app.app_package] || 0
     }));
     
     res.json({
