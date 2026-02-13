@@ -1443,9 +1443,49 @@ const startServer = () => {
 };
 
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/familyguard')
-.then(() => {
+.then(async () => {
   console.log('Connected to MongoDB');
   startServer();
+  
+  // Run social media duplicate cleanup on startup
+  try {
+    const { SocialMessage } = require('./models');
+    const pipeline = [
+      {
+        $group: {
+          _id: {
+            device_id: '$device_id',
+            app_package: '$app_package',
+            contact_name: '$contact_name',
+            message_text: '$message_text',
+            timestamp_second: { $subtract: ['$timestamp', { $mod: ['$timestamp', 2000] }] }
+          },
+          count: { $sum: 1 },
+          docs: { $push: '$_id' },
+          firstDoc: { $first: '$_id' }
+        }
+      },
+      { $match: { count: { $gt: 1 } } }
+    ];
+    
+    const duplicates = await SocialMessage.aggregate(pipeline).allowDiskUse(true);
+    
+    if (duplicates.length > 0) {
+      let totalDeleted = 0;
+      for (const dup of duplicates) {
+        const idsToDelete = dup.docs.filter(id => !id.equals(dup.firstDoc));
+        if (idsToDelete.length > 0) {
+          const result = await SocialMessage.deleteMany({ _id: { $in: idsToDelete } });
+          totalDeleted += result.deletedCount;
+        }
+      }
+      console.log(`🧹 Startup cleanup: removed ${totalDeleted} duplicate social messages from ${duplicates.length} groups`);
+    } else {
+      console.log('✅ No duplicate social messages found');
+    }
+  } catch (cleanupErr) {
+    console.error('Startup duplicate cleanup error (non-fatal):', cleanupErr.message);
+  }
 })
 .catch((error) => {
   console.error('MongoDB connection error:', error);
