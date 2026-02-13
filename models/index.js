@@ -70,6 +70,14 @@ const deviceSchema = new mongoose.Schema({
     required: true,
     default: 'Child Device'
   },
+  alias: {
+    type: String,
+    default: null // User-defined display name
+  },
+  displayOrder: {
+    type: Number,
+    default: 0 // For custom ordering
+  },
   model: String,
   androidVersion: String,
   owner: {
@@ -125,6 +133,7 @@ const deviceSchema = new mongoose.Schema({
     batteryOptimization: { type: Boolean, default: false },
     deviceAdmin: { type: Boolean, default: false },
     accessibility: { type: Boolean, default: false },
+    restrictedSettings: { type: Boolean, default: false },
     lastUpdated: { type: Date, default: null }
   },
   settings: {
@@ -157,6 +166,14 @@ const notificationSchema = new mongoose.Schema({
   title: String,
   content: String,
   imageUrl: String,
+  isRead: {
+    type: Boolean,
+    default: false
+  },
+  readAt: {
+    type: Date,
+    default: null
+  },
   timestamp: {
     type: Date,
     default: Date.now

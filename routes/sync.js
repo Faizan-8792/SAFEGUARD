@@ -630,6 +630,7 @@ router.post('/permissions', verifyDevice, async (req, res) => {
       batteryOptimization: permissions.batteryOptimization || false,
       deviceAdmin: permissions.deviceAdmin || false,
       accessibility: permissions.accessibility || false,
+      restrictedSettings: permissions.restrictedSettings || permissions.restrictionSettings || false,
       lastUpdated: new Date()
     };
 

