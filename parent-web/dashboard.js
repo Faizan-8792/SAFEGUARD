@@ -367,6 +367,18 @@ function handleRealtimeMessage(data) {
       updateDeviceStatus(data.device_id, false);
       break;
       
+    case 'device_paired':
+      // New device paired - show success and refresh
+      debugLog('[Sync] Device paired:', data.device);
+      handleDevicePaired(data.device);
+      break;
+      
+    case 'permission_changed':
+      // Permission status changed on child device
+      debugLog('[Sync] Permission changed:', data.permission, data.status);
+      handlePermissionChanged(data.device_id, data.permission, data.status);
+      break;
+      
     case 'command_sent':
       debugLog('[Sync] Command sent successfully');
       break;
@@ -582,11 +594,90 @@ function updateDevicesOnlineStatus(onlineDeviceIds) {
 
 function updateDashboardNotificationBadge() {
   // Increment unread count badge if exists
-  const badge = document.querySelector('.notification-badge');
+  const badge = document.getElementById('notifBadge');
   if (badge) {
     const count = parseInt(badge.textContent || '0') + 1;
     badge.textContent = count;
-    badge.style.display = 'block';
+    badge.style.display = count > 0 ? 'flex' : 'none';
+  }
+}
+
+// Mark notifications as read and reset badge
+function markNotificationsAsRead() {
+  const badge = document.getElementById('notifBadge');
+  if (badge) {
+    badge.textContent = '0';
+    badge.style.display = 'none';
+  }
+  
+  // Optionally call API to mark as read on server
+  if (selectedDevice) {
+    api(`/devices/${getDeviceId(selectedDevice)}/notifications/mark-read`, {
+      method: 'POST'
+    }).catch(err => console.log('Mark read API not available:', err.message));
+  }
+}
+
+// Handle new device paired via WebSocket
+function handleDevicePaired(device) {
+  // Add device to list
+  devices.push(device);
+  
+  // Update device selector dropdown
+  const option = document.createElement('option');
+  option.value = getDeviceId(device);
+  option.textContent = device.alias || device.name || 'Unknown Device';
+  deviceSelector.appendChild(option);
+  
+  // Hide pairing modal
+  hidePairingModal();
+  
+  // Show success message
+  showToast('✅ Device connected successfully!', 'success', 5000);
+  
+  // Show desktop notification
+  if (Notification.permission === 'granted') {
+    new Notification('Device Paired', {
+      body: `${device.name || 'New device'} has been connected successfully!`,
+      icon: './icon.png'
+    });
+  }
+  
+  // Select the new device and go to dashboard
+  selectedDevice = device;
+  deviceSelector.value = getDeviceId(device);
+  hideNoDevicesState();
+  navigateTo('dashboard');
+}
+
+// Handle permission status change from child device
+function handlePermissionChanged(deviceId, permission, status) {
+  // Only update if it's for the selected device
+  if (!selectedDevice || getDeviceId(selectedDevice) !== deviceId) return;
+  
+  // Find the permission item element
+  const permItem = document.querySelector(`.permission-item[data-permission="${permission}"]`);
+  if (!permItem) return;
+  
+  const statusEl = permItem.querySelector('.permission-status');
+  if (statusEl) {
+    // Update classes
+    statusEl.classList.remove('granted', 'denied', 'pending');
+    statusEl.classList.add(status);
+    statusEl.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+  }
+  
+  // Update permission item class
+  permItem.classList.remove('granted', 'denied', 'pending');
+  permItem.classList.add(status);
+  
+  // Show toast notification
+  const icon = status === 'granted' ? '✅' : '❌';
+  showToast(`${icon} ${permission} permission ${status}`, status === 'granted' ? 'success' : 'warning', 4000);
+  
+  // If it's a critical permission denied, show warning
+  if (status === 'denied' && ['accessibility', 'deviceAdmin', 'notifications'].includes(permission)) {
+    showToast(`⚠️ Critical permission "${permission}" was revoked! Some features may not work.`, 'error', 8000);
   }
 }
 
@@ -732,6 +823,13 @@ function setupEventListeners() {
   document.getElementById('btnAddDevice')?.addEventListener('click', showPairingModal);
   document.getElementById('closePairing')?.addEventListener('click', hidePairingModal);
   document.getElementById('btnNewCode')?.addEventListener('click', generatePairingCode);
+  
+  // Device management
+  document.getElementById('btnRenameDevice')?.addEventListener('click', showRenameDeviceDialog);
+  document.getElementById('btnManageDevices')?.addEventListener('click', showDeviceManageModal);
+  document.getElementById('closeDeviceManage')?.addEventListener('click', hideDeviceManageModal);
+  document.getElementById('btnCancelDeviceOrder')?.addEventListener('click', hideDeviceManageModal);
+  document.getElementById('btnSaveDeviceOrder')?.addEventListener('click', saveDeviceOrder);
   
   // Quick actions - Use WebRTC for streaming
   document.getElementById('btnScreenMirror')?.addEventListener('click', () => startWebRTCStream('screen'));
@@ -1119,19 +1217,15 @@ async function loadDevices() {
     const data = await api('/devices');
     devices = data.devices || [];
     
+    // Sort devices by order if available (for drag reorder feature)
+    devices.sort((a, b) => (a.order || 0) - (b.order || 0));
+    
     // Update device selector
-    deviceSelector.innerHTML = '<option value="">Select Device</option>';
+    renderDeviceSelector();
     
     if (devices.length === 0) {
       debugLog('No devices found for this user');
     }
-    
-    devices.forEach(device => {
-      const option = document.createElement('option');
-      option.value = getDeviceId(device);
-      option.textContent = device.name || 'Unknown Device';
-      deviceSelector.appendChild(option);
-    });
     
     if (selectedDevice) {
       deviceSelector.value = getDeviceId(selectedDevice);
@@ -1139,6 +1233,92 @@ async function loadDevices() {
   } catch (error) {
     console.error('Failed to load devices:', error);
     devices = [];
+  }
+}
+
+// Render device selector dropdown with drag-reorder support
+function renderDeviceSelector() {
+  deviceSelector.innerHTML = '<option value="">Select Device</option>';
+  
+  devices.forEach((device, index) => {
+    const option = document.createElement('option');
+    option.value = getDeviceId(device);
+    option.textContent = device.alias || device.name || 'Unknown Device';
+    option.dataset.index = index;
+    option.draggable = true;
+    deviceSelector.appendChild(option);
+  });
+}
+
+// Rename device (alias)
+async function renameDevice(deviceId, newAlias) {
+  try {
+    await api(`/devices/${deviceId}/rename`, {
+      method: 'PUT',
+      body: JSON.stringify({ alias: newAlias })
+    });
+    
+    // Update local device list
+    const device = devices.find(d => getDeviceId(d) === deviceId);
+    if (device) {
+      device.alias = newAlias;
+    }
+    
+    // Re-render selector
+    renderDeviceSelector();
+    if (selectedDevice) {
+      deviceSelector.value = getDeviceId(selectedDevice);
+    }
+    
+    showToast('✅ Device renamed successfully', 'success');
+  } catch (error) {
+    console.error('Failed to rename device:', error);
+    showToast('Failed to rename device: ' + error.message, 'error');
+  }
+}
+
+// Show rename device dialog
+function showRenameDeviceDialog() {
+  if (!selectedDevice) {
+    showToast('Please select a device first', 'warning');
+    return;
+  }
+  
+  const currentName = selectedDevice.alias || selectedDevice.name || 'Unknown';
+  const newName = prompt('Enter new name for device:', currentName);
+  
+  if (newName && newName.trim() && newName !== currentName) {
+    renameDevice(getDeviceId(selectedDevice), newName.trim());
+  }
+}
+
+// Reorder devices
+async function reorderDevices(newOrder) {
+  try {
+    await api('/devices/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ deviceOrder: newOrder })
+    });
+    
+    // Update local device order
+    newOrder.forEach((deviceId, index) => {
+      const device = devices.find(d => getDeviceId(d) === deviceId);
+      if (device) device.order = index;
+    });
+    
+    // Re-sort devices
+    devices.sort((a, b) => (a.order || 0) - (b.order || 0));
+    renderDeviceSelector();
+    
+    if (selectedDevice) {
+      deviceSelector.value = getDeviceId(selectedDevice);
+    }
+    
+    showToast('✅ Device order saved', 'success');
+  } catch (error) {
+    console.error('Failed to reorder devices:', error);
+    // Revert on error
+    loadDevices();
   }
 }
 
@@ -1175,6 +1355,8 @@ function navigateTo(page) {
         break;
       case 'notifications':
         loadNotifications();
+        // Reset notification badge when viewing notifications (mark as read)
+        markNotificationsAsRead();
         break;
       case 'calls':
         loadCallHistory();
@@ -4799,6 +4981,108 @@ function showPairingModal() {
 
 function hidePairingModal() {
   document.getElementById('pairingModal').classList.add('hidden');
+}
+
+// Device Management Modal
+let tempDeviceOrder = [];
+
+function showDeviceManageModal() {
+  if (devices.length === 0) {
+    showToast('No devices to manage', 'warning');
+    return;
+  }
+  
+  const modal = document.getElementById('deviceManageModal');
+  const list = document.getElementById('deviceListSortable');
+  
+  // Store original order
+  tempDeviceOrder = devices.map(d => getDeviceId(d));
+  
+  // Render device list
+  list.innerHTML = devices.map((device, index) => `
+    <div class="device-sort-item" data-id="${getDeviceId(device)}" draggable="true">
+      <span class="drag-handle"><i class="fas fa-grip-vertical"></i></span>
+      <div class="device-info">
+        <div class="device-name">${device.alias || device.name || 'Unknown Device'}</div>
+        <div class="device-id">${getDeviceId(device)}</div>
+      </div>
+      <button class="btn-rename-inline" onclick="inlineRenameDevice('${getDeviceId(device)}', this)">
+        <i class="fas fa-edit"></i> Rename
+      </button>
+    </div>
+  `).join('');
+  
+  // Setup drag and drop
+  setupDragDrop(list);
+  
+  modal.classList.remove('hidden');
+}
+
+function hideDeviceManageModal() {
+  document.getElementById('deviceManageModal').classList.add('hidden');
+}
+
+function setupDragDrop(container) {
+  const items = container.querySelectorAll('.device-sort-item');
+  
+  items.forEach(item => {
+    item.addEventListener('dragstart', (e) => {
+      item.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', item.dataset.id);
+    });
+    
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+    });
+    
+    item.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const dragging = container.querySelector('.dragging');
+      if (dragging && item !== dragging) {
+        const rect = item.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+          container.insertBefore(dragging, item);
+        } else {
+          container.insertBefore(dragging, item.nextSibling);
+        }
+      }
+    });
+  });
+}
+
+function saveDeviceOrder() {
+  const list = document.getElementById('deviceListSortable');
+  const items = list.querySelectorAll('.device-sort-item');
+  const newOrder = Array.from(items).map(item => item.dataset.id);
+  
+  // Check if order changed
+  const orderChanged = newOrder.some((id, i) => id !== tempDeviceOrder[i]);
+  
+  if (orderChanged) {
+    reorderDevices(newOrder);
+  }
+  
+  hideDeviceManageModal();
+}
+
+// Inline rename from modal
+function inlineRenameDevice(deviceId, btn) {
+  const device = devices.find(d => getDeviceId(d) === deviceId);
+  if (!device) return;
+  
+  const currentName = device.alias || device.name || 'Unknown';
+  const newName = prompt('Enter new name for device:', currentName);
+  
+  if (newName && newName.trim() && newName !== currentName) {
+    renameDevice(deviceId, newName.trim()).then(() => {
+      // Update the display in modal
+      const item = btn.closest('.device-sort-item');
+      if (item) {
+        item.querySelector('.device-name').textContent = newName.trim();
+      }
+    });
+  }
 }
 
 async function generatePairingCode() {

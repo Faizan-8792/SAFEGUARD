@@ -115,6 +115,12 @@
                     <select id="deviceSelector">
                         <option value="">Select Device</option>
                     </select>
+                    <button class="btn-icon-sm" id="btnRenameDevice" title="Rename Device">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn-icon-sm" id="btnManageDevices" title="Manage Device Order">
+                        <i class="fas fa-sort"></i>
+                    </button>
                 </div>
                 <div class="header-actions">
                     <button class="btn-icon" id="btnRefresh" title="Refresh">
@@ -830,6 +836,12 @@
                     </button>
                 </div>
                 
+                <!-- Warning Banner -->
+                <div class="social-warning-banner">
+                    <i class="fas fa-info-circle"></i>
+                    <span>Messages are captured from notifications and may not be formatted perfectly. Media content appears as descriptions.</span>
+                </div>
+                
                 <!-- Social Media Dashboard Layout -->
                 <div class="social-media-dashboard">
                     <!-- Left Panel: App Selection -->
@@ -1273,6 +1285,26 @@
                         <div class="pairing-code" id="pairingCode">------</div>
                         <p class="code-expiry">Code expires in <span id="codeExpiry">5:00</span></p>
                         <button class="btn-secondary" id="btnNewCode">Generate New Code</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Device Management Modal -->
+            <div class="modal hidden" id="deviceManageModal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-mobile-alt"></i> Manage Devices</h2>
+                        <button class="btn-close" id="closeDeviceManage">&times;</button>
+                    </div>
+                    <div class="device-manage-content">
+                        <p class="modal-subtitle">Drag to reorder devices. Click rename to change name.</p>
+                        <div class="device-list-sortable" id="deviceListSortable">
+                            <!-- Devices will be rendered here -->
+                        </div>
+                        <div class="modal-actions">
+                            <button class="btn-secondary" id="btnCancelDeviceOrder">Cancel</button>
+                            <button class="btn-primary" id="btnSaveDeviceOrder">Save Order</button>
+                        </div>
                     </div>
                 </div>
             </div>
