@@ -1046,6 +1046,13 @@ async function api(endpoint, options = {}) {
         throw new Error('Session expired. Please login again.');
       }
       
+      // Handle 429 Too Many Requests - don't logout, propagate error with status
+      if (response.status === 429) {
+        const error = new Error('Too many requests, please try again later');
+        error.status = 429;
+        throw error;
+      }
+      
       // Extract error message properly - handle both string and object errors
       let errorMessage = 'Request failed';
       if (typeof data.error === 'string') {
@@ -1167,7 +1174,18 @@ async function loadUserData() {
     }
   } catch (error) {
     console.error('Failed to load user data:', error);
-    handleLogout();
+    // Only logout on auth errors (401), not on rate limit (429) or network errors
+    if (error.status === 401) {
+      handleLogout();
+    } else if (error.status === 429) {
+      // Rate limited - show dashboard anyway if we have cached user info
+      showToast('Too many requests. Please wait a moment.', 'warning');
+      showDashboard();
+    } else {
+      // Network error - try to show dashboard anyway
+      showToast('Connection error. Some data may be stale.', 'warning');
+      showDashboard();
+    }
   }
 }
 
@@ -1238,6 +1256,7 @@ async function loadDevices() {
 
 // Render device selector dropdown with drag-reorder support
 function renderDeviceSelector() {
+  // Render native select (for form compatibility)
   deviceSelector.innerHTML = '<option value="">Select Device</option>';
   
   devices.forEach((device, index) => {
@@ -1245,9 +1264,126 @@ function renderDeviceSelector() {
     option.value = getDeviceId(device);
     option.textContent = device.alias || device.name || 'Unknown Device';
     option.dataset.index = index;
-    option.draggable = true;
     deviceSelector.appendChild(option);
   });
+  
+  // Create/update custom draggable dropdown overlay
+  createDraggableDeviceDropdown();
+}
+
+// Custom draggable device dropdown
+function createDraggableDeviceDropdown() {
+  let dropdown = document.getElementById('deviceDropdownCustom');
+  
+  if (!dropdown) {
+    dropdown = document.createElement('div');
+    dropdown.id = 'deviceDropdownCustom';
+    dropdown.className = 'device-dropdown-custom hidden';
+    document.body.appendChild(dropdown);
+    
+    // Close on outside click
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target) && e.target !== deviceSelector) {
+        dropdown.classList.add('hidden');
+      }
+    });
+    
+    // Show dropdown when select is clicked
+    deviceSelector.addEventListener('click', (e) => {
+      if (devices.length > 1) {
+        e.preventDefault();
+        showDeviceDropdown();
+      }
+    });
+  }
+  
+  // Update dropdown content
+  dropdown.innerHTML = devices.map((device, idx) => `
+    <div class="device-dropdown-item${selectedDevice && getDeviceId(selectedDevice) === getDeviceId(device) ? ' selected' : ''}" 
+         data-id="${getDeviceId(device)}" 
+         data-index="${idx}"
+         draggable="true">
+      <i class="fas fa-grip-vertical drag-handle"></i>
+      <span class="device-name">${device.alias || device.name || 'Unknown'}</span>
+      <i class="fas fa-check check-icon"></i>
+    </div>
+  `).join('');
+  
+  // Setup drag events
+  setupDeviceDropdownDrag(dropdown);
+}
+
+function showDeviceDropdown() {
+  const dropdown = document.getElementById('deviceDropdownCustom');
+  if (!dropdown || devices.length <= 1) return;
+  
+  const rect = deviceSelector.getBoundingClientRect();
+  dropdown.style.top = `${rect.bottom + 4}px`;
+  dropdown.style.left = `${rect.left}px`;
+  dropdown.style.minWidth = `${rect.width}px`;
+  dropdown.classList.remove('hidden');
+}
+
+function setupDeviceDropdownDrag(container) {
+  const items = container.querySelectorAll('.device-dropdown-item');
+  
+  items.forEach(item => {
+    item.addEventListener('click', (e) => {
+      if (e.target.classList.contains('drag-handle')) return;
+      selectDeviceFromDropdown(item.dataset.id);
+    });
+    
+    item.addEventListener('dragstart', (e) => {
+      item.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', item.dataset.id);
+    });
+    
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      saveDeviceOrderFromDropdown();
+    });
+    
+    item.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const dragging = container.querySelector('.dragging');
+      if (dragging && item !== dragging) {
+        const rect = item.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+          container.insertBefore(dragging, item);
+        } else {
+          container.insertBefore(dragging, item.nextSibling);
+        }
+      }
+    });
+  });
+}
+
+function selectDeviceFromDropdown(deviceId) {
+  const device = devices.find(d => getDeviceId(d) === deviceId);
+  if (device) {
+    selectedDevice = device;
+    deviceSelector.value = deviceId;
+    handleDeviceChange();
+    document.getElementById('deviceDropdownCustom')?.classList.add('hidden');
+    createDraggableDeviceDropdown(); // Re-render to update selected state
+  }
+}
+
+function saveDeviceOrderFromDropdown() {
+  const dropdown = document.getElementById('deviceDropdownCustom');
+  if (!dropdown) return;
+  
+  const items = dropdown.querySelectorAll('.device-dropdown-item');
+  const newOrder = Array.from(items).map(item => item.dataset.id);
+  
+  // Check if order actually changed
+  const currentOrder = devices.map(d => getDeviceId(d));
+  const orderChanged = newOrder.some((id, i) => id !== currentOrder[i]);
+  
+  if (orderChanged) {
+    reorderDevices(newOrder);
+  }
 }
 
 // Rename device (alias)
