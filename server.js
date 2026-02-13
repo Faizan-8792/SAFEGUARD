@@ -405,6 +405,10 @@ app.use('/api/sync', syncRoutes);
 const socialMediaRoutes = require('./routes/social-media');
 app.use('/api/social-media', socialMediaRoutes);
 
+// Device Owner Mode Routes
+const deviceOwnerRoutes = require('./routes/deviceOwner');
+app.use('/api/device-owner', deviceOwnerRoutes);
+
 // ==== ALIAS ROUTES FOR BACKWARD COMPATIBILITY ====
 
 

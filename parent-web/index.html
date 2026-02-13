@@ -1124,6 +1124,136 @@
                     </div>
                 </div>
                 
+                <!-- Device Owner Mode Section (only visible for DO devices) -->
+                <div class="settings-section hidden" id="deviceOwnerSection">
+                    <h3><i class="fas fa-crown"></i> Device Owner Controls</h3>
+                    <p class="section-desc">Advanced controls available in Device Owner mode</p>
+                    
+                    <!-- DO Status Badge -->
+                    <div class="do-status" id="doStatusBadge" style="margin-bottom: 15px; padding: 10px; background: rgba(33,150,243,0.1); border-radius: 8px; border-left: 3px solid #2196F3;">
+                        <small><i class="fas fa-info-circle"></i> <strong>Device Owner Active</strong> — Provisioned via <span id="doProvisionMethod">QR Code</span></small>
+                    </div>
+
+                    <!-- Uninstall Protection -->
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span><i class="fas fa-shield-alt"></i> Uninstall Protection</span>
+                            <small>Prevent app from being uninstalled</small>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" id="toggleUninstallProtection" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <!-- Accessibility Auto-Recovery -->
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span><i class="fas fa-sync-alt"></i> Accessibility Auto-Recovery</span>
+                            <small>Automatically re-enable accessibility if disabled</small>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" id="toggleAccessibilityRecovery">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <!-- Force Enable Accessibility -->
+                    <div style="margin: 10px 0;">
+                        <button class="btn-secondary" id="btnForceAccessibility">
+                            <i class="fas fa-universal-access"></i> Force Enable Accessibility
+                        </button>
+                    </div>
+
+                    <!-- Grant All Permissions -->
+                    <div style="margin: 10px 0;">
+                        <button class="btn-secondary" id="btnDoGrantAllPerms">
+                            <i class="fas fa-check-double"></i> Grant All Permissions (DO)
+                        </button>
+                    </div>
+
+                    <!-- Factory Reset PIN -->
+                    <div class="do-subsection" style="margin-top: 15px; padding: 12px; background: var(--card-bg); border-radius: 8px;">
+                        <h4 style="margin: 0 0 8px 0; font-size: 14px;"><i class="fas fa-key"></i> Factory Reset PIN</h4>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin: 0 0 10px 0;">Require a PIN before factory reset can proceed</p>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="password" id="doResetPinInput" placeholder="Enter 4-6 digit PIN" maxlength="6" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color);">
+                            <button class="btn-secondary" id="btnSetResetPin" style="white-space: nowrap;">
+                                <i class="fas fa-save"></i> Set PIN
+                            </button>
+                            <button class="btn-danger" id="btnClearResetPin" style="white-space: nowrap; padding: 8px 12px; font-size: 12px;">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- App Hiding (DO) -->
+                    <div class="do-subsection" style="margin-top: 15px; padding: 12px; background: var(--card-bg); border-radius: 8px;">
+                        <h4 style="margin: 0 0 8px 0; font-size: 14px;"><i class="fas fa-eye-slash"></i> Hide Apps on Device</h4>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin: 0 0 10px 0;">Hide apps from the child's app drawer using Device Owner</p>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" id="doHideAppInput" placeholder="com.example.app" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color);">
+                            <button class="btn-secondary" id="btnDoHideApp" style="white-space: nowrap;">
+                                <i class="fas fa-eye-slash"></i> Hide
+                            </button>
+                            <button class="btn-secondary" id="btnDoUnhideApp" style="white-space: nowrap;">
+                                <i class="fas fa-eye"></i> Show
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Silent App Install -->
+                    <div class="do-subsection" style="margin-top: 15px; padding: 12px; background: var(--card-bg); border-radius: 8px;">
+                        <h4 style="margin: 0 0 8px 0; font-size: 14px;"><i class="fas fa-download"></i> Silent App Install/Uninstall</h4>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin: 0 0 10px 0;">Install APK from URL or uninstall an app silently</p>
+                        <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+                            <input type="url" id="doInstallUrlInput" placeholder="https://example.com/app.apk" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color);">
+                            <button class="btn-secondary" id="btnDoInstallApp" style="white-space: nowrap;">
+                                <i class="fas fa-download"></i> Install
+                            </button>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" id="doUninstallPkgInput" placeholder="com.example.app" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color);">
+                            <button class="btn-danger" id="btnDoUninstallApp" style="white-space: nowrap; padding: 8px 12px;">
+                                <i class="fas fa-trash"></i> Uninstall
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- OEM Optimizer -->
+                    <div style="margin-top: 15px;">
+                        <button class="btn-secondary" id="btnRunOemOptimizer" style="width: 100%;">
+                            <i class="fas fa-magic"></i> Run OEM Optimizer
+                        </button>
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-top: 5px;">Applies manufacturer-specific optimizations (Xiaomi, Samsung, OPPO, Vivo)</p>
+                    </div>
+                </div>
+
+                <!-- QR Code Provisioning Section (for non-DO devices) -->
+                <div class="settings-section hidden" id="doProvisioningSection">
+                    <h3><i class="fas fa-qrcode"></i> Device Owner Provisioning</h3>
+                    <p class="section-desc">Set up Device Owner mode for enhanced control</p>
+                    
+                    <div style="padding: 12px; background: rgba(255,193,7,0.1); border-radius: 8px; border-left: 3px solid #ffc107; margin-bottom: 15px;">
+                        <small><i class="fas fa-exclamation-triangle"></i> <strong>Important:</strong> Device Owner mode requires a factory-reset device. The QR code must be scanned during the initial device setup.</small>
+                    </div>
+
+                    <button class="btn btn-primary" id="btnGenerateQR" style="width: 100%;">
+                        <i class="fas fa-qrcode"></i> Generate Provisioning QR Code
+                    </button>
+                    
+                    <div class="hidden" id="qrCodeContainer" style="margin-top: 15px; text-align: center;">
+                        <div id="qrCodeCanvas" style="display: inline-block; padding: 15px; background: white; border-radius: 8px;"></div>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">Scan this QR code on a factory-reset device during initial setup</p>
+                    </div>
+
+                    <div style="margin-top: 15px; padding: 12px; background: var(--card-bg); border-radius: 8px;">
+                        <h4 style="margin: 0 0 8px 0; font-size: 14px;"><i class="fas fa-terminal"></i> ADB Method (Alternative)</h4>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin: 0 0 8px 0;">Run in terminal after installing the app:</p>
+                        <code style="display: block; padding: 8px; background: #1a1a2e; color: #0f0; border-radius: 4px; font-size: 11px; word-break: break-all;">adb shell dpm set-device-owner com.familyguardpro/.services.DeviceAdminReceiver</code>
+                    </div>
+                </div>
+                
                 <div class="settings-section danger-zone">
                     <h3><i class="fas fa-exclamation-triangle"></i> Danger Zone</h3>
                     <p class="section-desc">These actions are irreversible. Use with caution.</p>

@@ -945,9 +945,11 @@ function setupEventListeners() {
     loadNotifications(notificationsFilter, true);
   });
   
-  // Settings toggles
+  // Settings toggles (exclude Device Owner toggles which have their own handlers)
   document.querySelectorAll('.settings-section input[type="checkbox"]').forEach(toggle => {
-    toggle.addEventListener('change', saveSettings);
+    if (toggle.id !== 'toggleUninstallProtection' && toggle.id !== 'toggleAccessibilityRecovery') {
+      toggle.addEventListener('change', saveSettings);
+    }
   });
   
   // Remove device
@@ -966,6 +968,9 @@ function setupEventListeners() {
       radio.checked = true;
     });
   });
+  
+  // Setup Device Owner mode event listeners
+  setupDeviceOwnerListeners();
   
   // === MOBILE TOUCH SUPPORT ===
   // Ensure buttons work correctly on mobile WebView
@@ -3362,6 +3367,9 @@ async function loadSettings() {
     
     // Check PIN status
     checkPinStatus();
+    
+    // Load Device Owner status (shows/hides DO controls)
+    loadDeviceOwnerStatus();
   } catch (error) {
     console.error('Failed to load settings:', error);
   }
@@ -3514,6 +3522,331 @@ async function removeDevice() {
   } catch (error) {
     alert('Failed to remove device: ' + error.message);
   }
+}
+
+// ========== DEVICE OWNER MODE FUNCTIONS ==========
+
+/**
+ * Check if the selected device is in Device Owner mode and show/hide DO controls
+ */
+async function loadDeviceOwnerStatus() {
+  if (!selectedDevice) return;
+  
+  const deviceId = getDeviceId(selectedDevice);
+  const doSection = document.getElementById('deviceOwnerSection');
+  const doProvSection = document.getElementById('doProvisioningSection');
+  
+  if (!doSection || !doProvSection) return;
+  
+  try {
+    const data = await api(`/device-owner/${deviceId}/status`);
+    
+    if (data.isDeviceOwner) {
+      // Show DO controls, hide provisioning
+      doSection.classList.remove('hidden');
+      doProvSection.classList.add('hidden');
+      
+      // Set provisioning method
+      const provMethod = document.getElementById('doProvisionMethod');
+      if (provMethod) {
+        provMethod.textContent = data.provisioningMethod === 'adb' ? 'ADB' : 'QR Code';
+      }
+      
+      // Set toggle states from server data
+      const policies = data.policies || {};
+      document.getElementById('toggleUninstallProtection').checked = policies.uninstallProtected || false;
+      document.getElementById('toggleAccessibilityRecovery').checked = policies.accessibilityAutoRecover || false;
+      
+    } else {
+      // Show provisioning section, hide DO controls
+      doSection.classList.add('hidden');
+      doProvSection.classList.remove('hidden');
+    }
+  } catch (error) {
+    // Device may not have DO status endpoint — hide both sections
+    doSection.classList.add('hidden');
+    doProvSection.classList.add('hidden');
+    debugLog('Device Owner status check failed:', error.message);
+  }
+}
+
+/**
+ * Generate QR Code for Device Owner provisioning
+ */
+async function generateProvisioningQR() {
+  if (!selectedDevice) return;
+  
+  const deviceId = getDeviceId(selectedDevice);
+  const container = document.getElementById('qrCodeContainer');
+  const canvas = document.getElementById('qrCodeCanvas');
+  
+  try {
+    const data = await api(`/device-owner/generate-qr`, {
+      method: 'POST',
+      body: JSON.stringify({ deviceId })
+    });
+    
+    if (data.qrData) {
+      // Generate QR code using a simple text display (or use a QR library if available)
+      canvas.innerHTML = `
+        <div style="padding: 20px; background: white; border-radius: 8px; text-align: center;">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.qrData)}" 
+               alt="Provisioning QR Code" style="max-width: 250px;">
+          <p style="margin-top: 10px; font-size: 11px; color: #666; max-width: 250px; word-break: break-all;">
+            ${data.qrData.substring(0, 100)}...
+          </p>
+        </div>
+      `;
+      container.classList.remove('hidden');
+      showToast('QR Code generated! Scan on a factory-reset device.', 'success');
+    }
+  } catch (error) {
+    console.error('Failed to generate QR code:', error);
+    showToast('Failed to generate QR code: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Send Device Owner command to hide an app
+ */
+async function doHideApp() {
+  const packageName = document.getElementById('doHideAppInput')?.value?.trim();
+  if (!packageName) {
+    showToast('Enter a package name', 'error');
+    return;
+  }
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    await api(`/device-owner/${deviceId}/hide-app`, {
+      method: 'POST',
+      body: JSON.stringify({ packageName })
+    });
+    showToast(`App ${packageName} hidden successfully`, 'success');
+  } catch (error) {
+    showToast('Failed to hide app: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Send Device Owner command to unhide an app
+ */
+async function doUnhideApp() {
+  const packageName = document.getElementById('doHideAppInput')?.value?.trim();
+  if (!packageName) {
+    showToast('Enter a package name', 'error');
+    return;
+  }
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    await api(`/device-owner/${deviceId}/unhide-app`, {
+      method: 'POST',
+      body: JSON.stringify({ packageName })
+    });
+    showToast(`App ${packageName} shown successfully`, 'success');
+  } catch (error) {
+    showToast('Failed to show app: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Toggle uninstall protection
+ */
+async function doToggleUninstallProtection() {
+  const enabled = document.getElementById('toggleUninstallProtection')?.checked || false;
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    await api(`/device-owner/${deviceId}/uninstall-protection`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled })
+    });
+    showToast(`Uninstall protection ${enabled ? 'enabled' : 'disabled'}`, 'success');
+  } catch (error) {
+    showToast('Failed to update uninstall protection: ' + error.message, 'error');
+    // Revert toggle
+    document.getElementById('toggleUninstallProtection').checked = !enabled;
+  }
+}
+
+/**
+ * Toggle accessibility auto-recovery
+ */
+async function doToggleAccessibilityRecovery() {
+  const enabled = document.getElementById('toggleAccessibilityRecovery')?.checked || false;
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    await api(`/device-owner/${deviceId}/accessibility-recovery`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled })
+    });
+    showToast(`Accessibility auto-recovery ${enabled ? 'enabled' : 'disabled'}`, 'success');
+  } catch (error) {
+    showToast('Failed to update accessibility recovery: ' + error.message, 'error');
+    document.getElementById('toggleAccessibilityRecovery').checked = !enabled;
+  }
+}
+
+/**
+ * Force enable accessibility service via Device Owner
+ */
+async function doForceEnableAccessibility() {
+  if (!confirm('Force enable accessibility service on the device?')) return;
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    await api(`/device-owner/${deviceId}/force-enable-accessibility`, {
+      method: 'POST'
+    });
+    showToast('Accessibility force-enable command sent', 'success');
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Grant all permissions via Device Owner
+ */
+async function doGrantAllPermissions() {
+  if (!confirm('Grant all runtime permissions automatically via Device Owner?')) return;
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    await api(`/device-owner/${deviceId}/grant-all-permissions`, {
+      method: 'POST'
+    });
+    showToast('Grant all permissions command sent', 'success');
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Set factory reset PIN
+ */
+async function doSetResetPin() {
+  const pin = document.getElementById('doResetPinInput')?.value?.trim();
+  if (!pin || pin.length < 4) {
+    showToast('PIN must be at least 4 digits', 'error');
+    return;
+  }
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    await api(`/device-owner/${deviceId}/set-reset-pin`, {
+      method: 'POST',
+      body: JSON.stringify({ pin })
+    });
+    document.getElementById('doResetPinInput').value = '';
+    showToast('Factory reset PIN set successfully', 'success');
+  } catch (error) {
+    showToast('Failed to set PIN: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Clear factory reset PIN
+ */
+async function doClearResetPin() {
+  if (!confirm('Remove the factory reset PIN protection?')) return;
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    await api(`/device-owner/${deviceId}/reset-pin`, {
+      method: 'DELETE'
+    });
+    showToast('Factory reset PIN removed', 'success');
+  } catch (error) {
+    showToast('Failed to remove PIN: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Silent install app from URL
+ */
+async function doInstallApp() {
+  const url = document.getElementById('doInstallUrlInput')?.value?.trim();
+  if (!url) {
+    showToast('Enter an APK URL', 'error');
+    return;
+  }
+  
+  if (!confirm(`Install app from:\n${url}\n\nThis will be installed silently on the device.`)) return;
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    await api(`/device-owner/${deviceId}/install-app`, {
+      method: 'POST',
+      body: JSON.stringify({ apkUrl: url })
+    });
+    document.getElementById('doInstallUrlInput').value = '';
+    showToast('Install command sent to device', 'success');
+  } catch (error) {
+    showToast('Failed to send install command: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Silent uninstall app
+ */
+async function doUninstallApp() {
+  const packageName = document.getElementById('doUninstallPkgInput')?.value?.trim();
+  if (!packageName) {
+    showToast('Enter a package name', 'error');
+    return;
+  }
+  
+  if (!confirm(`Uninstall ${packageName} from device?`)) return;
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    await api(`/device-owner/${deviceId}/uninstall-app`, {
+      method: 'POST',
+      body: JSON.stringify({ packageName })
+    });
+    document.getElementById('doUninstallPkgInput').value = '';
+    showToast('Uninstall command sent to device', 'success');
+  } catch (error) {
+    showToast('Failed to send uninstall command: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Run OEM optimizer on device
+ */
+async function doRunOemOptimizer() {
+  if (!confirm('Run manufacturer-specific optimizations on the device?\n\nThis will apply settings to prevent the system from killing the app.')) return;
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    await api(`/device-owner/${deviceId}/run-oem-optimizer`, {
+      method: 'POST'
+    });
+    showToast('OEM optimizer command sent', 'success');
+  } catch (error) {
+    showToast('Failed: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Setup Device Owner event listeners
+ */
+function setupDeviceOwnerListeners() {
+  // DO toggle listeners (separate from regular settings toggles)
+  document.getElementById('toggleUninstallProtection')?.addEventListener('change', doToggleUninstallProtection);
+  document.getElementById('toggleAccessibilityRecovery')?.addEventListener('change', doToggleAccessibilityRecovery);
+  
+  // DO action buttons
+  document.getElementById('btnForceAccessibility')?.addEventListener('click', doForceEnableAccessibility);
+  document.getElementById('btnDoGrantAllPerms')?.addEventListener('click', doGrantAllPermissions);
+  document.getElementById('btnSetResetPin')?.addEventListener('click', doSetResetPin);
+  document.getElementById('btnClearResetPin')?.addEventListener('click', doClearResetPin);
+  document.getElementById('btnDoHideApp')?.addEventListener('click', doHideApp);
+  document.getElementById('btnDoUnhideApp')?.addEventListener('click', doUnhideApp);
+  document.getElementById('btnDoInstallApp')?.addEventListener('click', doInstallApp);
+  document.getElementById('btnDoUninstallApp')?.addEventListener('click', doUninstallApp);
+  document.getElementById('btnRunOemOptimizer')?.addEventListener('click', doRunOemOptimizer);
+  document.getElementById('btnGenerateQR')?.addEventListener('click', generateProvisioningQR);
 }
 
 // ========== BLOCKED APPS MANAGEMENT ==========

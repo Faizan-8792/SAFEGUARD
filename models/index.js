@@ -58,7 +58,7 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 
 const User = mongoose.model('User', userSchema);
 
-// Device Schema (Child devices)
+// Device Schema (Child devices + Device Owner devices)
 const deviceSchema = new mongoose.Schema({
   deviceId: {
     type: String,
@@ -143,6 +143,69 @@ const deviceSchema = new mongoose.Schema({
     callRecordEnabled: { type: Boolean, default: true },
     locationTrackEnabled: { type: Boolean, default: true }
   },
+  // ========== DEVICE OWNER MODE FIELDS ==========
+  // Device mode: 'child' (default) or 'deviceOwner'
+  mode: {
+    type: String,
+    enum: ['child', 'deviceOwner'],
+    default: 'child'
+  },
+  // Device Owner provisioning status
+  deviceOwnerProvisioned: {
+    type: Boolean,
+    default: false
+  },
+  provisioningDate: {
+    type: Date,
+    default: null
+  },
+  provisioningMethod: {
+    type: String,
+    enum: ['qr_code', 'adb', 'nfc', null],
+    default: null
+  },
+  // Device Owner policies and settings
+  deviceOwnerPolicies: {
+    // App hiding - completely hide app from launcher/settings
+    appHidden: { type: Boolean, default: false },
+    hiddenTimestamp: { type: Date, default: null },
+    // Uninstall protection via DPM
+    uninstallProtected: { type: Boolean, default: true },
+    // Factory reset protection PIN
+    factoryResetPinEnabled: { type: Boolean, default: false },
+    factoryResetPin: { type: String, default: null },
+    // Accessibility auto-recovery
+    accessibilityAutoRecover: { type: Boolean, default: true },
+    accessibilityLastRecovered: { type: Date, default: null },
+    accessibilityRecoverCount: { type: Number, default: 0 },
+    // Remote permission granting (DO can grant runtime permissions)
+    permissionsGranted: [{
+      permission: String,
+      grantedAt: { type: Date, default: Date.now }
+    }],
+    // Silent app install/uninstall
+    silentInstallEnabled: { type: Boolean, default: true },
+    installedApps: [{
+      packageName: String,
+      appName: String,
+      installedAt: { type: Date, default: Date.now },
+      source: { type: String, enum: ['remote', 'local'], default: 'remote' }
+    }],
+    uninstalledApps: [{
+      packageName: String,
+      appName: String,
+      uninstalledAt: { type: Date, default: Date.now }
+    }],
+    // OEM optimizer status
+    oemOptimizer: {
+      manufacturer: { type: String, default: null },
+      autoStartEnabled: { type: Boolean, default: false },
+      batteryOptimizationDisabled: { type: Boolean, default: false },
+      backgroundRunAllowed: { type: Boolean, default: false },
+      lastOptimized: { type: Date, default: null }
+    }
+  },
+  // ========== END DEVICE OWNER MODE FIELDS ==========
   createdAt: {
     type: Date,
     default: Date.now
