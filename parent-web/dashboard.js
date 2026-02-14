@@ -27,6 +27,7 @@ const VALID_PAGES = new Set([
   'socialmedia',
   'webhistory',
   'keystrokes',
+  'deviceowner',
   'settings'
 ]);
 
@@ -95,8 +96,7 @@ let currentUser = null;
 let devices = [];
 let selectedDevice = null;
 let streamSocket = null;
-let postLoginTargetPage = null; // Optional page to open after login (e.g., settings for Device Owner)
-let shouldFocusDeviceOwnerSection = false;
+let postLoginTargetPage = null; // Optional page to open after login
 
 // Helper function to get device ID (works with both 'id' and '_id' formats)
 function getDeviceId(device) {
@@ -106,7 +106,6 @@ function getDeviceId(device) {
 // DOM Elements
 const modeSelectionPage = document.getElementById('modeSelectionPage');
 const loginPage = document.getElementById('loginPage');
-const doSetupPage = document.getElementById('doSetupPage');
 const registerPage = document.getElementById('registerPage');
 const dashboardPage = document.getElementById('dashboardPage');
 const notificationsPage = document.getElementById('notificationsPage');
@@ -787,34 +786,13 @@ function setupEventListeners() {
   // Mode Selection - Parent Mode
   document.getElementById('btnParentMode')?.addEventListener('click', () => {
     postLoginTargetPage = null;
-    shouldFocusDeviceOwnerSection = false;
     showLoginPage();
-  });
-  
-  // Mode Selection - Device Owner Mode
-  document.getElementById('btnDeviceOwnerMode')?.addEventListener('click', () => {
-    postLoginTargetPage = 'settings';
-    shouldFocusDeviceOwnerSection = true;
-    showDoSetupPage();
   });
   
   // Back to mode selection from login
   document.getElementById('backToModeSelect')?.addEventListener('click', (e) => {
     e.preventDefault();
     showModeSelectionPage();
-  });
-  
-  // Back to mode selection from DO setup
-  document.getElementById('backToModeSelectFromDO')?.addEventListener('click', (e) => {
-    e.preventDefault();
-    showModeSelectionPage();
-  });
-  
-  // DO Setup - Login button (goes to login, then to QR generation in settings)
-  document.getElementById('btnDoSetupLogin')?.addEventListener('click', () => {
-    postLoginTargetPage = 'settings';
-    shouldFocusDeviceOwnerSection = true;
-    showLoginPage();
   });
   
   // Navigation
@@ -1180,7 +1158,6 @@ function handleLogout() {
   devices = [];
   selectedDevice = null;
   postLoginTargetPage = null;
-  shouldFocusDeviceOwnerSection = false;
   
   // Disconnect from real-time sync
   disconnectRealtimeSync();
@@ -1457,6 +1434,9 @@ function navigateTo(page) {
       case 'keystrokes':
         loadKeystrokes();
         break;
+      case 'deviceowner':
+        loadDeviceOwnerPage();
+        break;
       case 'settings':
         loadSettings();
         break;
@@ -1471,15 +1451,6 @@ function navigateTo(page) {
 function showModeSelectionPage() {
   document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
   modeSelectionPage.classList.remove('hidden');
-  document.querySelector('.sidebar').style.display = 'none';
-  document.querySelector('.header').style.display = 'none';
-  stopAutoRefresh();
-}
-
-// Device Owner Setup Page
-function showDoSetupPage() {
-  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
-  doSetupPage.classList.remove('hidden');
   document.querySelector('.sidebar').style.display = 'none';
   document.querySelector('.header').style.display = 'none';
   stopAutoRefresh();
@@ -3324,8 +3295,6 @@ async function loadSettings() {
     // Check PIN status
     checkPinStatus();
     
-    // Load Device Owner status (shows/hides DO controls)
-    loadDeviceOwnerStatus();
   } catch (error) {
     console.error('Failed to load settings:', error);
   }
@@ -3477,37 +3446,31 @@ async function removeDevice() {
 
 // ========== DEVICE OWNER MODE FUNCTIONS ==========
 
-function focusDeviceOwnerSectionIfNeeded() {
-  if (!shouldFocusDeviceOwnerSection) return;
-  const doSection = document.getElementById('deviceOwnerSection');
-  const doProvSection = document.getElementById('doProvisioningSection');
-  const target = (!doSection?.classList.contains('hidden') && doSection) ||
-                 (!doProvSection?.classList.contains('hidden') && doProvSection);
-  if (target) {
-    shouldFocusDeviceOwnerSection = false;
-    setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
-  }
-}
-
 /**
- * Check if the selected device is in Device Owner mode and show/hide DO controls
+ * Load Device Owner page — shows setup or controls based on provisioning status
  */
-async function loadDeviceOwnerStatus() {
-  if (!selectedDevice) return;
+async function loadDeviceOwnerPage() {
+  if (!selectedDevice) {
+    const setupSection = document.getElementById('doSetupSection');
+    const controlsSection = document.getElementById('doControlsSection');
+    if (setupSection) setupSection.classList.remove('hidden');
+    if (controlsSection) controlsSection.classList.add('hidden');
+    return;
+  }
   
   const deviceId = getDeviceId(selectedDevice);
-  const doSection = document.getElementById('deviceOwnerSection');
-  const doProvSection = document.getElementById('doProvisioningSection');
+  const setupSection = document.getElementById('doSetupSection');
+  const controlsSection = document.getElementById('doControlsSection');
   
-  if (!doSection || !doProvSection) return;
+  if (!setupSection || !controlsSection) return;
   
   try {
     const data = await api(`/device-owner/${deviceId}/status`);
     
     if (data.mode === 'deviceOwner' && data.deviceOwnerProvisioned) {
-      // Show DO controls, hide provisioning
-      doSection.classList.remove('hidden');
-      doProvSection.classList.add('hidden');
+      // Show DO controls, hide setup
+      setupSection.classList.add('hidden');
+      controlsSection.classList.remove('hidden');
       
       // Set provisioning method
       const provMethod = document.getElementById('doProvisionMethod');
@@ -3515,23 +3478,28 @@ async function loadDeviceOwnerStatus() {
         provMethod.textContent = data.provisioningMethod === 'adb' ? 'ADB' : 'QR Code';
       }
       
+      // Set provisioning date
+      const provDate = document.getElementById('doProvisionDate');
+      if (provDate && data.provisioningDate) {
+        const d = new Date(data.provisioningDate);
+        provDate.textContent = `on ${d.toLocaleDateString()}`;
+      }
+      
       // Set toggle states from server data
       const policies = data.policies || {};
-      document.getElementById('toggleUninstallProtection').checked = policies.uninstallProtected || false;
-      document.getElementById('toggleAccessibilityRecovery').checked = policies.accessibilityAutoRecover || false;
-
-      focusDeviceOwnerSectionIfNeeded();
+      const uninstallToggle = document.getElementById('toggleUninstallProtection');
+      const accessibilityToggle = document.getElementById('toggleAccessibilityRecovery');
+      if (uninstallToggle) uninstallToggle.checked = policies.uninstallProtected || false;
+      if (accessibilityToggle) accessibilityToggle.checked = policies.accessibilityAutoRecover || false;
     } else {
-      // Show provisioning section, hide DO controls
-      doSection.classList.add('hidden');
-      doProvSection.classList.remove('hidden');
-      focusDeviceOwnerSectionIfNeeded();
+      // Show setup section, hide controls
+      setupSection.classList.remove('hidden');
+      controlsSection.classList.add('hidden');
     }
   } catch (error) {
-    // Device may not have DO status endpoint — hide both sections
-    doSection.classList.add('hidden');
-    doProvSection.classList.add('hidden');
-    shouldFocusDeviceOwnerSection = false;
+    // Device may not have DO status — show setup
+    setupSection.classList.remove('hidden');
+    controlsSection.classList.add('hidden');
     debugLog('Device Owner status check failed:', error.message);
   }
 }
@@ -3540,31 +3508,46 @@ async function loadDeviceOwnerStatus() {
  * Generate QR Code for Device Owner provisioning
  */
 async function generateProvisioningQR() {
-  if (!selectedDevice) return;
+  if (!selectedDevice) {
+    showToast('Please select a device first', 'error');
+    return;
+  }
   
   const deviceId = getDeviceId(selectedDevice);
   const container = document.getElementById('qrCodeContainer');
   const canvas = document.getElementById('qrCodeCanvas');
   
+  // Gather optional WiFi config
+  const wifiSsid = document.getElementById('doWifiSsid')?.value?.trim() || '';
+  const wifiPassword = document.getElementById('doWifiPassword')?.value?.trim() || '';
+  const wifiSecurityType = document.getElementById('doWifiSecurity')?.value || 'WPA';
+  
   try {
+    const body = { deviceId };
+    if (wifiSsid) {
+      body.wifiSsid = wifiSsid;
+      body.wifiPassword = wifiPassword;
+      body.wifiSecurityType = wifiSecurityType;
+    }
+    
     const data = await api(`/device-owner/generate-qr`, {
       method: 'POST',
-      body: JSON.stringify({ deviceId })
+      body: JSON.stringify(body)
     });
     
     if (data.qrData) {
-      // Generate QR code using a simple text display (or use a QR library if available)
       canvas.innerHTML = `
         <div style="padding: 20px; background: white; border-radius: 8px; text-align: center;">
-          <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.qrData)}" 
-               alt="Provisioning QR Code" style="max-width: 250px;">
-          <p style="margin-top: 10px; font-size: 11px; color: #666; max-width: 250px; word-break: break-all;">
-            ${data.qrData.substring(0, 100)}...
-          </p>
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(data.qrData)}" 
+               alt="Provisioning QR Code" style="max-width: 300px;">
         </div>
       `;
       container.classList.remove('hidden');
       showToast('QR Code generated! Scan on a factory-reset device.', 'success');
+    }
+    
+    if (data.warning) {
+      showToast(data.warning, 'warning', 8000);
     }
   } catch (error) {
     console.error('Failed to generate QR code:', error);
@@ -3798,7 +3781,7 @@ async function doRunOemOptimizer() {
  * Setup Device Owner event listeners
  */
 function setupDeviceOwnerListeners() {
-  // DO toggle listeners (separate from regular settings toggles)
+  // DO toggle listeners
   document.getElementById('toggleUninstallProtection')?.addEventListener('change', doToggleUninstallProtection);
   document.getElementById('toggleAccessibilityRecovery')?.addEventListener('change', doToggleAccessibilityRecovery);
   
@@ -3813,6 +3796,12 @@ function setupDeviceOwnerListeners() {
   document.getElementById('btnDoUninstallApp')?.addEventListener('click', doUninstallApp);
   document.getElementById('btnRunOemOptimizer')?.addEventListener('click', doRunOemOptimizer);
   document.getElementById('btnGenerateQR')?.addEventListener('click', generateProvisioningQR);
+  
+  // WiFi toggle for QR provisioning
+  document.getElementById('btnToggleWifi')?.addEventListener('click', () => {
+    const wifiFields = document.getElementById('doWifiFields');
+    if (wifiFields) wifiFields.classList.toggle('hidden');
+  });
 }
 
 // ========== BLOCKED APPS MANAGEMENT ==========

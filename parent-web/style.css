@@ -7138,3 +7138,389 @@ body {
     border-radius: 16px;
   }
 }
+
+/* ========== DEVICE OWNER PAGE ========== */
+
+/* Setup banner when DO is not configured */
+.do-page-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.12), rgba(255, 152, 0, 0.08));
+  border: 1px solid rgba(255, 193, 7, 0.25);
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+.do-banner-icon {
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 193, 7, 0.2);
+  border-radius: 14px;
+  font-size: 24px;
+  color: #ffc107;
+}
+
+.do-banner-text h3 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  color: var(--text-color);
+}
+
+.do-banner-text p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* DO Active Banner */
+.do-active-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(72, 187, 120, 0.12), rgba(56, 178, 172, 0.08));
+  border: 1px solid rgba(72, 187, 120, 0.25);
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+.do-active-icon {
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(72, 187, 120, 0.2);
+  border-radius: 14px;
+  font-size: 24px;
+  color: #48bb78;
+}
+
+.do-active-text h3 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  color: #48bb78;
+}
+
+.do-active-text p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* DO Card (method cards) */
+.do-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.do-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  background: rgba(102, 126, 234, 0.06);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.do-card-header i {
+  font-size: 18px;
+  color: var(--primary-color);
+}
+
+.do-card-header h3 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-color);
+}
+
+.do-card-body {
+  padding: 20px;
+}
+
+/* Warning box */
+.do-warning-box {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 193, 7, 0.1);
+  border-radius: 8px;
+  border-left: 3px solid #ffc107;
+  margin-bottom: 16px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.do-warning-box i {
+  color: #ffc107;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.do-warning-box strong {
+  color: var(--text-color);
+}
+
+/* WiFi fields */
+.do-wifi-section {
+  margin-bottom: 10px;
+}
+
+.do-wifi-fields {
+  padding: 14px;
+  background: rgba(102, 126, 234, 0.05);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  margin-bottom: 10px;
+}
+
+.do-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.do-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.do-form-group label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.do-form-group input,
+.do-form-group select {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-size: 13px;
+}
+
+/* ADB code block (on DO page) */
+.do-card-body .do-adb-code {
+  display: block;
+  padding: 12px 14px;
+  background: #1a1a2e;
+  color: #0f0;
+  border-radius: 6px;
+  font-size: 12px;
+  word-break: break-all;
+  font-family: 'Courier New', monospace;
+  margin-bottom: 14px;
+}
+
+/* Steps box */
+.do-steps-box {
+  padding: 14px;
+  background: rgba(72, 187, 120, 0.08);
+  border-radius: 8px;
+  border-left: 3px solid #48bb78;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.do-steps-box p {
+  margin: 0 0 6px 0;
+}
+
+.do-steps-box ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.do-steps-box li {
+  margin-bottom: 4px;
+}
+
+.do-troubleshoot {
+  margin-top: 10px !important;
+  padding: 8px 10px;
+  background: rgba(255, 193, 7, 0.1);
+  border-radius: 6px;
+  font-size: 11.5px;
+}
+
+.do-troubleshoot i {
+  color: #ffc107;
+  margin-right: 4px;
+}
+
+/* QR Instructions */
+.do-qr-instructions {
+  text-align: left;
+  margin-top: 14px;
+  padding: 14px;
+  background: rgba(102, 126, 234, 0.06);
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.do-qr-instructions p {
+  margin: 0 0 8px 0;
+  color: var(--text-color);
+}
+
+.do-qr-instructions ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.do-qr-instructions li {
+  margin-bottom: 4px;
+}
+
+/* DO Controls Grid */
+.do-controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.do-control-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 18px;
+}
+
+.do-control-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.do-control-header i {
+  font-size: 16px;
+  color: var(--primary-color);
+}
+
+.do-control-header h4 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-color);
+}
+
+.do-control-card > p {
+  margin: 0 0 14px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* DO Section cards (reset pin, app hiding, install) */
+.do-section-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.do-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.do-section-header i {
+  font-size: 16px;
+  color: var(--primary-color);
+}
+
+.do-section-header h3 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-color);
+}
+
+.do-section-desc {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin: 0 0 14px 0;
+  line-height: 1.4;
+}
+
+.do-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.do-input {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-size: 13px;
+}
+
+.do-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+}
+
+/* DO page sidebar nav highlight */
+.nav-item[data-page="deviceowner"] i {
+  color: #ffc107;
+}
+
+.nav-item[data-page="deviceowner"].active {
+  border-left-color: #ffc107;
+}
+
+.nav-item[data-page="deviceowner"].active i {
+  color: #ffc107;
+}
+
+/* DO page responsive */
+@media (max-width: 600px) {
+  .do-page-banner,
+  .do-active-banner {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .do-controls-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .do-form-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .do-input-row {
+    flex-direction: column;
+  }
+  
+  .do-input-row button {
+    width: 100%;
+  }
+}

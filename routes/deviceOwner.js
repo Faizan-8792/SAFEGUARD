@@ -62,15 +62,25 @@ router.post('/generate-qr', protect, async (req, res) => {
   try {
     const { wifiSsid, wifiPassword, wifiSecurityType, deviceName } = req.body;
     
+    const apkDownloadUrl = process.env.APK_DOWNLOAD_URL || 
+      `${process.env.BASE_URL || 'https://familyguard-backend-c2c9hkc8dwgzepdq.centralindia-01.azurewebsites.net'}/download/familyguard.apk`;
+    const apkSignatureChecksum = process.env.APK_SIGNATURE_CHECKSUM || '';
+    
+    let warning = null;
+    if (!apkSignatureChecksum) {
+      warning = 'APK_SIGNATURE_CHECKSUM not configured. QR provisioning may fail on the device. Set this environment variable with the URL-safe Base64 SHA-256 of your APK signing certificate.';
+      console.warn('[DO] WARNING:', warning);
+    }
+    
     // Build the provisioning extras for Android Device Owner
-    // This follows the android.app.extra format for managed provisioning
+    // Uses PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM (required for Android 7+ / targetSdk 24+)
     const provisioningData = {
       'android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME': 
         'com.familyguardpro/com.familyguardpro.services.DeviceAdminReceiver',
       'android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION':
-        process.env.APK_DOWNLOAD_URL || `${process.env.BASE_URL || 'https://familyguard-backend-c2c9hkc8dwgzepdq.centralindia-01.azurewebsites.net'}/download/familyguard.apk`,
-      'android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM': 
-        process.env.APK_CHECKSUM || '',
+        apkDownloadUrl,
+      'android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM': 
+        apkSignatureChecksum,
       'android.app.extra.PROVISIONING_SKIP_ENCRYPTION': true,
       'android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED': true,
       'android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE': {
@@ -82,7 +92,7 @@ router.post('/generate-qr', protect, async (req, res) => {
       }
     };
     
-    // Add WiFi config if provided
+    // Add WiFi config if provided (crucial for factory-reset devices to download APK)
     if (wifiSsid) {
       provisioningData['android.app.extra.PROVISIONING_WIFI_SSID'] = wifiSsid;
       if (wifiPassword) {
@@ -92,7 +102,7 @@ router.post('/generate-qr', protect, async (req, res) => {
         wifiSecurityType || 'WPA';
     }
     
-    res.json({
+    const response = {
       success: true,
       qrData: JSON.stringify(provisioningData),
       provisioningToken: provisioningData['android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE']['com.familyguardpro.PROVISIONING_TOKEN'],
@@ -104,7 +114,13 @@ router.post('/generate-qr', protect, async (req, res) => {
         '5. The device will automatically set up FamilyGuard Pro as Device Owner',
         '6. Wait for provisioning to complete'
       ]
-    });
+    };
+    
+    if (warning) {
+      response.warning = warning;
+    }
+    
+    res.json(response);
   } catch (error) {
     console.error('[DO] QR generation error:', error);
     res.status(500).json({ error: 'Failed to generate QR code' });
