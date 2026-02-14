@@ -10,11 +10,15 @@ node_modules/
 .idea/
 app/build/
 build/
-*.apk
 *.aab
+*.apk
 local.properties
 apktool.jar
 apk_decompiled/
+
+# Allow hosted APK for QR provisioning
+!downloads/
+!downloads/familyguard.apk
 
 # Android generated
 android/

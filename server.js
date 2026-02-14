@@ -132,9 +132,9 @@ app.use('/download', express.static(path.join(__dirname, 'downloads'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.apk')) {
       res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-      res.setHeader('Content-Disposition', 'attachment; filename="familyguard.apk"');
     }
-  }
+  },
+  maxAge: 0
 }));
 
 // APK checksum endpoint - returns the configured signature checksum
