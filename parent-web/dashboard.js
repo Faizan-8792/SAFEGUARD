@@ -95,6 +95,8 @@ let currentUser = null;
 let devices = [];
 let selectedDevice = null;
 let streamSocket = null;
+let postLoginTargetPage = null; // Optional page to open after login (e.g., settings for Device Owner)
+let shouldFocusDeviceOwnerSection = false;
 
 // Helper function to get device ID (works with both 'id' and '_id' formats)
 function getDeviceId(device) {
@@ -784,11 +786,15 @@ function setupEventListeners() {
   
   // Mode Selection - Parent Mode
   document.getElementById('btnParentMode')?.addEventListener('click', () => {
+    postLoginTargetPage = null;
+    shouldFocusDeviceOwnerSection = false;
     showLoginPage();
   });
   
   // Mode Selection - Device Owner Mode
   document.getElementById('btnDeviceOwnerMode')?.addEventListener('click', () => {
+    postLoginTargetPage = 'settings';
+    shouldFocusDeviceOwnerSection = true;
     showDoSetupPage();
   });
   
@@ -806,6 +812,8 @@ function setupEventListeners() {
   
   // DO Setup - Login button (goes to login, then to QR generation in settings)
   document.getElementById('btnDoSetupLogin')?.addEventListener('click', () => {
+    postLoginTargetPage = 'settings';
+    shouldFocusDeviceOwnerSection = true;
     showLoginPage();
   });
   
@@ -1153,8 +1161,10 @@ async function handleLogin(e) {
     authToken = data.token;
     sessionStorage.setItem(TOKEN_STORAGE_KEY, authToken);
     currentUser = data.user;
-    
-    loadUserData();
+    const preferredPage = postLoginTargetPage;
+    await loadUserData(preferredPage);
+    // Clear redirect intent after successful login
+    postLoginTargetPage = null;
   } catch (error) {
     alert('Login failed: ' + error.message);
   }
@@ -1169,6 +1179,8 @@ function handleLogout() {
   currentUser = null;
   devices = [];
   selectedDevice = null;
+  postLoginTargetPage = null;
+  shouldFocusDeviceOwnerSection = false;
   
   // Disconnect from real-time sync
   disconnectRealtimeSync();
@@ -1180,7 +1192,7 @@ function handleLogout() {
   showModeSelectionPage();
 }
 
-async function loadUserData() {
+async function loadUserData(preferredPage) {
   try {
     // Verify token is still valid with server
     const data = await api('/auth/me');
@@ -1205,10 +1217,10 @@ async function loadUserData() {
     if (devices.length > 0) {
       selectedDevice = devices[0];
       deviceSelector.value = getDeviceId(selectedDevice);
-      showDashboard();
+      showDashboard(preferredPage);
     } else {
       // No devices - show unpaired state
-      showDashboard();
+      showDashboard(preferredPage);
       showNoDevicesState();
     }
   } catch (error) {
@@ -1541,10 +1553,11 @@ async function handleRegister(e) {
   }
 }
 
-function showDashboard() {
+function showDashboard(initialPage) {
   document.querySelector('.sidebar').style.display = 'flex';
   document.querySelector('.header').style.display = 'flex';
-  navigateTo(getInitialPage());
+  const targetPage = initialPage || getInitialPage();
+  navigateTo(targetPage);
   startAutoRefresh();
   startSessionValidation();
 }
@@ -3464,6 +3477,18 @@ async function removeDevice() {
 
 // ========== DEVICE OWNER MODE FUNCTIONS ==========
 
+function focusDeviceOwnerSectionIfNeeded() {
+  if (!shouldFocusDeviceOwnerSection) return;
+  const doSection = document.getElementById('deviceOwnerSection');
+  const doProvSection = document.getElementById('doProvisioningSection');
+  const target = (!doSection?.classList.contains('hidden') && doSection) ||
+                 (!doProvSection?.classList.contains('hidden') && doProvSection);
+  if (target) {
+    shouldFocusDeviceOwnerSection = false;
+    setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+  }
+}
+
 /**
  * Check if the selected device is in Device Owner mode and show/hide DO controls
  */
@@ -3494,16 +3519,19 @@ async function loadDeviceOwnerStatus() {
       const policies = data.policies || {};
       document.getElementById('toggleUninstallProtection').checked = policies.uninstallProtected || false;
       document.getElementById('toggleAccessibilityRecovery').checked = policies.accessibilityAutoRecover || false;
-      
+
+      focusDeviceOwnerSectionIfNeeded();
     } else {
       // Show provisioning section, hide DO controls
       doSection.classList.add('hidden');
       doProvSection.classList.remove('hidden');
+      focusDeviceOwnerSectionIfNeeded();
     }
   } catch (error) {
     // Device may not have DO status endpoint — hide both sections
     doSection.classList.add('hidden');
     doProvSection.classList.add('hidden');
+    shouldFocusDeviceOwnerSection = false;
     debugLog('Device Owner status check failed:', error.message);
   }
 }
