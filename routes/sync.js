@@ -48,10 +48,14 @@ router.get('/debug/:id', async (req, res) => {
         androidId: device.deviceId,
         name: device.name,
         owner: device.owner,
+        mode: device.mode || 'child',
+        deviceOwnerProvisioned: device.deviceOwnerProvisioned || false,
         lastSeen: device.lastSeen,
         battery: device.battery,
         fcmToken: device.fcmToken || null,
-        hasFcmToken: !!device.fcmToken
+        hasFcmToken: !!device.fcmToken,
+        permissions: device.permissions || {},
+        screenTime: device.screenTime || 0
       }
     });
   } catch (error) {
