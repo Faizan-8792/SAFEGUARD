@@ -139,14 +139,16 @@ app.use('/download', express.static(path.join(__dirname, 'downloads'), {
 
 // APK checksum endpoint - returns the configured signature checksum
 app.get('/api/apk-checksum', (req, res) => {
-  const checksum = process.env.APK_SIGNATURE_CHECKSUM || '';
+  const sigChecksum = process.env.APK_SIGNATURE_CHECKSUM || 'SmkdTDs477TqetjWxhIvR50q300AIbrAWNnJ6JlMKs4';
+  const pkgChecksum = process.env.APK_PACKAGE_CHECKSUM || 'YZD63G7R6UWWWAFtllRxnl4z1XyEl5DUahx-mHa1HmA';
   const apkPath = path.join(__dirname, 'downloads', 'familyguard.apk');
   const apkExists = require('fs').existsSync(apkPath);
   res.json({
-    checksumConfigured: !!checksum,
+    checksumConfigured: true,
+    signatureChecksum: sigChecksum,
+    packageChecksum: pkgChecksum,
     apkHosted: apkExists,
-    downloadUrl: `${process.env.BASE_URL || req.protocol + '://' + req.get('host')}/download/familyguard.apk`,
-    instructions: !checksum ? 'Run: node compute-apk-checksum.js <path-to-your-signed.apk>' : 'Checksum is configured.'
+    downloadUrl: `${process.env.BASE_URL || req.protocol + '://' + req.get('host')}/download/familyguard.apk`
   });
 });
 app.get('/api/health', (req, res) => {
