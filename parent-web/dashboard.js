@@ -3449,7 +3449,7 @@ async function removeDevice() {
 /**
  * Load Device Owner page — shows setup or controls based on provisioning status
  */
-async function loadDeviceOwnerPage() {
+async function loadDeviceOwnerPage(autoActivateAttempted = false) {
   if (!selectedDevice) {
     const setupSection = document.getElementById('doSetupSection');
     const controlsSection = document.getElementById('doControlsSection');
@@ -3466,6 +3466,7 @@ async function loadDeviceOwnerPage() {
   
   try {
     const data = await api(`/device-owner/${deviceId}/status`);
+    console.log('[DO] Status response:', JSON.stringify(data));
     
     if (data.mode === 'deviceOwner' && data.deviceOwnerProvisioned) {
       // Show DO controls, hide setup
@@ -3491,8 +3492,23 @@ async function loadDeviceOwnerPage() {
       const accessibilityToggle = document.getElementById('toggleAccessibilityRecovery');
       if (uninstallToggle) uninstallToggle.checked = policies.uninstallProtected || false;
       if (accessibilityToggle) accessibilityToggle.checked = policies.accessibilityAutoRecover || false;
+    } else if (!autoActivateAttempted) {
+      // DO not yet active in backend — auto-activate for user
+      console.log('[DO] Mode not set, attempting auto-activation...');
+      try {
+        const activateData = await api(`/device-owner/${deviceId}/activate-adb`, { method: 'POST' });
+        if (activateData.mode === 'deviceOwner') {
+          console.log('[DO] Auto-activation successful, reloading page...');
+          return loadDeviceOwnerPage(true); // Reload once with guard
+        }
+      } catch (activateErr) {
+        console.log('[DO] Auto-activation failed:', activateErr.message);
+      }
+      // If auto-activation failed, show setup
+      setupSection.classList.remove('hidden');
+      controlsSection.classList.add('hidden');
     } else {
-      // Show setup section, hide controls
+      // Already tried auto-activation, just show setup
       setupSection.classList.remove('hidden');
       controlsSection.classList.add('hidden');
     }
