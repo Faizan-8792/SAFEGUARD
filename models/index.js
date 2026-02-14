@@ -143,6 +143,41 @@ const deviceSchema = new mongoose.Schema({
     callRecordEnabled: { type: Boolean, default: true },
     locationTrackEnabled: { type: Boolean, default: true }
   },
+  // ========== GEOFENCES, KEYWORDS, SCREEN TIME LIMITS ==========
+  geofences: [{
+    name: String,
+    latitude: Number,
+    longitude: Number,
+    radius: { type: Number, default: 200 }, // meters
+    type: { type: String, enum: ['home', 'school', 'custom'], default: 'custom' },
+    enabled: { type: Boolean, default: true },
+    createdAt: { type: Date, default: Date.now }
+  }],
+  keywords: [{
+    word: String,
+    category: { type: String, enum: ['inappropriate', 'danger', 'custom'], default: 'custom' },
+    enabled: { type: Boolean, default: true },
+    createdAt: { type: Date, default: Date.now }
+  }],
+  screenTimeLimits: {
+    dailyLimitMinutes: { type: Number, default: 0 }, // 0 = unlimited
+    bedtimeStart: { type: String, default: null }, // "22:00"
+    bedtimeEnd: { type: String, default: null }, // "07:00"
+    perAppLimits: [{
+      packageName: String,
+      limitMinutes: Number
+    }],
+    enabled: { type: Boolean, default: false }
+  },
+  screenTimeHistory: [{
+    date: { type: Date, default: Date.now },
+    totalScreenTime: Number, // milliseconds
+    appUsage: [{
+      packageName: String,
+      usageTime: Number,
+      lastUsed: Number
+    }]
+  }],
   // ========== DEVICE OWNER MODE FIELDS ==========
   // Device mode: 'child' (default) or 'deviceOwner'
   mode: {

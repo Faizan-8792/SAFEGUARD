@@ -1489,4 +1489,267 @@ router.put('/:deviceId/rename', protect, async (req, res) => {
   }
 });
 
+// ========== HELPER: Find device by deviceId field OR MongoDB _id ==========
+async function findDeviceFlexible(deviceIdParam) {
+  let device = await Device.findOne({ deviceId: deviceIdParam });
+  if (!device) {
+    try { device = await Device.findById(deviceIdParam); } catch (e) { /* not a valid ObjectId */ }
+  }
+  return device;
+}
+
+// ========== GEOFENCE ENDPOINTS ==========
+
+// GET geofences for a device (called by child app)
+router.get('/:deviceId/geofences', async (req, res) => {
+  try {
+    const device = await findDeviceFlexible(req.params.deviceId);
+    if (!device) return res.status(200).json({ geofences: [] });
+    res.json({ geofences: device.geofences || [] });
+  } catch (error) {
+    console.error('Failed to get geofences:', error.message);
+    res.status(200).json({ geofences: [] });
+  }
+});
+
+// POST geofence event from child device
+router.post('/:deviceId/geofence-event', async (req, res) => {
+  try {
+    const device = await findDeviceFlexible(req.params.deviceId);
+    if (!device) return res.status(200).json({ success: true });
+    
+    const { geofenceName, event, latitude, longitude, timestamp } = req.body;
+    console.log(`[Geofence] Device ${device.name}: ${event} at ${geofenceName} (${latitude}, ${longitude})`);
+    
+    // Store as notification for parent visibility
+    const notification = new Notification({
+      deviceId: device.deviceId || req.params.deviceId,
+      packageName: 'com.familyguardpro.geofence',
+      appName: 'Geofence',
+      title: `Geofence ${event}`,
+      content: `${device.name} ${event === 'ENTER' ? 'entered' : 'exited'} ${geofenceName}`,
+      timestamp: timestamp ? new Date(timestamp) : new Date()
+    });
+    await notification.save().catch(() => {}); // ignore duplicate
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to save geofence event:', error.message);
+    res.status(200).json({ success: true });
+  }
+});
+
+// PUT/POST geofences from parent dashboard
+router.put('/:deviceId/geofences', protect, async (req, res) => {
+  try {
+    const device = await Device.findOne({ _id: req.params.deviceId, owner: req.user._id });
+    if (!device) return res.status(404).json({ error: 'Device not found' });
+    
+    device.geofences = req.body.geofences || [];
+    await device.save();
+    res.json({ success: true, geofences: device.geofences });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update geofences' });
+  }
+});
+
+// ========== SCREEN TIME ENDPOINTS ==========
+
+// GET screen time limits (called by child app)
+router.get('/:deviceId/screen-time-limits', async (req, res) => {
+  try {
+    const device = await findDeviceFlexible(req.params.deviceId);
+    if (!device) return res.status(200).json({ limits: {} });
+    res.json({ limits: device.screenTimeLimits || {} });
+  } catch (error) {
+    console.error('Failed to get screen time limits:', error.message);
+    res.status(200).json({ limits: {} });
+  }
+});
+
+// POST screen time data from child device
+router.post('/:deviceId/screen-time', async (req, res) => {
+  try {
+    const device = await findDeviceFlexible(req.params.deviceId);
+    if (!device) return res.status(200).json({ success: true });
+    
+    const { totalScreenTime, timestamp, appUsage } = req.body;
+    
+    // Update current screen time
+    if (totalScreenTime !== undefined) {
+      device.screenTime = Math.round(totalScreenTime / 60000); // convert ms to minutes
+    }
+    
+    // Store history entry (keep last 30 days)
+    if (!device.screenTimeHistory) device.screenTimeHistory = [];
+    device.screenTimeHistory.push({
+      date: timestamp ? new Date(timestamp) : new Date(),
+      totalScreenTime: totalScreenTime || 0,
+      appUsage: appUsage || []
+    });
+    // Keep only last 30 entries
+    if (device.screenTimeHistory.length > 30) {
+      device.screenTimeHistory = device.screenTimeHistory.slice(-30);
+    }
+    
+    // Also update app usage
+    if (appUsage && appUsage.length > 0) {
+      for (const app of appUsage) {
+        await AppUsage.findOneAndUpdate(
+          { deviceId: device.deviceId || req.params.deviceId, packageName: app.packageName },
+          {
+            deviceId: device.deviceId || req.params.deviceId,
+            packageName: app.packageName,
+            appName: app.packageName.split('.').pop(),
+            usageTime: Math.round((app.usageTime || 0) / 60000),
+            lastUsed: app.lastUsed ? new Date(app.lastUsed) : new Date()
+          },
+          { upsert: true, new: true }
+        );
+      }
+    }
+    
+    device.lastSeen = new Date();
+    device.isOnline = true;
+    await device.save();
+    
+    console.log(`[ScreenTime] Device ${device.name}: ${Math.round((totalScreenTime || 0) / 60000)} min, ${(appUsage || []).length} apps`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to save screen time:', error.message);
+    res.status(200).json({ success: true });
+  }
+});
+
+// PUT screen time limits from parent dashboard
+router.put('/:deviceId/screen-time-limits', protect, async (req, res) => {
+  try {
+    const device = await Device.findOne({ _id: req.params.deviceId, owner: req.user._id });
+    if (!device) return res.status(404).json({ error: 'Device not found' });
+    
+    device.screenTimeLimits = req.body.limits || req.body;
+    await device.save();
+    res.json({ success: true, limits: device.screenTimeLimits });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update screen time limits' });
+  }
+});
+
+// ========== KEYWORD ENDPOINTS ==========
+
+// GET keywords for a device (called by child app)
+router.get('/:deviceId/keywords', async (req, res) => {
+  try {
+    const device = await findDeviceFlexible(req.params.deviceId);
+    if (!device) return res.status(200).json({ keywords: [] });
+    res.json({ keywords: device.keywords || [] });
+  } catch (error) {
+    console.error('Failed to get keywords:', error.message);
+    res.status(200).json({ keywords: [] });
+  }
+});
+
+// POST keyword alert from child device
+router.post('/:deviceId/keyword-alerts', async (req, res) => {
+  try {
+    const device = await findDeviceFlexible(req.params.deviceId);
+    if (!device) return res.status(200).json({ success: true });
+    
+    const { keyword, context, appPackage, timestamp } = req.body;
+    console.log(`[KeywordAlert] Device ${device.name}: "${keyword}" in ${appPackage}`);
+    
+    // Store as notification for parent
+    const notification = new Notification({
+      deviceId: device.deviceId || req.params.deviceId,
+      packageName: appPackage || 'com.familyguardpro.keywords',
+      appName: 'Keyword Alert',
+      title: `Keyword detected: "${keyword}"`,
+      content: context || `Keyword "${keyword}" was detected`,
+      timestamp: timestamp ? new Date(timestamp) : new Date()
+    });
+    await notification.save().catch(() => {});
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to save keyword alert:', error.message);
+    res.status(200).json({ success: true });
+  }
+});
+
+// PUT keywords from parent dashboard
+router.put('/:deviceId/keywords', protect, async (req, res) => {
+  try {
+    const device = await Device.findOne({ _id: req.params.deviceId, owner: req.user._id });
+    if (!device) return res.status(404).json({ error: 'Device not found' });
+    
+    device.keywords = req.body.keywords || [];
+    await device.save();
+    res.json({ success: true, keywords: device.keywords });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update keywords' });
+  }
+});
+
+// ========== LOCATION UPDATE ENDPOINT ==========
+
+// PUT location from child device
+router.put('/:deviceId/location', async (req, res) => {
+  try {
+    const device = await findDeviceFlexible(req.params.deviceId);
+    if (!device) return res.status(200).json({ success: true });
+    
+    const { latitude, longitude, accuracy, address, timestamp } = req.body;
+    
+    device.location = {
+      latitude, longitude, accuracy, address,
+      timestamp: timestamp ? new Date(timestamp) : new Date()
+    };
+    device.lastSeen = new Date();
+    device.isOnline = true;
+    await device.save();
+    
+    // Also store in LocationHistory
+    const locationEntry = new LocationHistory({
+      deviceId: device.deviceId || req.params.deviceId,
+      latitude, longitude, accuracy, address,
+      timestamp: timestamp ? new Date(timestamp) : new Date()
+    });
+    await locationEntry.save().catch(() => {});
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to update location:', error.message);
+    res.status(200).json({ success: true });
+  }
+});
+
+// ========== APP CHANGE ENDPOINT ==========
+
+// POST app install/uninstall event from child device
+router.post('/:deviceId/app-change', async (req, res) => {
+  try {
+    const device = await findDeviceFlexible(req.params.deviceId);
+    if (!device) return res.status(200).json({ success: true });
+    
+    const { packageName, appName, event, timestamp } = req.body;
+    console.log(`[AppChange] Device ${device.name}: ${event} ${packageName}`);
+    
+    // Store as notification
+    const notification = new Notification({
+      deviceId: device.deviceId || req.params.deviceId,
+      packageName: packageName || 'unknown',
+      appName: 'App Change',
+      title: `App ${event === 'INSTALL' ? 'Installed' : 'Uninstalled'}`,
+      content: `${appName || packageName} was ${event === 'INSTALL' ? 'installed' : 'uninstalled'}`,
+      timestamp: timestamp ? new Date(timestamp) : new Date()
+    });
+    await notification.save().catch(() => {});
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to save app change:', error.message);
+    res.status(200).json({ success: true });
+  }
+});
+
 module.exports = router;

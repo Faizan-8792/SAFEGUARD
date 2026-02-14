@@ -63,6 +63,19 @@ class FamilyGuardApp : Application() {
         // Create notification channels
         createNotificationChannels()
         
+        // Auto-complete setup if Device Owner is active but setup was not finished
+        if (preferenceManager.isChildMode() && !preferenceManager.isSetupComplete()) {
+            try {
+                val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this)
+                if (doManager.isDeviceOwner()) {
+                    android.util.Log.d("FamilyGuardApp", "Device Owner active but setup incomplete — auto-completing setup")
+                    preferenceManager.setSetupComplete(true)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("FamilyGuardApp", "Error checking DO status for auto-setup", e)
+            }
+        }
+        
         // Start persistent service if child mode is active
         if (preferenceManager.isChildMode() && preferenceManager.isSetupComplete()) {
             // Initialize FCM token immediately - ensures token is always fresh
