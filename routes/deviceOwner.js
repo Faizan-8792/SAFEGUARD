@@ -207,6 +207,21 @@ router.get('/:deviceId/status', protect, async (req, res) => {
     const { device, error, status } = await getDeviceOwnerDevice(req.params.deviceId, req.user._id);
     if (error) return res.status(status).json({ error });
     
+    // Auto-detect: if device reports deviceAdmin=true but mode isn't set yet, activate it
+    if (device.permissions?.deviceAdmin && device.mode !== 'deviceOwner') {
+      device.mode = 'deviceOwner';
+      device.deviceOwnerProvisioned = true;
+      device.provisioningDate = device.provisioningDate || new Date();
+      device.provisioningMethod = device.provisioningMethod || 'auto-detected';
+      device.deviceOwnerPolicies = device.deviceOwnerPolicies || {
+        uninstallProtected: true,
+        accessibilityAutoRecover: true,
+        silentInstallEnabled: true
+      };
+      await device.save();
+      console.log(`[DO] Auto-activated Device Owner for device ${device.deviceId} (permissions.deviceAdmin was true)`);
+    }
+    
     res.json({
       success: true,
       mode: device.mode,

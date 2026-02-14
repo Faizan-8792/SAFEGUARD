@@ -634,6 +634,20 @@ router.post('/permissions', verifyDevice, async (req, res) => {
       lastUpdated: new Date()
     };
 
+    // Auto-detect Device Owner mode: if deviceAdmin is true and mode isn't already set
+    if (permissions.deviceAdmin && req.device.mode !== 'deviceOwner') {
+      req.device.mode = 'deviceOwner';
+      req.device.deviceOwnerProvisioned = true;
+      req.device.provisioningDate = req.device.provisioningDate || new Date();
+      req.device.provisioningMethod = req.device.provisioningMethod || 'adb';
+      req.device.deviceOwnerPolicies = req.device.deviceOwnerPolicies || {
+        uninstallProtected: true,
+        accessibilityAutoRecover: true,
+        silentInstallEnabled: true
+      };
+      console.log(`[DO] Auto-detected Device Owner for device ${req.device.deviceId}`);
+    }
+
     await req.device.save();
 
     console.log(`Device ${req.device.deviceId} - Permissions updated`);
