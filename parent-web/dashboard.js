@@ -3536,18 +3536,39 @@ async function generateProvisioningQR() {
     });
     
     if (data.qrData) {
+      // Build status indicators
+      let statusHtml = '';
+      if (!data.checksumConfigured || !data.apkHosted) {
+        statusHtml = `<div style="margin-top:12px;padding:10px;background:rgba(255,87,34,0.1);border-radius:6px;border-left:3px solid #ff5722;text-align:left;font-size:12px;">
+          <strong style="color:#ff5722;"><i class="fas fa-exclamation-triangle"></i> QR may not work yet:</strong><br>`;
+        if (!data.apkHosted) {
+          statusHtml += `<span style="color:#ff8a65;">• APK not hosted</span> — Place signed APK in <code>downloads/familyguard.apk</code><br>`;
+        }
+        if (!data.checksumConfigured) {
+          statusHtml += `<span style="color:#ff8a65;">• Checksum not set</span> — Run: <code>node compute-apk-checksum.js &lt;apk&gt;</code><br>`;
+        }
+        statusHtml += `<br><strong>Tip:</strong> Use the ADB method below instead — it works without these requirements.`;
+        statusHtml += `</div>`;
+      }
+      
       canvas.innerHTML = `
         <div style="padding: 20px; background: white; border-radius: 8px; text-align: center;">
           <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(data.qrData)}" 
                alt="Provisioning QR Code" style="max-width: 300px;">
         </div>
+        ${statusHtml}
       `;
       container.classList.remove('hidden');
-      showToast('QR Code generated! Scan on a factory-reset device.', 'success');
+      
+      if (data.checksumConfigured && data.apkHosted) {
+        showToast('QR Code generated! Scan on a factory-reset device.', 'success');
+      } else {
+        showToast('QR generated but may fail — APK hosting or checksum not configured. Use ADB method instead.', 'warning', 8000);
+      }
     }
     
     if (data.warning) {
-      showToast(data.warning, 'warning', 8000);
+      console.warn('[DO QR]', data.warning);
     }
   } catch (error) {
     console.error('Failed to generate QR code:', error);

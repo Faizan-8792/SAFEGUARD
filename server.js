@@ -126,7 +126,29 @@ app.use('/dashboard', express.static(path.join(__dirname, 'parent-web')));
 // Serve icon.png at root level for notifications
 app.use('/icon.png', express.static(path.join(__dirname, 'parent-web', 'icon.png')));
 
-// Health check endpoint with Firebase status
+// Serve APK download for Device Owner QR provisioning
+// Place your signed APK at: <project-root>/downloads/familyguard.apk
+app.use('/download', express.static(path.join(__dirname, 'downloads'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.apk')) {
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      res.setHeader('Content-Disposition', 'attachment; filename="familyguard.apk"');
+    }
+  }
+}));
+
+// APK checksum endpoint - returns the configured signature checksum
+app.get('/api/apk-checksum', (req, res) => {
+  const checksum = process.env.APK_SIGNATURE_CHECKSUM || '';
+  const apkPath = path.join(__dirname, 'downloads', 'familyguard.apk');
+  const apkExists = require('fs').existsSync(apkPath);
+  res.json({
+    checksumConfigured: !!checksum,
+    apkHosted: apkExists,
+    downloadUrl: `${process.env.BASE_URL || req.protocol + '://' + req.get('host')}/download/familyguard.apk`,
+    instructions: !checksum ? 'Run: node compute-apk-checksum.js <path-to-your-signed.apk>' : 'Checksum is configured.'
+  });
+});
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',

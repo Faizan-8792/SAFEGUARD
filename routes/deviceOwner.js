@@ -62,35 +62,47 @@ router.post('/generate-qr', protect, async (req, res) => {
   try {
     const { wifiSsid, wifiPassword, wifiSecurityType, deviceName } = req.body;
     
-    const apkDownloadUrl = process.env.APK_DOWNLOAD_URL || 
-      `${process.env.BASE_URL || 'https://familyguard-backend-c2c9hkc8dwgzepdq.centralindia-01.azurewebsites.net'}/download/familyguard.apk`;
+    const serverBase = process.env.BASE_URL || 'https://familyguard-backend-c2c9hkc8dwgzepdq.centralindia-01.azurewebsites.net';
+    const apkDownloadUrl = process.env.APK_DOWNLOAD_URL || `${serverBase}/download/familyguard.apk`;
     const apkSignatureChecksum = process.env.APK_SIGNATURE_CHECKSUM || '';
     
-    let warning = null;
+    // Check if APK file exists on server
+    const fs = require('fs');
+    const apkPath = require('path').join(__dirname, '..', 'downloads', 'familyguard.apk');
+    const apkExists = fs.existsSync(apkPath);
+    
+    let warnings = [];
+    if (!apkExists && !process.env.APK_DOWNLOAD_URL) {
+      warnings.push('No APK file found at downloads/familyguard.apk and no APK_DOWNLOAD_URL configured. Place your signed APK in the downloads/ folder or set the APK_DOWNLOAD_URL environment variable.');
+    }
     if (!apkSignatureChecksum) {
-      warning = 'APK_SIGNATURE_CHECKSUM not configured. QR provisioning may fail on the device. Set this environment variable with the URL-safe Base64 SHA-256 of your APK signing certificate.';
-      console.warn('[DO] WARNING:', warning);
+      warnings.push('APK_SIGNATURE_CHECKSUM not configured. Run: node compute-apk-checksum.js <your-apk-file> to generate it.');
     }
     
     // Build the provisioning extras for Android Device Owner
-    // Uses PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM (required for Android 7+ / targetSdk 24+)
     const provisioningData = {
       'android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME': 
         'com.familyguardpro/com.familyguardpro.services.DeviceAdminReceiver',
       'android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION':
         apkDownloadUrl,
-      'android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM': 
-        apkSignatureChecksum,
       'android.app.extra.PROVISIONING_SKIP_ENCRYPTION': true,
       'android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED': true,
       'android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE': {
         'com.familyguardpro.PARENT_USER_ID': req.user._id.toString(),
-        'com.familyguardpro.SERVER_URL': process.env.BASE_URL || 'https://familyguard-backend-c2c9hkc8dwgzepdq.centralindia-01.azurewebsites.net',
+        'com.familyguardpro.SERVER_URL': serverBase,
         'com.familyguardpro.DEVICE_NAME': deviceName || 'Child Device',
         'com.familyguardpro.PROVISIONING_TOKEN': crypto.randomBytes(16).toString('hex'),
         'com.familyguardpro.MODE': 'deviceOwner'
       }
     };
+    
+    // Add both checksum types for maximum Android version compatibility
+    // SIGNATURE_CHECKSUM for Android 7+ (signing cert hash)
+    // PACKAGE_CHECKSUM for older compatibility
+    if (apkSignatureChecksum) {
+      provisioningData['android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM'] = apkSignatureChecksum;
+      provisioningData['android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM'] = apkSignatureChecksum;
+    }
     
     // Add WiFi config if provided (crucial for factory-reset devices to download APK)
     if (wifiSsid) {
@@ -106,6 +118,8 @@ router.post('/generate-qr', protect, async (req, res) => {
       success: true,
       qrData: JSON.stringify(provisioningData),
       provisioningToken: provisioningData['android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE']['com.familyguardpro.PROVISIONING_TOKEN'],
+      apkHosted: apkExists,
+      checksumConfigured: !!apkSignatureChecksum,
       instructions: [
         '1. Factory reset the child device',
         '2. On the Welcome screen, tap the screen 6 times rapidly',
@@ -116,8 +130,9 @@ router.post('/generate-qr', protect, async (req, res) => {
       ]
     };
     
-    if (warning) {
-      response.warning = warning;
+    if (warnings.length > 0) {
+      response.warning = warnings.join(' | ');
+      warnings.forEach(w => console.warn('[DO] WARNING:', w));
     }
     
     res.json(response);
