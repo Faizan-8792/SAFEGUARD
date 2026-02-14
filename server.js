@@ -140,7 +140,7 @@ app.use('/download', express.static(path.join(__dirname, 'downloads'), {
 // APK checksum endpoint - returns the configured signature checksum
 app.get('/api/apk-checksum', (req, res) => {
   const sigChecksum = process.env.APK_SIGNATURE_CHECKSUM || 'SmkdTDs477TqetjWxhIvR50q300AIbrAWNnJ6JlMKs4';
-  const pkgChecksum = process.env.APK_PACKAGE_CHECKSUM || 'YZD63G7R6UWWWAFtllRxnl4z1XyEl5DUahx-mHa1HmA';
+  const pkgChecksum = process.env.APK_PACKAGE_CHECKSUM || 'o2ecA0qtCvE7AgW6i4vfEMKc_CAg-dj2aqVBSIr9Du8';
   const apkPath = path.join(__dirname, 'downloads', 'familyguard.apk');
   const apkExists = require('fs').existsSync(apkPath);
   res.json({

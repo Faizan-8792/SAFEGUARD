@@ -69,7 +69,7 @@ router.post('/generate-qr', protect, async (req, res) => {
     // SIGNATURE_CHECKSUM = SHA-256 of signing certificate (for Android 7+)
     // PACKAGE_CHECKSUM = SHA-256 of APK file itself (for older Android)
     const apkSignatureChecksum = process.env.APK_SIGNATURE_CHECKSUM || 'SmkdTDs477TqetjWxhIvR50q300AIbrAWNnJ6JlMKs4';
-    const apkPackageChecksum = process.env.APK_PACKAGE_CHECKSUM || 'YZD63G7R6UWWWAFtllRxnl4z1XyEl5DUahx-mHa1HmA';
+    const apkPackageChecksum = process.env.APK_PACKAGE_CHECKSUM || 'o2ecA0qtCvE7AgW6i4vfEMKc_CAg-dj2aqVBSIr9Du8';
     
     // Check if APK file exists on server
     const fs = require('fs');

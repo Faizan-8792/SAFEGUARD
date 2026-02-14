@@ -319,6 +319,7 @@
                 <action android:name="android.app.action.DEVICE_ADMIN_DISABLE_REQUESTED"/>
                 <!-- Device Owner provisioning complete callback -->
                 <action android:name="android.app.action.PROFILE_PROVISIONING_COMPLETE"/>
+                <action android:name="android.app.action.DEVICE_OWNER_CHANGED"/>
             </intent-filter>
         </receiver>
         <receiver android:exported="true" android:name="com.familyguardpro.services.PhoneStateReceiver">
