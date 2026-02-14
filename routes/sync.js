@@ -109,11 +109,11 @@ router.post('/admin/set-fcm-token/:id', async (req, res) => {
 // Middleware to verify device - supports both deviceId (Android ID) and _id (MongoDB ID)
 const verifyDevice = async (req, res, next) => {
   try {
-    const deviceIdHeader = req.headers['x-device-id'];
+    const deviceIdHeader = req.headers['x-device-id'] || req.body?.deviceId || req.body?.device_id;
     console.log(`[verifyDevice] Received X-Device-ID: ${deviceIdHeader}`);
     
     if (!deviceIdHeader) {
-      console.log('[verifyDevice] No X-Device-ID header provided');
+      console.log('[verifyDevice] No X-Device-ID header or body deviceId provided');
       return res.status(401).json({ error: 'Device ID required' });
     }
 
