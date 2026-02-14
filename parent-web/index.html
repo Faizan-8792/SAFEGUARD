@@ -133,8 +133,57 @@
                 </div>
             </header>
 
+            <!-- Mode Selection Page -->
+            <div class="page" id="modeSelectionPage">
+                <div class="login-container">
+                    <div class="mode-selection-card">
+                        <div class="login-header">
+                            <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" style="width:64px;height:64px;margin-bottom:10px;">
+                                <defs><linearGradient id="msGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#667eea"/><stop offset="100%" style="stop-color:#764ba2"/></linearGradient></defs>
+                                <path d="M32 4L8 14v18c0 14 10.667 24 24 28 13.333-4 24-14 24-28V14L32 4z" fill="url(#msGrad)"/>
+                                <circle cx="32" cy="24" r="6" fill="white" opacity="0.95"/>
+                                <path d="M32 32c5 0 9 3 9 7v5H23v-5c0-4 4-7 9-7z" fill="white" opacity="0.95"/>
+                                <circle cx="48" cy="16" r="8" fill="#48bb78"/><path d="M44 16l3 3 5-5" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <h1>FamilyGuard Pro</h1>
+                            <p>Select your mode to continue</p>
+                        </div>
+                        <div class="mode-cards">
+                            <div class="mode-card" id="btnParentMode">
+                                <div class="mode-card-icon parent-mode-icon">
+                                    <i class="fas fa-user-shield"></i>
+                                </div>
+                                <h3>Parent Mode</h3>
+                                <p>Monitor and manage your child's device from the dashboard. View activity, location, calls, messages and more.</p>
+                                <ul class="mode-features">
+                                    <li><i class="fas fa-check"></i> Real-time monitoring</li>
+                                    <li><i class="fas fa-check"></i> Location tracking</li>
+                                    <li><i class="fas fa-check"></i> App & screen control</li>
+                                    <li><i class="fas fa-check"></i> Notifications & alerts</li>
+                                </ul>
+                                <button class="btn-primary btn-full mode-btn"><i class="fas fa-arrow-right"></i> Continue as Parent</button>
+                            </div>
+                            <div class="mode-card" id="btnDeviceOwnerMode">
+                                <div class="mode-card-icon do-mode-icon">
+                                    <i class="fas fa-crown"></i>
+                                </div>
+                                <h3>Device Owner Mode</h3>
+                                <p>Advanced setup for child's device with enhanced control. Silent permissions, uninstall protection & more.</p>
+                                <ul class="mode-features">
+                                    <li><i class="fas fa-check"></i> Silent permission granting</li>
+                                    <li><i class="fas fa-check"></i> Uninstall protection</li>
+                                    <li><i class="fas fa-check"></i> App hiding</li>
+                                    <li><i class="fas fa-check"></i> Factory reset protection</li>
+                                </ul>
+                                <button class="btn-primary btn-full mode-btn do-btn"><i class="fas fa-arrow-right"></i> Setup Device Owner</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Login Page -->
-            <div class="page" id="loginPage">
+            <div class="page hidden" id="loginPage">
                 <div class="login-container">
                     <div class="login-card">
                         <div class="login-header">
@@ -155,6 +204,52 @@
                         </form>
                         <p class="login-footer">
                             Don't have an account? <a href="#" id="showRegister">Register</a>
+                        </p>
+                        <p class="login-footer" style="margin-top:8px;">
+                            <a href="#" id="backToModeSelect"><i class="fas fa-arrow-left"></i> Back to Mode Selection</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Device Owner Setup Page -->
+            <div class="page hidden" id="doSetupPage">
+                <div class="login-container">
+                    <div class="login-card" style="max-width:600px;">
+                        <div class="login-header">
+                            <i class="fas fa-crown" style="color:#ffc107;font-size:40px;"></i>
+                            <h1>Device Owner Setup</h1>
+                            <p>Set up enhanced control on child's device</p>
+                        </div>
+
+                        <div style="padding:15px;background:rgba(255,193,7,0.1);border-radius:8px;border-left:3px solid #ffc107;margin-bottom:20px;">
+                            <small><i class="fas fa-exclamation-triangle"></i> <strong>Important:</strong> Device Owner mode requires a <strong>factory-reset</strong> device. The QR code must be scanned during the initial device setup.</small>
+                        </div>
+
+                        <div class="do-setup-section">
+                            <h3><i class="fas fa-qrcode"></i> Method 1: QR Code Provisioning</h3>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:8px 0 15px;">Login first, then generate a QR code to scan on the child's factory-reset device.</p>
+                            <button class="btn-primary btn-full" id="btnDoSetupLogin"><i class="fas fa-sign-in-alt"></i> Login to Generate QR Code</button>
+                        </div>
+
+                        <div class="do-setup-divider"><span>OR</span></div>
+
+                        <div class="do-setup-section">
+                            <h3><i class="fas fa-terminal"></i> Method 2: ADB Command</h3>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:8px 0 10px;">Run this command after installing the app on the child device:</p>
+                            <code class="do-adb-code">adb shell dpm set-device-owner com.familyguardpro/.services.DeviceAdminReceiver</code>
+                            <div style="margin-top:12px;padding:10px;background:rgba(72,187,120,0.1);border-radius:8px;border-left:3px solid #48bb78;">
+                                <small><i class="fas fa-info-circle"></i> <strong>Steps:</strong><br>
+                                1. Install FamilyGuard on child device<br>
+                                2. Connect via USB & enable USB debugging<br>
+                                3. Remove all Google accounts from child device<br>
+                                4. Run the ADB command above<br>
+                                5. Open FamilyGuard app — it will auto-detect DO mode</small>
+                            </div>
+                        </div>
+
+                        <p class="login-footer" style="margin-top:20px;">
+                            <a href="#" id="backToModeSelectFromDO"><i class="fas fa-arrow-left"></i> Back to Mode Selection</a>
                         </p>
                     </div>
                 </div>

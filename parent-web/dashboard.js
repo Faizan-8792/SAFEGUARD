@@ -102,7 +102,9 @@ function getDeviceId(device) {
 }
 
 // DOM Elements
+const modeSelectionPage = document.getElementById('modeSelectionPage');
 const loginPage = document.getElementById('loginPage');
+const doSetupPage = document.getElementById('doSetupPage');
 const registerPage = document.getElementById('registerPage');
 const dashboardPage = document.getElementById('dashboardPage');
 const notificationsPage = document.getElementById('notificationsPage');
@@ -162,7 +164,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (authToken) {
     loadUserData();
   } else {
-    showLoginPage();
+    // Show mode selection page first (unless coming from WebView with token)
+    showModeSelectionPage();
   }
   
   setupEventListeners();
@@ -779,6 +782,33 @@ function setupEventListeners() {
     showLoginPage();
   });
   
+  // Mode Selection - Parent Mode
+  document.getElementById('btnParentMode')?.addEventListener('click', () => {
+    showLoginPage();
+  });
+  
+  // Mode Selection - Device Owner Mode
+  document.getElementById('btnDeviceOwnerMode')?.addEventListener('click', () => {
+    showDoSetupPage();
+  });
+  
+  // Back to mode selection from login
+  document.getElementById('backToModeSelect')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    showModeSelectionPage();
+  });
+  
+  // Back to mode selection from DO setup
+  document.getElementById('backToModeSelectFromDO')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    showModeSelectionPage();
+  });
+  
+  // DO Setup - Login button (goes to login, then to QR generation in settings)
+  document.getElementById('btnDoSetupLogin')?.addEventListener('click', () => {
+    showLoginPage();
+  });
+  
   // Navigation
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', () => {
@@ -1147,7 +1177,7 @@ function handleLogout() {
   stopAutoRefresh();
   stopSessionValidation();
   
-  showLoginPage();
+  showModeSelectionPage();
 }
 
 async function loadUserData() {
@@ -1423,6 +1453,24 @@ function navigateTo(page) {
   
   // Close mobile sidebar
   sidebar.classList.remove('open');
+}
+
+// Mode Selection Page
+function showModeSelectionPage() {
+  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+  modeSelectionPage.classList.remove('hidden');
+  document.querySelector('.sidebar').style.display = 'none';
+  document.querySelector('.header').style.display = 'none';
+  stopAutoRefresh();
+}
+
+// Device Owner Setup Page
+function showDoSetupPage() {
+  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+  doSetupPage.classList.remove('hidden');
+  document.querySelector('.sidebar').style.display = 'none';
+  document.querySelector('.header').style.display = 'none';
+  stopAutoRefresh();
 }
 
 function showLoginPage() {

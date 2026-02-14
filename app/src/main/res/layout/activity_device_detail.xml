@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout android:background="@color/background" android:layout_width="fill_parent" android:layout_height="fill_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <com.google.android.material.appbar.AppBarLayout android:id="@+id/appBarLayout" android:background="@color/surface" android:layout_width="fill_parent" android:layout_height="wrap_content">
+        <com.google.android.material.appbar.MaterialToolbar android:id="@+id/toolbar" android:layout_width="fill_parent" android:layout_height="?actionBarSize" app:navigationIcon="@drawable/ic_notification" app:title="Device Details" app:titleTextColor="@color/text_primary" />
+    </com.google.android.material.appbar.AppBarLayout>
+    <androidx.core.widget.NestedScrollView android:layout_width="fill_parent" android:layout_height="fill_parent" app:layout_behavior="@string/appbar_scrolling_view_behavior">
+        <LinearLayout android:orientation="vertical" android:padding="16.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content">
+            <com.google.android.material.card.MaterialCardView android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginBottom="16.0dip" app:cardBackgroundColor="@color/surface" app:cardCornerRadius="16.0dip" app:cardElevation="0.0dip">
+                <LinearLayout android:orientation="vertical" android:padding="20.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content">
+                    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content">
+                        <ImageView android:layout_width="48.0dip" android:layout_height="48.0dip" android:src="@drawable/ic_notification" app:tint="@color/primary" />
+                        <LinearLayout android:orientation="vertical" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0" android:layout_marginStart="16.0dip">
+                            <TextView android:textSize="18.0sp" android:textStyle="bold" android:textColor="@color/text_primary" android:id="@+id/tvDeviceName" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Child's Phone" />
+                            <TextView android:textSize="14.0sp" android:textColor="@color/text_secondary" android:id="@+id/tvDeviceModel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Samsung Galaxy S21" />
+                        </LinearLayout>
+                        <View android:id="@+id/viewOnlineIndicator" android:background="@drawable/ic_online" android:layout_width="12.0dip" android:layout_height="12.0dip" />
+                    </LinearLayout>
+                    <View android:background="@color/divider" android:layout_width="fill_parent" android:layout_height="1.0dip" android:layout_marginVertical="16.0dip" />
+                    <LinearLayout android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content">
+                        <LinearLayout android:gravity="center" android:orientation="vertical" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0">
+                            <TextView android:textSize="20.0sp" android:textStyle="bold" android:textColor="@color/success" android:id="@+id/tvBattery" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="85%" />
+                            <TextView android:textSize="12.0sp" android:textColor="@color/text_secondary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/battery" />
+                        </LinearLayout>
+                        <LinearLayout android:gravity="center" android:orientation="vertical" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0">
+                            <TextView android:textSize="20.0sp" android:textStyle="bold" android:textColor="@color/primary" android:id="@+id/tvScreenTime" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="3h 45m" />
+                            <TextView android:textSize="12.0sp" android:textColor="@color/text_secondary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/screen_time" />
+                        </LinearLayout>
+                        <LinearLayout android:gravity="center" android:orientation="vertical" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0">
+                            <TextView android:textSize="20.0sp" android:textStyle="bold" android:textColor="@color/text_primary" android:id="@+id/tvLastSeen" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="2m ago" />
+                            <TextView android:textSize="12.0sp" android:textColor="@color/text_secondary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/last_seen" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+            <TextView android:textSize="16.0sp" android:textStyle="bold" android:textColor="@color/text_primary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="12.0dip" android:text="@string/live_monitoring" />
+            <LinearLayout android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginBottom="16.0dip">
+                <com.google.android.material.card.MaterialCardView android:id="@+id/cardScreenMirror" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0" android:layout_marginEnd="8.0dip" app:cardBackgroundColor="@color/surface" app:cardCornerRadius="12.0dip" app:cardElevation="0.0dip">
+                    <LinearLayout android:gravity="center" android:orientation="vertical" android:padding="20.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content">
+                        <ImageView android:layout_width="32.0dip" android:layout_height="32.0dip" android:src="@drawable/ic_notification" app:tint="@color/primary" />
+                        <TextView android:textSize="14.0sp" android:textColor="@color/text_primary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8.0dip" android:text="@string/screen_mirror" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+                <com.google.android.material.card.MaterialCardView android:id="@+id/cardCamera" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0" app:cardBackgroundColor="@color/surface" app:cardCornerRadius="12.0dip" app:cardElevation="0.0dip">
+                    <LinearLayout android:gravity="center" android:orientation="vertical" android:padding="20.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content">
+                        <ImageView android:layout_width="32.0dip" android:layout_height="32.0dip" android:src="@drawable/ic_notification" app:tint="@color/primary" />
+                        <TextView android:textSize="14.0sp" android:textColor="@color/text_primary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8.0dip" android:text="@string/remote_camera" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+            <LinearLayout android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginBottom="24.0dip">
+                <com.google.android.material.card.MaterialCardView android:id="@+id/cardLiveListen" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0" android:layout_marginEnd="8.0dip" app:cardBackgroundColor="@color/surface" app:cardCornerRadius="12.0dip" app:cardElevation="0.0dip">
+                    <LinearLayout android:gravity="center" android:orientation="vertical" android:padding="20.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content">
+                        <ImageView android:layout_width="32.0dip" android:layout_height="32.0dip" android:src="@drawable/ic_notification" app:tint="@color/primary" />
+                        <TextView android:textSize="14.0sp" android:textColor="@color/text_primary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8.0dip" android:text="@string/live_listen" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+                <com.google.android.material.card.MaterialCardView android:id="@+id/cardLocation" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0" app:cardBackgroundColor="@color/surface" app:cardCornerRadius="12.0dip" app:cardElevation="0.0dip">
+                    <LinearLayout android:gravity="center" android:orientation="vertical" android:padding="20.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content">
+                        <ImageView android:layout_width="32.0dip" android:layout_height="32.0dip" android:src="@drawable/ic_notification" app:tint="@color/primary" />
+                        <TextView android:textSize="14.0sp" android:textColor="@color/text_primary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8.0dip" android:text="@string/location" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+            <TextView android:textSize="16.0sp" android:textStyle="bold" android:textColor="@color/text_primary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="12.0dip" android:text="@string/activity_data" />
+            <com.google.android.material.card.MaterialCardView android:id="@+id/cardNotifications" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginBottom="8.0dip" app:cardBackgroundColor="@color/surface" app:cardCornerRadius="12.0dip" app:cardElevation="0.0dip">
+                <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:padding="16.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content">
+                    <ImageView android:layout_width="24.0dip" android:layout_height="24.0dip" android:src="@drawable/ic_notification" app:tint="@color/primary" />
+                    <TextView android:textSize="16.0sp" android:textColor="@color/text_primary" android:layout_width="0.0dip" android:layout_height="wrap_content" android:text="@string/notifications" android:layout_weight="1.0" android:layout_marginStart="16.0dip" />
+                    <TextView android:textSize="14.0sp" android:textColor="@color/primary" android:id="@+id/tvNotificationCount" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="24 new" />
+                    <ImageView android:layout_width="20.0dip" android:layout_height="20.0dip" android:src="@drawable/ic_notification" android:rotation="180.0" android:layout_marginStart="8.0dip" app:tint="@color/text_secondary" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+            <com.google.android.material.card.MaterialCardView android:id="@+id/cardCallHistory" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginBottom="8.0dip" app:cardBackgroundColor="@color/surface" app:cardCornerRadius="12.0dip" app:cardElevation="0.0dip">
+                <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:padding="16.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content">
+                    <ImageView android:layout_width="24.0dip" android:layout_height="24.0dip" android:src="@drawable/ic_notification" app:tint="@color/primary" />
+                    <TextView android:textSize="16.0sp" android:textColor="@color/text_primary" android:layout_width="0.0dip" android:layout_height="wrap_content" android:text="@string/call_history" android:layout_weight="1.0" android:layout_marginStart="16.0dip" />
+                    <TextView android:textSize="14.0sp" android:textColor="@color/primary" android:id="@+id/tvCallCount" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="12 calls" />
+                    <ImageView android:layout_width="20.0dip" android:layout_height="20.0dip" android:src="@drawable/ic_notification" android:rotation="180.0" android:layout_marginStart="8.0dip" app:tint="@color/text_secondary" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+            <com.google.android.material.card.MaterialCardView android:id="@+id/cardApps" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginBottom="24.0dip" app:cardBackgroundColor="@color/surface" app:cardCornerRadius="12.0dip" app:cardElevation="0.0dip">
+                <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:padding="16.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content">
+                    <ImageView android:layout_width="24.0dip" android:layout_height="24.0dip" android:src="@drawable/ic_notification" app:tint="@color/primary" />
+                    <TextView android:textSize="16.0sp" android:textColor="@color/text_primary" android:layout_width="0.0dip" android:layout_height="wrap_content" android:text="@string/installed_apps" android:layout_weight="1.0" android:layout_marginStart="16.0dip" />
+                    <TextView android:textSize="14.0sp" android:textColor="@color/primary" android:id="@+id/tvAppCount" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="45 apps" />
+                    <ImageView android:layout_width="20.0dip" android:layout_height="20.0dip" android:src="@drawable/ic_notification" android:rotation="180.0" android:layout_marginStart="8.0dip" app:tint="@color/text_secondary" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+            <TextView android:textSize="16.0sp" android:textStyle="bold" android:textColor="@color/text_primary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="12.0dip" android:text="@string/quick_actions" />
+            <com.google.android.material.button.MaterialButton android:textColor="@color/error" android:id="@+id/btnDeleteCallLogs" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginBottom="8.0dip" android:text="@string/delete_call_logs" app:cornerRadius="12.0dip" app:icon="@drawable/ic_notification" app:iconTint="@color/error" app:strokeColor="@color/error" style="@style/Widget.Material3.Button.OutlinedButton" />
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnBlockApps" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginBottom="8.0dip" android:text="@string/manage_blocked_apps" app:cornerRadius="12.0dip" app:icon="@drawable/ic_notification" app:strokeColor="@color/primary" style="@style/Widget.Material3.Button.OutlinedButton" />
+            <com.google.android.material.button.MaterialButton android:textColor="@color/error" android:id="@+id/btnRemoveDevice" android:layout_width="fill_parent" android:layout_height="wrap_content" android:text="@string/remove_device" app:cornerRadius="12.0dip" style="@style/Widget.Material3.Button.TextButton" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+    <ProgressBar android:layout_gravity="center" android:id="@+id/progressBar" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

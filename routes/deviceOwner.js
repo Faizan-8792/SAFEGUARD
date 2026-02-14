@@ -22,12 +22,15 @@ async function sendFcmCommand(device, command, params = {}) {
     throw new Error('Firebase not initialized');
   }
   
+  // Flatten params into top-level data map (FCM data values must be strings)
+  const dataPayload = { command: command };
+  for (const [key, value] of Object.entries(params)) {
+    dataPayload[key] = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  }
+  
   await admin.messaging().send({
     token: device.fcmToken,
-    data: {
-      command: command,
-      params: JSON.stringify(params)
-    },
+    data: dataPayload,
     android: {
       priority: 'high',
       ttl: 0 // Deliver immediately
@@ -213,7 +216,7 @@ router.post('/:deviceId/hide-app', protect, async (req, res) => {
     }
     
     // Send FCM command to hide the app
-    await sendFcmCommand(device, 'DO_HIDE_APP', { hide: true });
+    await sendFcmCommand(device, 'DO_HIDE_APP', { hide: true, packageName: req.body.packageName || device.packageName || 'com.familyguardpro' });
     
     // Update database
     if (!device.deviceOwnerPolicies) device.deviceOwnerPolicies = {};
@@ -239,7 +242,7 @@ router.post('/:deviceId/unhide-app', protect, async (req, res) => {
       return res.status(403).json({ error: 'Device Owner mode not active on this device' });
     }
     
-    await sendFcmCommand(device, 'DO_HIDE_APP', { hide: false });
+    await sendFcmCommand(device, 'DO_HIDE_APP', { hide: false, packageName: req.body.packageName || device.packageName || 'com.familyguardpro' });
     
     if (!device.deviceOwnerPolicies) device.deviceOwnerPolicies = {};
     device.deviceOwnerPolicies.appHidden = false;

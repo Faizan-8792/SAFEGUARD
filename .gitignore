@@ -5,7 +5,7 @@ node_modules/
 .env
 *.log
 
-# Android
+# Android build artifacts
 .gradle/
 .idea/
 app/build/
@@ -16,15 +16,9 @@ local.properties
 apktool.jar
 apk_decompiled/
 
-# Android app (not needed in GitHub for backend deployment)
+# Android generated
 android/
-app/
-gradle/
-gradlew
-gradlew.bat
-build.gradle.kts
-settings.gradle.kts
-gradle.properties
+
 FIXES_AND_TESTING.md
 
 # IDE

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout android:background="@color/background" android:layout_width="fill_parent" android:layout_height="fill_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <ScrollView android:layout_width="fill_parent" android:layout_height="fill_parent" android:fillViewport="true">
+    <LinearLayout android:gravity="center" android:orientation="vertical" android:padding="32.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintTop_toTopOf="parent">
+        <ImageView android:layout_width="80.0dip" android:layout_height="80.0dip" android:src="@mipmap/ic_launcher" />
+        <TextView android:textSize="20.0sp" android:textStyle="bold" android:textColor="@color/text_primary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="24.0dip" android:text="@string/protected_device" />
+        <TextView android:textSize="14.0sp" android:textColor="@color/text_secondary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8.0dip" android:text="@string/device_monitored" android:textAlignment="center" />
+        <com.google.android.material.card.MaterialCardView android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginTop="32.0dip" app:cardBackgroundColor="@color/surface" app:cardCornerRadius="16.0dip" app:cardElevation="0.0dip">
+            <LinearLayout android:orientation="vertical" android:padding="20.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content">
+                <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content">
+                    <View android:id="@+id/viewStatus" android:background="@drawable/ic_online" android:layout_width="12.0dip" android:layout_height="12.0dip" />
+                    <TextView android:textSize="16.0sp" android:textStyle="bold" android:textColor="@color/success" android:id="@+id/tvStatus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/connected" android:layout_marginStart="12.0dip" />
+                </LinearLayout>
+                <!-- WebSocket Connection Status -->
+                <TextView android:textSize="11.0sp" android:textColor="@color/text_secondary" android:id="@+id/tvWsStatus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip" android:text="🔌 WebSocket: Connected" />
+                <View android:background="@color/divider" android:layout_width="fill_parent" android:layout_height="1.0dip" android:layout_marginVertical="16.0dip" />
+                <LinearLayout android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content">
+                    <LinearLayout android:gravity="center" android:orientation="vertical" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0">
+                        <TextView android:textSize="18.0sp" android:textStyle="bold" android:textColor="@color/text_primary" android:id="@+id/tvBattery" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="100%" />
+                        <TextView android:textSize="12.0sp" android:textColor="@color/text_secondary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/battery" />
+                    </LinearLayout>
+                    <View android:background="@color/divider" android:layout_width="1.0dip" android:layout_height="fill_parent" />
+                    <LinearLayout android:gravity="center" android:orientation="vertical" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0">
+                        <TextView android:textSize="18.0sp" android:textStyle="bold" android:textColor="@color/text_primary" android:id="@+id/tvLastSync" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Just now" />
+                        <TextView android:textSize="12.0sp" android:textColor="@color/text_secondary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/last_sync" />
+                    </LinearLayout>
+                    <View android:background="@color/divider" android:layout_width="1.0dip" android:layout_height="fill_parent" />
+                    <LinearLayout android:gravity="center" android:orientation="vertical" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0">
+                        <TextView android:textSize="18.0sp" android:textStyle="bold" android:textColor="@color/text_primary" android:id="@+id/tvDataUsage" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0 KB" />
+                        <TextView android:textSize="12.0sp" android:textColor="@color/text_secondary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Data/Mo" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+        
+        <!-- Activation Status Card -->
+        <com.google.android.material.card.MaterialCardView android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginTop="16.0dip" app:cardBackgroundColor="@color/surface" app:cardCornerRadius="16.0dip" app:cardElevation="0.0dip">
+            <LinearLayout android:orientation="vertical" android:padding="16.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content">
+                <TextView android:textSize="14.0sp" android:textStyle="bold" android:textColor="@color/text_primary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="⚙️ Activation Status" />
+                <View android:background="@color/divider" android:layout_width="fill_parent" android:layout_height="1.0dip" android:layout_marginVertical="12.0dip" />
+                
+                <!-- Battery Optimization -->
+                <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginBottom="8.0dip">
+                    <TextView android:textSize="13.0sp" android:textColor="@color/text_secondary" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0" android:text="🔋 Battery Optimization" />
+                    <TextView android:textSize="13.0sp" android:textStyle="bold" android:id="@+id/tvBatteryOptStatus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Disabled ✓" android:textColor="@color/success" />
+                </LinearLayout>
+                
+                <!-- Auto-Start -->
+                <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginBottom="8.0dip">
+                    <TextView android:textSize="13.0sp" android:textColor="@color/text_secondary" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0" android:text="🚀 Auto-Start" />
+                    <TextView android:textSize="13.0sp" android:textStyle="bold" android:id="@+id/tvAutoStartStatus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Enabled ✓" android:textColor="@color/success" />
+                </LinearLayout>
+                
+                <!-- Accessibility -->
+                <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginBottom="8.0dip">
+                    <TextView android:textSize="13.0sp" android:textColor="@color/text_secondary" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0" android:text="♿ Accessibility" />
+                    <TextView android:textSize="13.0sp" android:textStyle="bold" android:id="@+id/tvAccessibilityStatus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Enabled ✓" android:textColor="@color/success" />
+                </LinearLayout>
+                
+                <!-- Device Admin -->
+                <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content">
+                    <TextView android:textSize="13.0sp" android:textColor="@color/text_secondary" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0" android:text="🔒 Device Admin" />
+                    <TextView android:textSize="13.0sp" android:textStyle="bold" android:id="@+id/tvDeviceAdminStatus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Enabled ✓" android:textColor="@color/success" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+        
+        <TextView android:textSize="12.0sp" android:textColor="@color/text_secondary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="24.0dip" android:text="@string/parental_control_active" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/btnSyncNow" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16.0dip" android:text="Sync Now" app:icon="@android:drawable/stat_notify_sync" style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/btnTestHide" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8.0dip" android:text="🔒 App Visibility" android:textColor="#FF5722" style="@style/Widget.MaterialComponents.Button.TextButton" />
+        <com.google.android.material.button.MaterialButton android:textSize="12.0sp" android:textColor="@color/text_secondary" android:id="@+id/btnUnpair" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16.0dip" android:text="Unpair Device" style="@style/Widget.MaterialComponents.Button.TextButton" />
+    </LinearLayout>
+    </ScrollView>
+</androidx.constraintlayout.widget.ConstraintLayout>

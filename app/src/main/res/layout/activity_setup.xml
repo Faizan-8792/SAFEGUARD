@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout android:background="@color/background" android:layout_width="fill_parent" android:layout_height="fill_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/progressIndicator" android:layout_width="fill_parent" android:layout_height="wrap_content" android:max="9" android:progress="1" app:indicatorColor="@color/primary" app:layout_constraintTop_toTopOf="parent" app:trackColor="@color/surface" />
+    <TextView android:textSize="24.0sp" android:textStyle="bold" android:textColor="@color/text_primary" android:id="@+id/tvStepTitle" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginTop="32.0dip" android:text="@string/setup_step_1_title" android:layout_marginHorizontal="24.0dip" app:layout_constraintTop_toBottomOf="@id/progressIndicator" />
+    <TextView android:textSize="16.0sp" android:textColor="@color/text_secondary" android:id="@+id/tvStepDescription" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginTop="12.0dip" android:text="@string/setup_step_1_desc" android:lineSpacingMultiplier="1.3" android:layout_marginHorizontal="24.0dip" app:layout_constraintTop_toBottomOf="@id/tvStepTitle" />
+    <ImageView android:id="@+id/ivStepIcon" android:layout_width="180.0dip" android:layout_height="180.0dip" android:src="@drawable/ic_notification" app:layout_constraintBottom_toTopOf="@id/btnAction" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/tvStepDescription" app:tint="@color/primary" />
+    <TextView android:textSize="14.0sp" android:textColor="@color/text_secondary" android:id="@+id/tvStepNumber" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="24.0dip" android:text="Step 1 of 8" app:layout_constraintBottom_toTopOf="@id/btnAction" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" />
+    <com.google.android.material.button.MaterialButton android:textSize="16.0sp" android:id="@+id/btnAction" android:layout_width="fill_parent" android:layout_height="56.0dip" android:layout_marginBottom="16.0dip" android:text="@string/grant_permission" android:layout_marginHorizontal="24.0dip" app:cornerRadius="12.0dip" app:layout_constraintBottom_toTopOf="@id/bottomNavigation" />
+    <LinearLayout
+        android:id="@+id/bottomNavigation"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="32.0dip"
+        android:layout_marginHorizontal="24.0dip"
+        android:gravity="center"
+        android:orientation="horizontal"
+        app:layout_constraintBottom_toBottomOf="parent">
+        
+        <TextView 
+            android:textSize="14.0sp" 
+            android:textColor="@color/primary" 
+            android:id="@+id/tvBack" 
+            android:padding="12.0dip" 
+            android:visibility="gone" 
+            android:layout_width="wrap_content" 
+            android:layout_height="wrap_content" 
+            android:text="Back"
+            android:layout_marginEnd="32.0dip" />
+            
+        <TextView 
+            android:textSize="14.0sp" 
+            android:textColor="@color/text_secondary" 
+            android:id="@+id/tvSkip" 
+            android:padding="12.0dip" 
+            android:visibility="gone" 
+            android:layout_width="wrap_content" 
+            android:layout_height="wrap_content" 
+            android:text="@string/skip" />
+    </LinearLayout>
+    <com.google.android.material.card.MaterialCardView android:id="@+id/cardPermissionStatus" android:visibility="gone" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginTop="24.0dip" android:layout_marginHorizontal="24.0dip" app:cardBackgroundColor="@color/surface" app:cardCornerRadius="12.0dip" app:layout_constraintTop_toBottomOf="@id/tvStepDescription" app:strokeColor="@color/success" app:strokeWidth="1.0dip">
+        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:padding="16.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content">
+            <ImageView android:layout_width="24.0dip" android:layout_height="24.0dip" android:src="@drawable/ic_online" app:tint="@color/success" />
+            <TextView android:textSize="14.0sp" android:textColor="@color/success" android:id="@+id/tvPermissionStatus" android:layout_width="0.0dip" android:layout_height="wrap_content" android:text="@string/permission_granted" android:layout_weight="1.0" android:layout_marginStart="12.0dip" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+    <ProgressBar android:id="@+id/progressBar" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
+</androidx.constraintlayout.widget.ConstraintLayout>
