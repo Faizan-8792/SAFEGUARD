@@ -3621,6 +3621,35 @@ async function doUnhideApp() {
 }
 
 /**
+ * Activate Device Owner mode for a device (after ADB command was run)
+ */
+async function activateDeviceOwnerADB() {
+  if (!selectedDevice) {
+    showToast('Please select a device first', 'error');
+    return;
+  }
+  
+  if (!confirm('Have you already run the ADB command on the child device?\n\nadb shell dpm set-device-owner com.familyguardpro/.services.DeviceAdminReceiver\n\nClick OK to activate Device Owner controls.')) {
+    return;
+  }
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    const data = await api(`/device-owner/${deviceId}/activate-adb`, {
+      method: 'POST'
+    });
+    
+    if (data.success) {
+      showToast('Device Owner activated successfully!', 'success');
+      // Reload the page to show controls
+      loadDeviceOwnerPage();
+    }
+  } catch (error) {
+    showToast('Failed to activate: ' + error.message, 'error');
+  }
+}
+
+/**
  * Toggle uninstall protection
  */
 async function doToggleUninstallProtection() {
@@ -3817,6 +3846,7 @@ function setupDeviceOwnerListeners() {
   document.getElementById('btnDoUninstallApp')?.addEventListener('click', doUninstallApp);
   document.getElementById('btnRunOemOptimizer')?.addEventListener('click', doRunOemOptimizer);
   document.getElementById('btnGenerateQR')?.addEventListener('click', generateProvisioningQR);
+  document.getElementById('btnActivateADB')?.addEventListener('click', activateDeviceOwnerADB);
   
   // WiFi toggle for QR provisioning
   document.getElementById('btnToggleWifi')?.addEventListener('click', () => {

@@ -221,6 +221,39 @@ router.get('/:deviceId/status', protect, async (req, res) => {
   }
 });
 
+// POST /api/device-owner/:deviceId/activate-adb
+// Called from parent dashboard to mark a device as DO-provisioned (for ADB setups)
+router.post('/:deviceId/activate-adb', protect, async (req, res) => {
+  try {
+    const { device, error, status } = await getDeviceOwnerDevice(req.params.deviceId, req.user._id);
+    if (error) return res.status(status).json({ error });
+    
+    // Update device to DO mode
+    device.mode = 'deviceOwner';
+    device.deviceOwnerProvisioned = true;
+    device.provisioningDate = new Date();
+    device.provisioningMethod = 'adb';
+    device.deviceOwnerPolicies = device.deviceOwnerPolicies || {};
+    device.deviceOwnerPolicies.uninstallProtected = true;
+    device.deviceOwnerPolicies.accessibilityAutoRecover = true;
+    device.deviceOwnerPolicies.silentInstallEnabled = true;
+    await device.save();
+    
+    console.log(`[DO] Device ${device.deviceId} activated as Device Owner via ADB`);
+    
+    res.json({
+      success: true,
+      mode: device.mode,
+      deviceOwnerProvisioned: true,
+      provisioningDate: device.provisioningDate,
+      provisioningMethod: 'adb'
+    });
+  } catch (error) {
+    console.error('[DO] ADB activation error:', error);
+    res.status(500).json({ error: 'Failed to activate Device Owner: ' + error.message });
+  }
+});
+
 // ==========================================
 // APP HIDING (DO Feature #1)
 // ==========================================
