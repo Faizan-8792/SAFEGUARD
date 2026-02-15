@@ -4574,6 +4574,20 @@ function formatDuration(seconds) {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+function formatDate(timestamp) {
+  if (!timestamp) return '--';
+  const d = new Date(timestamp);
+  if (isNaN(d.getTime())) return '--';
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dateObj = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.floor((today - dateObj) / 86400000);
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (diffDays === 0) return `Today ${time}`;
+  if (diffDays === 1) return `Yesterday ${time}`;
+  return `${d.toLocaleDateString()} ${time}`;
+}
+
 async function playRecording(recordingId) {
   const recording = recordingsCache.find(r => r._id === recordingId);
   if (!recording) return;
