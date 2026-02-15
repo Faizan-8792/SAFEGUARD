@@ -4495,7 +4495,12 @@ async function loadRecordings() {
     if (!response.ok) throw new Error('Failed to load recordings');
     
     const data = await response.json();
-    recordingsCache = data.recordings || [];
+    recordingsCache = (data.recordings || []).map(r => {
+      // Ensure _id is always a string (MongoDB ObjectId -> string)
+      if (!r._id && r.id) r._id = r.id;
+      return r;
+    });
+    console.log('[CallRecording] Loaded recordings:', recordingsCache.length, recordingsCache[0] ? Object.keys(recordingsCache[0]) : 'empty');
     
     // Update count
     const countEl = document.getElementById('totalRecordingsCount');
@@ -4530,13 +4535,14 @@ function renderRecordings() {
   
   let html = '';
   recordingsCache.forEach(rec => {
+    const recId = rec._id || rec.id || '';
     const iconClass = rec.callType === 'incoming' ? 'incoming' : 
                       rec.callType === 'outgoing' ? 'outgoing' : 'missed';
     const iconName = rec.callType === 'incoming' ? 'phone-alt' : 
                      rec.callType === 'outgoing' ? 'phone-volume' : 'phone-slash';
     
     html += `
-      <div class="recording-item${rec.listened ? '' : ' unheard'}" data-id="${rec._id}">
+      <div class="recording-item${rec.listened ? '' : ' unheard'}" data-id="${recId}">
         <div class="recording-icon ${iconClass}">
           <i class="fas fa-${iconName}"></i>
         </div>
@@ -4553,10 +4559,10 @@ function renderRecordings() {
           </div>
         </div>
         <div class="recording-actions">
-          <button class="btn-play" onclick="playRecording('${rec._id}')" title="Play">
+          <button class="btn-play" onclick="playRecording('${recId}')" title="Play">
             <i class="fas fa-play"></i>
           </button>
-          <button class="btn-delete" onclick="deleteRecording('${rec._id}')" title="Delete">
+          <button class="btn-delete" onclick="deleteRecording('${recId}')" title="Delete">
             <i class="fas fa-trash"></i>
           </button>
         </div>
@@ -4589,8 +4595,11 @@ function formatDate(timestamp) {
 }
 
 async function playRecording(recordingId) {
-  const recording = recordingsCache.find(r => r._id === recordingId);
-  if (!recording) return;
+  const recording = recordingsCache.find(r => (r._id || r.id) === recordingId);
+  if (!recording) {
+    console.error('[CallRecording] Recording not found in cache:', recordingId);
+    return;
+  }
   
   const player = document.getElementById('audioPlayer');
   const audioEl = document.getElementById('audioElement');
@@ -4630,12 +4639,12 @@ async function markRecordingListened(recordingId) {
   
   try {
     await fetch(`${API_BASE}/device-owner/${deviceId}/call-recording/recordings/${recordingId}/listened`, {
-      method: 'POST',
+      method: 'PATCH',
       headers: { 'Authorization': `Bearer ${authToken}` }
     });
     
     // Update local cache
-    const rec = recordingsCache.find(r => r._id === recordingId);
+    const rec = recordingsCache.find(r => (r._id || r.id) === recordingId);
     if (rec) rec.listened = true;
     
     // Update UI
