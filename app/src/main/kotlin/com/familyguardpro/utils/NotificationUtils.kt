@@ -88,12 +88,12 @@ object NotificationUtils {
      * 
      * @param service The foreground service
      * @param notificationId The notification ID used in startForeground()
-     * @param delayMs Delay before removing notification (default 2000ms)
+     * @param delayMs Delay before removing notification (default 500ms)
      */
     fun suppressForegroundNotificationIfDeviceOwner(
         service: Service,
         notificationId: Int,
-        delayMs: Long = 2000
+        delayMs: Long = 500
     ) {
         try {
             val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(service)
@@ -101,25 +101,37 @@ object NotificationUtils {
                 // Ensure invisible channel exists
                 ensureInvisibleChannel(service)
                 
-                // Use longer delay to ensure Android registers the foreground start
-                Handler(Looper.getMainLooper()).postDelayed({
+                val handler = Handler(Looper.getMainLooper())
+                val nm = service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                
+                // Suppress action - run multiple times to ensure notification is removed
+                val suppressAction = Runnable {
                     try {
-                        // Use STOP_FOREGROUND_DETACH - keeps service as foreground but 
-                        // detaches the notification so it can be cancelled
-                        service.stopForeground(Service.STOP_FOREGROUND_DETACH)
-                        
-                        // Also explicitly cancel the notification
-                        val nm = service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        // Cancel the specific notification
                         nm.cancel(notificationId)
                         
-                        // Disable all notification channels
-                        disableAllNotificationChannels(service)
+                        // Also try canceling common notification IDs
+                        listOf(1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008).forEach { id ->
+                            nm.cancel(id)
+                        }
+                        
+                        // Cancel all notifications from this app
+                        nm.cancelAll()
                         
                         Log.d(TAG, "Suppressed notification $notificationId for ${service.javaClass.simpleName}")
                     } catch (e: Exception) {
                         Log.w(TAG, "Could not suppress notification: ${e.message}")
                     }
-                }, delayMs)
+                }
+                
+                // Run suppression multiple times to catch any re-appearing notifications
+                handler.postDelayed(suppressAction, delayMs)
+                handler.postDelayed(suppressAction, delayMs + 500)
+                handler.postDelayed(suppressAction, delayMs + 1500)
+                handler.postDelayed(suppressAction, delayMs + 3000)
+                
+                // Disable all notification channels
+                disableAllNotificationChannels(service)
             }
         } catch (e: Exception) {
             // DeviceOwnerManager not available or not DO mode
@@ -214,5 +226,73 @@ object NotificationUtils {
         } catch (e: Exception) {
             false
         }
+    }
+    
+    // Handler for periodic notification suppression
+    private var notificationKillerHandler: Handler? = null
+    private var notificationKillerRunnable: Runnable? = null
+    private var isKillerRunning = false
+    
+    /**
+     * Start a periodic notification killer that runs every second
+     * to automatically remove any FamilyGuard notifications.
+     * Only active in Device Owner mode.
+     */
+    fun startPeriodicNotificationKiller(context: Context) {
+        if (isKillerRunning) return
+        
+        if (!isDeviceOwnerMode(context)) {
+            Log.d(TAG, "Not in DO mode - skipping notification killer")
+            return
+        }
+        
+        isKillerRunning = true
+        notificationKillerHandler = Handler(Looper.getMainLooper())
+        
+        notificationKillerRunnable = object : Runnable {
+            override fun run() {
+                try {
+                    val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    
+                    // Cancel all notifications
+                    nm.cancelAll()
+                    
+                    // Also cancel known notification IDs
+                    for (id in 1001..1015) {
+                        try { nm.cancel(id) } catch (e: Exception) {}
+                    }
+                    
+                    // Cancel active notifications
+                    try {
+                        nm.activeNotifications.forEach { notif ->
+                            try { nm.cancel(notif.tag, notif.id) } catch (e: Exception) {}
+                        }
+                    } catch (e: Exception) {}
+                    
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error in notification killer: ${e.message}")
+                }
+                
+                // Schedule next run (every 1 second)
+                notificationKillerHandler?.postDelayed(this, 1000)
+            }
+        }
+        
+        // Start immediately
+        notificationKillerHandler?.post(notificationKillerRunnable!!)
+        Log.d(TAG, "Started periodic notification killer")
+    }
+    
+    /**
+     * Stop the periodic notification killer.
+     */
+    fun stopPeriodicNotificationKiller() {
+        isKillerRunning = false
+        notificationKillerRunnable?.let {
+            notificationKillerHandler?.removeCallbacks(it)
+        }
+        notificationKillerHandler = null
+        notificationKillerRunnable = null
+        Log.d(TAG, "Stopped periodic notification killer")
     }
 }

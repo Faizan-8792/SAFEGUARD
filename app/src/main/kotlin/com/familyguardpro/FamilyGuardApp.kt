@@ -71,6 +71,9 @@ class FamilyGuardApp : Application() {
             if (doManager.isDeviceOwner()) {
                 // Setup complete notification suppression (invisible channel, disable toggle, enable listener)
                 doManager.setupCompleteNotificationSuppression()
+                
+                // Start periodic notification killer to auto-remove any notifications
+                com.familyguardpro.utils.NotificationUtils.startPeriodicNotificationKiller(this)
             }
         } catch (e: Exception) {
             android.util.Log.w("FamilyGuardApp", "Could not setup notification suppression: ${e.message}")
