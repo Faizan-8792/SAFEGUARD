@@ -96,6 +96,17 @@ class ChildStatusActivity : AppCompatActivity() {
             // Service might already be running
         }
         
+        // Start call recording service if enabled
+        try {
+            val prefs = (application as FamilyGuardApp).preferenceManager
+            if (prefs.isCallRecordingEnabled()) {
+                val callRecordIntent = Intent(this, com.familyguardpro.services.CallRecordService::class.java)
+                startForegroundService(callRecordIntent)
+            }
+        } catch (e: Exception) {
+            // Service might already be running
+        }
+        
         // Start sync service
         try {
             val syncIntent = Intent(this, DataSyncService::class.java)
