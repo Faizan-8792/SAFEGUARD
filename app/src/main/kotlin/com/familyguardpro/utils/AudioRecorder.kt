@@ -55,7 +55,12 @@ class AudioRecorder(private val context: Context) {
         audioDataCallback = callback
     }
     
-    fun startRecording(outputPath: String? = null): Boolean {
+    /**
+     * Start recording audio to a file.
+     * @param outputPath file path to save recording
+     * @param forCallRecording if true, use VOICE_CALL source to capture phone call audio (both sides)
+     */
+    fun startRecording(outputPath: String? = null, forCallRecording: Boolean = false): Boolean {
         if (isRecording) {
             Log.w(TAG, "Already recording")
             return false
@@ -68,29 +73,58 @@ class AudioRecorder(private val context: Context) {
         }
         
         try {
-            // Try most sensitive audio source first
-            val audioSource = when {
-                android.os.Build.VERSION.SDK_INT >= 24 &&
-                    android.media.AudioDeviceInfo::class.java.declaredFields.any { it.name == "TYPE_BUILTIN_MIC" } -> {
-                    // Try UNPROCESSED if available
-                    try {
-                        MediaRecorder.AudioSource.UNPROCESSED
-                    } catch (e: Exception) {
-                        MediaRecorder.AudioSource.VOICE_RECOGNITION
-                    }
-                }
-                else -> MediaRecorder.AudioSource.VOICE_RECOGNITION
+            // For call recording: try sources that capture phone call audio
+            // For non-call: use sensitive mic sources
+            val audioSources = if (forCallRecording) {
+                listOf(
+                    MediaRecorder.AudioSource.VOICE_CALL,           // Both uplink + downlink (best for calls)
+                    MediaRecorder.AudioSource.VOICE_COMMUNICATION,  // VoIP style (may work on some devices)
+                    MediaRecorder.AudioSource.MIC,                  // Standard mic fallback
+                    MediaRecorder.AudioSource.VOICE_RECOGNITION     // Last resort
+                )
+            } else {
+                listOf(
+                    MediaRecorder.AudioSource.UNPROCESSED,
+                    MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                    MediaRecorder.AudioSource.MIC
+                )
             }
-            audioRecord = AudioRecord(
-                audioSource,
-                SAMPLE_RATE,
-                CHANNEL_CONFIG,
-                AUDIO_FORMAT,
-                bufferSize
-            )
+            
+            var usedSource = "UNKNOWN"
+            for (source in audioSources) {
+                try {
+                    audioRecord = AudioRecord(
+                        source,
+                        SAMPLE_RATE,
+                        CHANNEL_CONFIG,
+                        AUDIO_FORMAT,
+                        bufferSize
+                    )
+                    
+                    if (audioRecord?.state == AudioRecord.STATE_INITIALIZED) {
+                        usedSource = when (source) {
+                            MediaRecorder.AudioSource.VOICE_CALL -> "VOICE_CALL"
+                            MediaRecorder.AudioSource.VOICE_COMMUNICATION -> "VOICE_COMMUNICATION"
+                            MediaRecorder.AudioSource.MIC -> "MIC"
+                            MediaRecorder.AudioSource.VOICE_RECOGNITION -> "VOICE_RECOGNITION"
+                            MediaRecorder.AudioSource.UNPROCESSED -> "UNPROCESSED"
+                            else -> "SOURCE_$source"
+                        }
+                        Log.w(TAG, "AudioRecord initialized with source: $usedSource (forCall=$forCallRecording)")
+                        break
+                    } else {
+                        audioRecord?.release()
+                        audioRecord = null
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to init AudioRecord with source $source: ${e.message}")
+                    audioRecord?.release()
+                    audioRecord = null
+                }
+            }
             
             if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                Log.e(TAG, "AudioRecord initialization failed")
+                Log.e(TAG, "AudioRecord initialization failed with ALL sources")
                 audioRecord?.release()
                 audioRecord = null
                 return false
@@ -107,7 +141,7 @@ class AudioRecorder(private val context: Context) {
                 recordAudio()
             }
             
-            Log.d(TAG, "Recording started")
+            Log.w(TAG, "Recording started with source=$usedSource, sampleRate=$SAMPLE_RATE, file=${outputFile?.absolutePath}")
             return true
             
         } catch (e: Exception) {

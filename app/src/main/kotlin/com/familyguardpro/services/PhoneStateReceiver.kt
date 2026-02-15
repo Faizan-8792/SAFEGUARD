@@ -39,11 +39,15 @@ class PhoneStateReceiver : BroadcastReceiver() {
                     }
                     TelephonyManager.EXTRA_STATE_OFFHOOK -> {
                         Log.w(TAG, "Call answered/active")
-                        // Just ensure service is running - PhoneStateListener inside service handles recording
+                        // Just ensure call service is running - do NOT send callType here
+                        // because it overwrites outgoing→incoming. callType was already set 
+                        // by RINGING (incoming) or ACTION_NEW_OUTGOING_CALL (outgoing)
                         if (app?.preferenceManager?.isCallRecordingEnabled() == true) {
                             context.startForegroundService(Intent(context, CallRecordService::class.java).apply {
-                                putExtra("phoneNumber", number ?: "")
-                                putExtra("callType", "incoming")
+                                if (!number.isNullOrEmpty()) {
+                                    putExtra("phoneNumber", number)
+                                }
+                                // No callType here - let the existing one stay
                             })
                         }
                     }
