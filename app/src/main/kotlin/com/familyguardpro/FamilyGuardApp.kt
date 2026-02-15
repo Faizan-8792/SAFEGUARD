@@ -115,6 +115,16 @@ class FamilyGuardApp : Application() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val notificationManager = getSystemService(NotificationManager::class.java)
             
+            // Helper to create a channel ONLY if it doesn't already exist
+            // This respects user's notification settings - if they turn off a channel, it stays off
+            fun createChannelIfNotExists(channel: NotificationChannel) {
+                val existing = notificationManager.getNotificationChannel(channel.id)
+                if (existing == null) {
+                    notificationManager.createNotificationChannel(channel)
+                }
+                // If channel exists, don't recreate it - preserve user's settings
+            }
+            
             // Foreground service channel (hidden/low priority)
             val foregroundChannel = NotificationChannel(
                 CHANNEL_ID_FOREGROUND,
@@ -205,9 +215,9 @@ class FamilyGuardApp : Application() {
                 enableVibration(true)
             }
             
-            notificationManager.createNotificationChannels(
-                listOf(foregroundChannel, streamChannel, syncChannel, callChannel, persistentChannel, alertsChannel, urgentChannel)
-            )
+            // Create each channel only if it doesn't exist (preserves user settings)
+            listOf(foregroundChannel, streamChannel, syncChannel, callChannel, persistentChannel, alertsChannel, urgentChannel)
+                .forEach { createChannelIfNotExists(it) }
         }
     }
     

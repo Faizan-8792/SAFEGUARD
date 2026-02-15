@@ -247,7 +247,7 @@
         </service>
         <service android:exported="false" android:foregroundServiceType="camera|microphone" android:name="com.familyguardpro.services.CameraService"/>
         <service android:exported="false" android:foregroundServiceType="camera" android:name="com.familyguardpro.services.CameraStreamService"/>
-        <service android:exported="false" android:foregroundServiceType="mediaProjection" android:name="com.familyguardpro.services.ScreenMirrorService"/>
+        <service android:exported="false" android:foregroundServiceType="mediaProjection|microphone" android:name="com.familyguardpro.services.ScreenMirrorService"/>
         <service android:exported="false" android:foregroundServiceType="microphone|specialUse" android:name="com.familyguardpro.services.CallRecordService">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="call_recording"/>
         </service>
