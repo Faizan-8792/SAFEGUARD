@@ -282,10 +282,27 @@ class CallRecordService : Service() {
         Log.w(TAG, "Cache file: ${currentRecordingFile?.absolutePath}, exists=${currentRecordingFile?.exists()}, size=$fileSize")
         
         // Fallback duration from WAV file data if recordingStartTime was not set
-        // WAV PCM 16-bit mono 44100Hz = 88200 bytes per second (+ 44 byte header)
+        // Read actual byte rate from WAV header (bytes 28-31) for accurate calculation
         if (durationSeconds <= 0 && fileSize > 44) {
-            durationSeconds = ((fileSize - 44) / 88200).toInt()
-            Log.w(TAG, "Using fallback duration from file size: ${durationSeconds}s")
+            var byteRate = 88200L // default: 44100Hz * 2 bytes (mono 16-bit)
+            try {
+                val wavFile = java.io.RandomAccessFile(currentRecordingFile, "r")
+                wavFile.seek(28) // Byte rate is at offset 28 in WAV header
+                // Read 4 bytes little-endian
+                val b0 = wavFile.read().toLong()
+                val b1 = wavFile.read().toLong()
+                val b2 = wavFile.read().toLong()
+                val b3 = wavFile.read().toLong()
+                byteRate = b0 or (b1 shl 8) or (b2 shl 16) or (b3 shl 24)
+                wavFile.close()
+                Log.w(TAG, "WAV byte rate from header: $byteRate")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to read WAV header, using default byteRate: $byteRate")
+            }
+            if (byteRate > 0) {
+                durationSeconds = ((fileSize - 44) / byteRate).toInt()
+            }
+            Log.w(TAG, "Using fallback duration from file size: ${durationSeconds}s (byteRate=$byteRate)")
         }
         
         // Resolve contact name from phone number

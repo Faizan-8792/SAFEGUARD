@@ -19,7 +19,7 @@ class AudioRecorder(private val context: Context) {
     
     companion object {
         private const val TAG = "AudioRecorder"
-        private const val SAMPLE_RATE = 44100 // Higher sample rate for better sensitivity
+        private const val DEFAULT_SAMPLE_RATE = 44100 // For non-call recording
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         private const val BUFFER_SIZE_FACTOR = 4 // Larger buffer for better capture
@@ -38,9 +38,10 @@ class AudioRecorder(private val context: Context) {
     private var isRecording = false
     private var recordingJob: Job? = null
     private var outputFile: File? = null
+    private var activeSampleRate = DEFAULT_SAMPLE_RATE // Actual sample rate used (may be 8000 for call recording)
     
-    private val bufferSize = AudioRecord.getMinBufferSize(
-        SAMPLE_RATE,
+    private var bufferSize = AudioRecord.getMinBufferSize(
+        DEFAULT_SAMPLE_RATE,
         CHANNEL_CONFIG,
         AUDIO_FORMAT
     ) * BUFFER_SIZE_FACTOR
@@ -73,58 +74,97 @@ class AudioRecorder(private val context: Context) {
         }
         
         try {
-            // For call recording: try sources that capture phone call audio
-            // For non-call: use sensitive mic sources
-            val audioSources = if (forCallRecording) {
-                listOf(
-                    MediaRecorder.AudioSource.VOICE_CALL,           // Both uplink + downlink (best for calls)
-                    MediaRecorder.AudioSource.VOICE_COMMUNICATION,  // VoIP style (may work on some devices)
-                    MediaRecorder.AudioSource.MIC,                  // Standard mic fallback
-                    MediaRecorder.AudioSource.VOICE_RECOGNITION     // Last resort
+            // IMPORTANT: Do NOT change AudioManager.mode during a cellular call!
+            // Changing from MODE_IN_CALL to MODE_IN_COMMUNICATION mutes the mic completely
+            // on most devices (Vivo, Samsung, etc). Let the system handle audio routing.
+            
+            if (forCallRecording) {
+                // For cellular call recording on modern Android (9+):
+                // - VOICE_CALL is blocked for non-system apps on most devices
+                // - VOICE_COMMUNICATION is for VoIP, captures silence during cellular calls
+                // - MIC is the ONLY reliable source that captures audio during calls
+                //   (captures user's voice + leaked speaker audio)
+                // - CAMCORDER may also work on some devices
+                //
+                // Strategy: Try VOICE_CALL first (in case it works), then MIC at 44100Hz
+                
+                val callConfigs = listOf(
+                    // VOICE_CALL at telephony rates (best case - both sides)
+                    Triple(MediaRecorder.AudioSource.VOICE_CALL, 8000, "VOICE_CALL"),
+                    Triple(MediaRecorder.AudioSource.VOICE_CALL, 16000, "VOICE_CALL"),
+                    Triple(MediaRecorder.AudioSource.VOICE_CALL, 44100, "VOICE_CALL"),
+                    // MIC at 44100Hz (most reliable for calls)
+                    Triple(MediaRecorder.AudioSource.MIC, 44100, "MIC"),
+                    // CAMCORDER sometimes routes call audio on some devices
+                    Triple(MediaRecorder.AudioSource.CAMCORDER, 44100, "CAMCORDER"),
+                    // MIC at lower sample rates as last resort
+                    Triple(MediaRecorder.AudioSource.MIC, 16000, "MIC"),
+                    Triple(MediaRecorder.AudioSource.MIC, 8000, "MIC")
                 )
+                
+                var usedSource = "UNKNOWN"
+                
+                for ((source, rate, name) in callConfigs) {
+                    try {
+                        val minBuf = AudioRecord.getMinBufferSize(rate, CHANNEL_CONFIG, AUDIO_FORMAT)
+                        if (minBuf <= 0) {
+                            Log.w(TAG, "Invalid buffer for $name@${rate}Hz")
+                            continue
+                        }
+                        
+                        val buf = minBuf * BUFFER_SIZE_FACTOR
+                        audioRecord = AudioRecord(source, rate, CHANNEL_CONFIG, AUDIO_FORMAT, buf)
+                        
+                        if (audioRecord?.state == AudioRecord.STATE_INITIALIZED) {
+                            usedSource = name
+                            activeSampleRate = rate
+                            bufferSize = buf
+                            Log.w(TAG, "SUCCESS: AudioRecord init source=$name rate=${rate}Hz")
+                            break
+                        } else {
+                            audioRecord?.release()
+                            audioRecord = null
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "FAILED: $name@${rate}Hz: ${e.message}")
+                        try { audioRecord?.release() } catch (_: Exception) {}
+                        audioRecord = null
+                    }
+                }
+                
+                Log.w(TAG, "Call recording: source=$usedSource, sampleRate=${activeSampleRate}Hz")
+                
             } else {
-                listOf(
+                // Non-call recording: use sensitive sources at 44100Hz
+                activeSampleRate = DEFAULT_SAMPLE_RATE
+                bufferSize = AudioRecord.getMinBufferSize(DEFAULT_SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT) * BUFFER_SIZE_FACTOR
+                
+                val audioSources = listOf(
                     MediaRecorder.AudioSource.UNPROCESSED,
                     MediaRecorder.AudioSource.VOICE_RECOGNITION,
                     MediaRecorder.AudioSource.MIC
                 )
-            }
-            
-            var usedSource = "UNKNOWN"
-            for (source in audioSources) {
-                try {
-                    audioRecord = AudioRecord(
-                        source,
-                        SAMPLE_RATE,
-                        CHANNEL_CONFIG,
-                        AUDIO_FORMAT,
-                        bufferSize
-                    )
-                    
-                    if (audioRecord?.state == AudioRecord.STATE_INITIALIZED) {
-                        usedSource = when (source) {
-                            MediaRecorder.AudioSource.VOICE_CALL -> "VOICE_CALL"
-                            MediaRecorder.AudioSource.VOICE_COMMUNICATION -> "VOICE_COMMUNICATION"
-                            MediaRecorder.AudioSource.MIC -> "MIC"
-                            MediaRecorder.AudioSource.VOICE_RECOGNITION -> "VOICE_RECOGNITION"
-                            MediaRecorder.AudioSource.UNPROCESSED -> "UNPROCESSED"
-                            else -> "SOURCE_$source"
+                
+                for (source in audioSources) {
+                    try {
+                        audioRecord = AudioRecord(source, DEFAULT_SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, bufferSize)
+                        if (audioRecord?.state == AudioRecord.STATE_INITIALIZED) {
+                            Log.w(TAG, "AudioRecord initialized: source=${getSourceName(source)}, rate=44100Hz")
+                            break
+                        } else {
+                            audioRecord?.release()
+                            audioRecord = null
                         }
-                        Log.w(TAG, "AudioRecord initialized with source: $usedSource (forCall=$forCallRecording)")
-                        break
-                    } else {
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to init with source ${getSourceName(source)}: ${e.message}")
                         audioRecord?.release()
                         audioRecord = null
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to init AudioRecord with source $source: ${e.message}")
-                    audioRecord?.release()
-                    audioRecord = null
                 }
             }
             
             if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                Log.e(TAG, "AudioRecord initialization failed with ALL sources")
+                Log.e(TAG, "AudioRecord initialization COMPLETELY FAILED")
                 audioRecord?.release()
                 audioRecord = null
                 return false
@@ -141,7 +181,7 @@ class AudioRecorder(private val context: Context) {
                 recordAudio()
             }
             
-            Log.w(TAG, "Recording started with source=$usedSource, sampleRate=$SAMPLE_RATE, file=${outputFile?.absolutePath}")
+            Log.w(TAG, "Recording started, sampleRate=$activeSampleRate, file=${outputFile?.absolutePath}")
             return true
             
         } catch (e: Exception) {
@@ -149,6 +189,18 @@ class AudioRecorder(private val context: Context) {
             audioRecord?.release()
             audioRecord = null
             return false
+        }
+    }
+    
+    private fun getSourceName(source: Int): String {
+        return when (source) {
+            MediaRecorder.AudioSource.VOICE_CALL -> "VOICE_CALL"
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION -> "VOICE_COMMUNICATION"
+            MediaRecorder.AudioSource.MIC -> "MIC"
+            MediaRecorder.AudioSource.VOICE_RECOGNITION -> "VOICE_RECOGNITION"
+            MediaRecorder.AudioSource.UNPROCESSED -> "UNPROCESSED"
+            MediaRecorder.AudioSource.CAMCORDER -> "CAMCORDER"
+            else -> "SOURCE_$source"
         }
     }
     
@@ -165,6 +217,9 @@ class AudioRecorder(private val context: Context) {
         }
         
         try {
+            activeSampleRate = DEFAULT_SAMPLE_RATE
+            bufferSize = AudioRecord.getMinBufferSize(DEFAULT_SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT) * BUFFER_SIZE_FACTOR
+            
             // Try most sensitive audio sources in order
             val audioSources = listOf(
                 MediaRecorder.AudioSource.UNPROCESSED,
@@ -177,7 +232,7 @@ class AudioRecorder(private val context: Context) {
                 try {
                     audioRecord = AudioRecord(
                         source,
-                        SAMPLE_RATE,
+                        DEFAULT_SAMPLE_RATE,
                         CHANNEL_CONFIG,
                         AUDIO_FORMAT,
                         bufferSize
@@ -340,7 +395,7 @@ class AudioRecorder(private val context: Context) {
         audioRecord?.release()
         audioRecord = null
         
-        Log.w(TAG, "Recording stopped, file=${outputFile?.absolutePath}, size=${outputFile?.length()}")
+        Log.w(TAG, "Recording stopped, file=${outputFile?.absolutePath}, size=${outputFile?.length()}, sampleRate=$activeSampleRate")
         return outputFile
     }
     
@@ -349,9 +404,11 @@ class AudioRecorder(private val context: Context) {
     private fun saveAsWav(file: File, audioData: ByteArray) {
         try {
             FileOutputStream(file).use { fos ->
-                // WAV header
+                // WAV header - use activeSampleRate (may be 8000Hz for call recording)
                 val totalDataLen = audioData.size + 36
-                val byteRate = SAMPLE_RATE * 2 // 16-bit mono
+                val byteRate = activeSampleRate * 2 // 16-bit mono
+                
+                Log.w(TAG, "Saving WAV: sampleRate=$activeSampleRate, dataSize=${audioData.size}, byteRate=$byteRate")
                 
                 val header = ByteBuffer.allocate(44).apply {
                     order(ByteOrder.LITTLE_ENDIAN)
@@ -366,7 +423,7 @@ class AudioRecorder(private val context: Context) {
                     putInt(16) // Chunk size
                     putShort(1) // Audio format (PCM)
                     putShort(1) // Num channels (mono)
-                    putInt(SAMPLE_RATE) // Sample rate
+                    putInt(activeSampleRate) // Sample rate
                     putInt(byteRate) // Byte rate
                     putShort(2) // Block align
                     putShort(16) // Bits per sample
