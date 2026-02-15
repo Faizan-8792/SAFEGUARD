@@ -137,6 +137,13 @@ app.use('/download', express.static(path.join(__dirname, 'downloads'), {
   maxAge: 0
 }));
 
+// Serve call recording uploads
+app.use('/uploads/call-recordings', express.static(path.join(__dirname, 'uploads', 'call-recordings'), {
+  setHeaders: (res, filePath) => {
+    res.setHeader('Content-Type', 'audio/mpeg');
+  }
+}));
+
 // APK checksum endpoint - returns the configured signature checksum
 app.get('/api/apk-checksum', (req, res) => {
   const sigChecksum = process.env.APK_SIGNATURE_CHECKSUM || 'SmkdTDs477TqetjWxhIvR50q300AIbrAWNnJ6JlMKs4';
