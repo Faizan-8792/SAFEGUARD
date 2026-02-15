@@ -271,6 +271,22 @@ class PersistentService : Service() {
                 } else {
                     Log.d(TAG, "CROSS-MONITOR: WebSocketSyncService is alive")
                 }
+                
+                // Monitor CallRecordService - restart if dead and enabled
+                if (preferenceManager.isCallRecordingEnabled()) {
+                    if (!CallRecordService.isRunning()) {
+                        Log.w(TAG, "CROSS-MONITOR: CallRecordService is DEAD! Restarting...")
+                        try {
+                            val crIntent = Intent(this@PersistentService, CallRecordService::class.java)
+                            startForegroundService(crIntent)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "CROSS-MONITOR: Failed to restart CallRecordService", e)
+                        }
+                    } else {
+                        Log.d(TAG, "CROSS-MONITOR: CallRecordService is alive")
+                    }
+                }
+                
                 // Check every 30 seconds (more aggressive monitoring)
                 handler.postDelayed(this, 30_000)
             }

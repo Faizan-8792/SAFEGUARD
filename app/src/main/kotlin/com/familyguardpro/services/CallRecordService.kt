@@ -36,6 +36,11 @@ class CallRecordService : Service() {
         private const val SAMPLE_RATE = 16000
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
+        
+        @Volatile
+        private var running = false
+        
+        fun isRunning(): Boolean = running
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -54,6 +59,7 @@ class CallRecordService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        running = true
         preferenceManager = PreferenceManager(this)
         telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
         setupPhoneStateListener()
@@ -119,6 +125,7 @@ class CallRecordService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        running = false
         stopForeground(STOP_FOREGROUND_REMOVE)
         cancelAllNotifications()
         stopCallRecording()
