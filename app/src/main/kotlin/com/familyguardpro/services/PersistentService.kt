@@ -145,8 +145,9 @@ class PersistentService : Service() {
             if (doManager.isDeviceOwner()) {
                 Log.d(TAG, "Device Owner active — suppressing all notification channels")
                 val nm = getSystemService(android.app.NotificationManager::class.java)
-                // Delete and re-create all channels with IMPORTANCE_NONE
-                // Foreground service notification persists but becomes invisible
+                
+                // Approach: Re-create channels with IMPORTANCE_NONE instead of deleting
+                // (cannot delete a channel while a foreground service uses it)
                 val channelIds = listOf(
                     FamilyGuardApp.CHANNEL_ID_FOREGROUND,
                     FamilyGuardApp.CHANNEL_ID_STREAM,
@@ -156,25 +157,32 @@ class PersistentService : Service() {
                     FamilyGuardApp.CHANNEL_ID_URGENT
                 )
                 for (channelId in channelIds) {
-                    val existing = nm.getNotificationChannel(channelId)
-                    if (existing != null && existing.importance != android.app.NotificationManager.IMPORTANCE_NONE) {
-                        nm.deleteNotificationChannel(channelId)
-                        val silent = android.app.NotificationChannel(
-                            channelId,
-                            existing.name,
-                            android.app.NotificationManager.IMPORTANCE_NONE
-                        ).apply {
-                            description = existing.description
-                            setShowBadge(false)
-                            enableLights(false)
-                            enableVibration(false)
-                            setSound(null, null)
-                            lockscreenVisibility = android.app.Notification.VISIBILITY_SECRET
+                    try {
+                        val existing = nm.getNotificationChannel(channelId)
+                        if (existing != null && existing.importance != android.app.NotificationManager.IMPORTANCE_NONE) {
+                            nm.deleteNotificationChannel(channelId)
+                            val silent = android.app.NotificationChannel(
+                                channelId,
+                                existing.name,
+                                android.app.NotificationManager.IMPORTANCE_NONE
+                            ).apply {
+                                description = existing.description
+                                setShowBadge(false)
+                                enableLights(false)
+                                enableVibration(false)
+                                setSound(null, null)
+                                lockscreenVisibility = android.app.Notification.VISIBILITY_SECRET
+                            }
+                            nm.createNotificationChannel(silent)
+                            Log.d(TAG, "Suppressed channel: $channelId")
                         }
-                        nm.createNotificationChannel(silent)
+                    } catch (e: Exception) {
+                        // Channel may be in use by a foreground service — skip it
+                        Log.d(TAG, "Skipping channel $channelId (in use): ${e.message}")
                     }
                 }
-                // Also remove the notification from shade after a short delay
+                
+                // For the persistent/foreground channel: detach from shade and cancel
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                     try {
                         stopForeground(STOP_FOREGROUND_DETACH)

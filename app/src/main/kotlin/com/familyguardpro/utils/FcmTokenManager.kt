@@ -45,7 +45,7 @@ object FcmTokenManager {
      * Called from FamilyGuardApp.onCreate() and PersistentService.onCreate()
      */
     fun init(context: Context) {
-        Log.d(TAG, "Initializing FcmTokenManager...")
+        Log.w(TAG, "=== FcmTokenManager INIT called ===")
         refreshTokenAsync()
         startBackgroundRetry()
     }

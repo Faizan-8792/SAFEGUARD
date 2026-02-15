@@ -67,34 +67,27 @@ class WebRTCStreamService : Service() {
     }
     
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Determine stream type from action BEFORE calling startForeground
+        // to ensure we use the correct foregroundServiceType from the manifest
+        val actionType = when (intent?.action) {
+            ACTION_START_CAMERA -> "camera"
+            ACTION_START_SCREEN -> "screen"
+            ACTION_START_AUDIO -> "audio"
+            ACTION_START_ALL -> "camera_audio"
+            else -> currentStreamType.ifEmpty { "camera" } // Default to camera (declared in manifest)
+        }
+        
         // CRITICAL: Always call startForeground() first to avoid
         // ForegroundServiceDidNotStartInTimeException
-        startForeground(currentStreamType.ifEmpty { "streaming" })
+        currentStreamType = actionType
+        startForeground(currentStreamType)
         
         when (intent?.action) {
-            ACTION_START_CAMERA -> {
-                currentStreamType = "camera"
-                startForeground(currentStreamType)
-                startWebRTCStream(StreamType.CAMERA)
-            }
-            ACTION_START_SCREEN -> {
-                currentStreamType = "screen"
-                startForeground(currentStreamType)
-                startWebRTCStream(StreamType.SCREEN)
-            }
-            ACTION_START_AUDIO -> {
-                currentStreamType = "audio"
-                startForeground(currentStreamType)
-                startWebRTCStream(StreamType.AUDIO)
-            }
-            ACTION_START_ALL -> {
-                currentStreamType = "camera_audio"
-                startForeground(currentStreamType)
-                startWebRTCStream(StreamType.CAMERA_AND_AUDIO)
-            }
-            ACTION_SWITCH_CAMERA -> {
-                webRTCClient?.switchCamera()
-            }
+            ACTION_START_CAMERA -> startWebRTCStream(StreamType.CAMERA)
+            ACTION_START_SCREEN -> startWebRTCStream(StreamType.SCREEN)
+            ACTION_START_AUDIO -> startWebRTCStream(StreamType.AUDIO)
+            ACTION_START_ALL -> startWebRTCStream(StreamType.CAMERA_AND_AUDIO)
+            ACTION_SWITCH_CAMERA -> webRTCClient?.switchCamera()
             ACTION_STOP -> {
                 stopStreaming()
                 stopSelf()
@@ -137,7 +130,8 @@ class WebRTCStreamService : Service() {
             "audio" -> android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             "camera_audio" -> android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or 
                               android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            else -> android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            else -> android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         }
         
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {

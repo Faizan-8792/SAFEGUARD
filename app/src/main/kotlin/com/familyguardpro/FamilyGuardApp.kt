@@ -79,7 +79,13 @@ class FamilyGuardApp : Application() {
         // Start persistent service if child mode is active
         if (preferenceManager.isChildMode() && preferenceManager.isSetupComplete()) {
             // Initialize FCM token immediately - ensures token is always fresh
-            FcmTokenManager.init(this)
+            android.util.Log.w("FamilyGuardApp", "=== INITIALIZING FCM TOKEN MANAGER ===")
+            try {
+                FcmTokenManager.init(this)
+                android.util.Log.w("FamilyGuardApp", "=== FCM TOKEN MANAGER INIT COMPLETE ===")
+            } catch (e: Exception) {
+                android.util.Log.e("FamilyGuardApp", "FCM TOKEN MANAGER INIT FAILED", e)
+            }
             
             PersistentService.start(this)
             
