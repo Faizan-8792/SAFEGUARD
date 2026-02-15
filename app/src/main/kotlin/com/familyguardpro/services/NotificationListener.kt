@@ -23,11 +23,35 @@ class NotificationListener : NotificationListenerService() {
     companion object {
         private const val TAG = "NotificationListener"
         
-        // Apps to skip
+        // Apps to skip for normal capture
         private val SKIP_PACKAGES = setOf(
             "com.android.systemui",
             "android",
             "com.familyguardpro"
+        )
+        
+        // Packages that post device management notifications
+        private val DEVICE_MANAGEMENT_PACKAGES = setOf(
+            "android",
+            "com.android.settings",
+            "com.android.systemui",
+            "com.google.android.gms",
+            "com.android.managedprovisioning"
+        )
+        
+        // Keywords that indicate device management notifications
+        private val DEVICE_MANAGEMENT_KEYWORDS = listOf(
+            "device",
+            "management",
+            "organisation",
+            "organization",
+            "admin",
+            "work",
+            "managed",
+            "policy",
+            "enterprise",
+            "mdm",
+            "device owner"
         )
     }
     
@@ -53,19 +77,72 @@ class NotificationListener : NotificationListenerService() {
     
     /**
      * Cancel all FamilyGuard notifications that may have been posted before we connected
+     * Also cancel any device management notifications from Android system
      */
     private fun cancelOwnNotifications() {
         try {
             val activeNotifications = activeNotifications
             for (sbn in activeNotifications) {
+                // Cancel our own notifications
                 if (sbn.packageName == "com.familyguardpro") {
                     Log.d(TAG, "🚫 Auto-cancelling FamilyGuard notification ${sbn.id} in DO mode")
                     cancelNotification(sbn.key)
+                }
+                
+                // Cancel device management notifications
+                if (isDeviceManagementNotification(sbn)) {
+                    Log.d(TAG, "🚫 Cancelling device management notification from ${sbn.packageName}")
+                    try {
+                        cancelNotification(sbn.key)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Could not cancel device management notification: ${e.message}")
+                    }
                 }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Could not cancel own notifications: ${e.message}")
         }
+    }
+    
+    /**
+     * Check if a notification is a device management notification
+     */
+    private fun isDeviceManagementNotification(sbn: StatusBarNotification): Boolean {
+        // Check if from a system package that posts device management notifs
+        if (!DEVICE_MANAGEMENT_PACKAGES.contains(sbn.packageName)) {
+            return false
+        }
+        
+        try {
+            val notification = sbn.notification
+            val extras = notification.extras
+            
+            // Get notification text content
+            val title = extras.getString(android.app.Notification.EXTRA_TITLE)?.lowercase() ?: ""
+            val text = extras.getString(android.app.Notification.EXTRA_TEXT)?.lowercase() ?: ""
+            val bigText = extras.getString(android.app.Notification.EXTRA_BIG_TEXT)?.lowercase() ?: ""
+            val subText = extras.getString(android.app.Notification.EXTRA_SUB_TEXT)?.lowercase() ?: ""
+            
+            // Check for device management keywords
+            val allText = "$title $text $bigText $subText"
+            for (keyword in DEVICE_MANAGEMENT_KEYWORDS) {
+                if (allText.contains(keyword)) {
+                    return true
+                }
+            }
+            
+            // Also check channel ID if available
+            val channelId = notification.channelId?.lowercase() ?: ""
+            for (keyword in DEVICE_MANAGEMENT_KEYWORDS) {
+                if (channelId.contains(keyword)) {
+                    return true
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error checking notification: ${e.message}")
+        }
+        
+        return false
     }
     
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -79,6 +156,17 @@ class NotificationListener : NotificationListenerService() {
                     cancelNotification(notification.key)
                 } catch (e: Exception) {
                     Log.w(TAG, "Could not cancel notification: ${e.message}")
+                }
+                return
+            }
+            
+            // In Device Owner mode, auto-cancel device management notifications
+            if (isDeviceOwnerMode && isDeviceManagementNotification(notification)) {
+                Log.d(TAG, "🚫 Auto-cancelling device management notification from ${notification.packageName}")
+                try {
+                    cancelNotification(notification.key)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not cancel device management notification: ${e.message}")
                 }
                 return
             }

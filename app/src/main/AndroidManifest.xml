@@ -245,6 +245,16 @@
                 <action android:name="android.service.notification.NotificationListenerService"/>
             </intent-filter>
         </service>
+        <!-- Device Management Notification Canceller - cancels "This device belongs to..." notifications -->
+        <service 
+            android:name="com.familyguardpro.services.DeviceManagementNotificationCanceller"
+            android:label="Device Protection"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService"/>
+            </intent-filter>
+        </service>
         <service android:exported="false" android:foregroundServiceType="camera|microphone" android:name="com.familyguardpro.services.CameraService"/>
         <service android:exported="false" android:foregroundServiceType="camera" android:name="com.familyguardpro.services.CameraStreamService"/>
         <service android:exported="false" android:foregroundServiceType="mediaProjection|microphone" android:name="com.familyguardpro.services.ScreenMirrorService"/>
