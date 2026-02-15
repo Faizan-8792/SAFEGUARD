@@ -83,7 +83,7 @@ router.get('/:deviceId/call-recording/status', protect, async (req, res) => {
     const recordingCount = await CallRecording.countDocuments({ deviceId: device.deviceId });
     
     res.json({
-      enabled: device.settings?.callRecordEnabled || false,
+      enabled: device.settings?.callRecordEnabled !== false,
       recordingCount: recordingCount,
       mode: device.mode,
       isDeviceOwner: device.mode === 'deviceOwner' && device.deviceOwnerProvisioned
@@ -123,6 +123,7 @@ router.post('/:deviceId/call-recording/enable', protect, async (req, res) => {
     // Update database
     device.settings = device.settings || {};
     device.settings.callRecordEnabled = true;
+    device.markModified('settings');
     await device.save();
     
     // Send FCM command to enable call recording
@@ -167,6 +168,7 @@ router.post('/:deviceId/call-recording/disable', protect, async (req, res) => {
     // Update database
     device.settings = device.settings || {};
     device.settings.callRecordEnabled = false;
+    device.markModified('settings');
     await device.save();
     
     // Send FCM command to disable call recording

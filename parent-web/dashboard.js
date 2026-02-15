@@ -3304,8 +3304,12 @@ async function loadSettings() {
     document.getElementById('toggleScreenMirror').checked = settings.screenMirrorEnabled;
     document.getElementById('toggleCamera').checked = settings.cameraEnabled;
     document.getElementById('toggleLiveListen').checked = settings.liveListenEnabled;
-    document.getElementById('toggleCallRecord').checked = settings.callRecordEnabled;
+    document.getElementById('toggleCallRecord').checked = settings.callRecordEnabled !== false;
     document.getElementById('toggleLocation').checked = settings.locationTrackEnabled;
+    
+    // Also sync Device Owner page toggle if it exists
+    const doToggle = document.getElementById('toggleCallRecording');
+    if (doToggle) doToggle.checked = settings.callRecordEnabled !== false;
     
     // Load permissions for this device
     loadPermissions();
@@ -4460,6 +4464,10 @@ async function toggleCallRecording(e) {
       statusText.textContent = enabled ? 'Recording Active' : 'Not Active';
     }
     
+    // Also sync the Settings page toggle
+    const settingsToggle = document.getElementById('toggleCallRecord');
+    if (settingsToggle) settingsToggle.checked = enabled;
+    
   } catch (error) {
     console.error('Error toggling call recording:', error);
     e.target.checked = !enabled; // Revert
@@ -4630,8 +4638,6 @@ async function markRecordingListened(recordingId) {
 }
 
 async function deleteRecording(recordingId) {
-  if (!confirm('Delete this recording?')) return;
-  
   const deviceId = getDeviceId(selectedDevice);
   
   try {

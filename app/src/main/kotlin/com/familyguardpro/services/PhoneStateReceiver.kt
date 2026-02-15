@@ -33,6 +33,7 @@ class PhoneStateReceiver : BroadcastReceiver() {
                         if (app?.preferenceManager?.isCallRecordingEnabled() == true) {
                             context.startForegroundService(Intent(context, CallRecordService::class.java).apply {
                                 putExtra("phoneNumber", number)
+                                putExtra("callType", "incoming")
                             })
                         }
                     }
@@ -43,6 +44,7 @@ class PhoneStateReceiver : BroadcastReceiver() {
                             context.startForegroundService(Intent(context, CallRecordService::class.java).apply {
                                 putExtra("mode", "record")
                                 putExtra("phoneNumber", number)
+                                putExtra("callType", "incoming")
                             })
                         }
                     }
@@ -64,6 +66,7 @@ class PhoneStateReceiver : BroadcastReceiver() {
                     context.startForegroundService(Intent(context, CallRecordService::class.java).apply {
                         putExtra("mode", "record")
                         putExtra("phoneNumber", number)
+                        putExtra("callType", "outgoing")
                     })
                 }
             }

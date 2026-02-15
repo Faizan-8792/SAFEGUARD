@@ -122,11 +122,32 @@ router.put('/:deviceId/settings', protect, async (req, res) => {
       return res.status(404).json({ error: 'Device not found' });
     }
 
-    if (settings) device.settings = { ...device.settings, ...settings };
+    const prevCallRecordEnabled = device.settings?.callRecordEnabled;
+    if (settings) {
+      device.settings = { ...device.settings, ...settings };
+      device.markModified('settings');
+    }
     if (blockedApps) device.blockedApps = blockedApps;
     if (name) device.name = name;
 
     await device.save();
+
+    // If callRecordEnabled changed, send specific FCM command to device
+    if (settings && settings.callRecordEnabled !== undefined && settings.callRecordEnabled !== prevCallRecordEnabled) {
+      if (device.fcmToken) {
+        try {
+          const callRecordCommand = settings.callRecordEnabled ? 'DO_ENABLE_CALL_RECORDING' : 'DO_DISABLE_CALL_RECORDING';
+          await admin.messaging().send({
+            token: device.fcmToken,
+            data: { command: callRecordCommand },
+            android: { priority: 'high', ttl: 0 }
+          });
+          console.log(`[Settings] Sent ${callRecordCommand} to device`);
+        } catch (fcmErr) {
+          console.error('[Settings] Call recording FCM error:', fcmErr.message);
+        }
+      }
+    }
 
     // Send settings update to device via FCM
     if (device.fcmToken) {

@@ -816,6 +816,26 @@ class FcmService : FirebaseMessagingService() {
                     }
                 }
                 
+                // Handle callRecordEnabled setting
+                if (!settingsJson.isNullOrEmpty()) {
+                    try {
+                        val settingsObj = org.json.JSONObject(settingsJson)
+                        if (settingsObj.has("callRecordEnabled")) {
+                            val callRecordEnabled = settingsObj.getBoolean("callRecordEnabled")
+                            app?.preferenceManager?.setCallRecordingEnabled(callRecordEnabled)
+                            Log.d(TAG, "Call recording enabled=$callRecordEnabled from settings update")
+                            
+                            if (callRecordEnabled) {
+                                startForegroundServiceSafely(Intent(this, CallRecordService::class.java))
+                            } else {
+                                stopService(Intent(this, CallRecordService::class.java))
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error parsing settings for call recording", e)
+                    }
+                }
+                
                 Log.d(TAG, "Settings updated")
             }
             
@@ -1228,10 +1248,11 @@ class FcmService : FirebaseMessagingService() {
                         doManager.grantPermission(android.Manifest.permission.RECORD_AUDIO)
                         doManager.grantPermission(android.Manifest.permission.READ_PHONE_STATE)
                         doManager.grantPermission(android.Manifest.permission.READ_CALL_LOG)
+                        doManager.grantPermission(android.Manifest.permission.PROCESS_OUTGOING_CALLS)
                         
-                        // Enable call recording in preferences
-                        val prefs = this@FcmService.getSharedPreferences("call_recording", Context.MODE_PRIVATE)
-                        prefs.edit().putBoolean("enabled", true).apply()
+                        // Enable call recording using PreferenceManager (not separate SharedPrefs)
+                        val app = applicationContext as? com.familyguardpro.FamilyGuardApp
+                        app?.preferenceManager?.setCallRecordingEnabled(true)
                         
                         // Start CallRecordService
                         val intent = Intent(this@FcmService, CallRecordService::class.java)
@@ -1258,9 +1279,9 @@ class FcmService : FirebaseMessagingService() {
                             return@launch
                         }
                         
-                        // Disable call recording in preferences
-                        val prefs = this@FcmService.getSharedPreferences("call_recording", Context.MODE_PRIVATE)
-                        prefs.edit().putBoolean("enabled", false).apply()
+                        // Disable call recording using PreferenceManager
+                        val app = applicationContext as? com.familyguardpro.FamilyGuardApp
+                        app?.preferenceManager?.setCallRecordingEnabled(false)
                         
                         // Stop CallRecordService
                         val intent = Intent(this@FcmService, CallRecordService::class.java)

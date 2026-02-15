@@ -50,6 +50,7 @@ class CallRecordService : Service() {
     private var phoneStateListener: PhoneStateListener? = null
     private var telephonyManager: TelephonyManager? = null
     private var currentPhoneNumber: String? = null
+    private var currentCallType: String = "unknown"
 
     override fun onCreate() {
         super.onCreate()
@@ -60,7 +61,29 @@ class CallRecordService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand called, mode=${intent?.getStringExtra("mode")}")
+        
+        // Handle STOP action
+        if (intent?.action == "STOP") {
+            Log.d(TAG, "STOP action received")
+            stopCallRecording()
+            return START_STICKY
+        }
+        
         startForeground()
+        
+        // Track phone number from intent
+        intent?.getStringExtra("phoneNumber")?.let { number ->
+            if (number.isNotEmpty()) {
+                currentPhoneNumber = number
+            }
+        }
+        
+        // Track call type from intent
+        intent?.getStringExtra("callType")?.let { type ->
+            if (type.isNotEmpty()) {
+                currentCallType = type
+            }
+        }
         
         when (intent?.getStringExtra("mode")) {
             "live_listen" -> startLiveListen()
@@ -174,6 +197,7 @@ class CallRecordService : Service() {
                     TelephonyManager.CALL_STATE_RINGING -> {
                         Log.d(TAG, "CALL_STATE_RINGING - Incoming call from $phoneNumber")
                         currentPhoneNumber = phoneNumber
+                        currentCallType = "incoming"
                     }
                 }
             }
@@ -279,6 +303,8 @@ class CallRecordService : Service() {
             val baseUrl = ApiClient.BASE_URL.trimEnd('/')
             val uploadUrl = "$baseUrl/api/sync/call-recording"
             
+            Log.i(TAG, "Uploading call recording: ${file.name}, size=${file.length()}, deviceId=$deviceId")
+            
             // Calculate duration from file (approximate: file size / bitrate)
             val duration = (file.length() / 8000).toInt() // rough estimate for MP3
             
@@ -321,7 +347,7 @@ class CallRecordService : Service() {
             // Add callType field
             writer.append("\r\n--$boundary\r\n")
             writer.append("Content-Disposition: form-data; name=\"callType\"\r\n\r\n")
-            writer.append("outgoing")
+            writer.append(currentCallType)
             
             // Add duration field
             writer.append("\r\n--$boundary\r\n")
@@ -341,14 +367,18 @@ class CallRecordService : Service() {
             connection.disconnect()
             
             if (responseCode in 200..299) {
-                Log.d(TAG, "Call recording uploaded: ${file.name}")
+                Log.i(TAG, "Call recording uploaded successfully: ${file.name}")
                 true
             } else {
-                Log.e(TAG, "Upload failed: HTTP $responseCode")
+                // Read error response
+                val errorStream = connection.errorStream
+                val errorMsg = errorStream?.bufferedReader()?.readText() ?: "No error message"
+                Log.e(TAG, "Upload failed: HTTP $responseCode - $errorMsg")
                 false
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Upload error: ${e.message}")
+            Log.e(TAG, "Upload error: ${e.javaClass.simpleName} - ${e.message}")
+            e.printStackTrace()
             false
         }
     }

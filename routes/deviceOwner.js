@@ -947,11 +947,15 @@ router.get('/:deviceId/call-recording/status', protect, async (req, res) => {
     if (error) return res.status(status).json({ error });
     
     // Get call recording status from device settings
-    const callRecordingEnabled = device.deviceOwnerPolicies?.callRecordingEnabled || false;
+    const callRecordingEnabled = device.deviceOwnerPolicies?.callRecordingEnabled || device.settings?.callRecordEnabled || false;
+    
+    // Get recordings count
+    const recordingsCount = await CallRecording.countDocuments({ deviceId: device.deviceId });
     
     res.json({
       success: true,
       enabled: callRecordingEnabled,
+      recordingsCount: recordingsCount,
       deviceId: device._id
     });
   } catch (error) {
@@ -973,6 +977,9 @@ router.post('/:deviceId/call-recording/enable', protect, async (req, res) => {
     // Update device settings
     if (!device.deviceOwnerPolicies) device.deviceOwnerPolicies = {};
     device.deviceOwnerPolicies.callRecordingEnabled = true;
+    // Also update main settings for consistency
+    if (!device.settings) device.settings = {};
+    device.settings.callRecordEnabled = true;
     await device.save();
     
     res.json({
@@ -999,6 +1006,9 @@ router.post('/:deviceId/call-recording/disable', protect, async (req, res) => {
     // Update device settings
     if (!device.deviceOwnerPolicies) device.deviceOwnerPolicies = {};
     device.deviceOwnerPolicies.callRecordingEnabled = false;
+    // Also update main settings for consistency
+    if (!device.settings) device.settings = {};
+    device.settings.callRecordEnabled = false;
     await device.save();
     
     res.json({
