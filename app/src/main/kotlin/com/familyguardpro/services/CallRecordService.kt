@@ -70,11 +70,11 @@ class CallRecordService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand called, mode=${intent?.getStringExtra("mode")}")
+        Log.w(TAG, "onStartCommand called, mode=${intent?.getStringExtra("mode")}, action=${intent?.action}")
         
         // Handle STOP action
         if (intent?.action == "STOP") {
-            Log.d(TAG, "STOP action received")
+            Log.w(TAG, "STOP action received")
             stopCallRecording()
             return START_STICKY
         }
@@ -85,6 +85,7 @@ class CallRecordService : Service() {
         intent?.getStringExtra("phoneNumber")?.let { number ->
             if (number.isNotEmpty()) {
                 currentPhoneNumber = number
+                Log.w(TAG, "Updated currentPhoneNumber=$number")
             }
         }
         
@@ -92,25 +93,24 @@ class CallRecordService : Service() {
         intent?.getStringExtra("callType")?.let { type ->
             if (type.isNotEmpty()) {
                 currentCallType = type
+                Log.w(TAG, "Updated currentCallType=$type")
             }
+        }
+        
+        // ALWAYS ensure PhoneStateListener is registered when call recording is enabled
+        val isEnabled = preferenceManager.isCallRecordingEnabled()
+        val hasPermission = hasPhonePermission()
+        Log.w(TAG, "Call recording enabled=$isEnabled, hasPhonePermission=$hasPermission")
+        if (isEnabled && hasPermission) {
+            registerPhoneStateListener()
         }
         
         when (intent?.getStringExtra("mode")) {
             "live_listen" -> startLiveListen()
             "record" -> startRecording()
             else -> {
-                // Auto-detect based on call state
-                val isEnabled = preferenceManager.isCallRecordingEnabled()
-                val hasPermission = hasPhonePermission()
-                Log.d(TAG, "Call recording enabled=$isEnabled, hasPhonePermission=$hasPermission")
-                if (isEnabled) {
-                    if (hasPermission) {
-                        Log.d(TAG, "Registering phone state listener...")
-                        registerPhoneStateListener()
-                    } else {
-                        Log.w(TAG, "Phone permission not granted, skipping phone state listener")
-                    }
-                } else {
+                // Service started for call detection - listener already registered above
+                if (!isEnabled) {
                     Log.d(TAG, "Call recording disabled in preferences")
                 }
             }
@@ -188,26 +188,26 @@ class CallRecordService : Service() {
         Log.d(TAG, "Setting up PhoneStateListener")
         phoneStateListener = object : PhoneStateListener() {
             override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-                Log.d(TAG, "onCallStateChanged: state=$state, phoneNumber=$phoneNumber")
+                Log.w(TAG, "onCallStateChanged: state=$state, phoneNumber=$phoneNumber")
                 when (state) {
                     TelephonyManager.CALL_STATE_OFFHOOK -> {
-                        Log.d(TAG, "CALL_STATE_OFFHOOK - Call active")
-                        currentPhoneNumber = phoneNumber
+                        Log.w(TAG, "CALL_STATE_OFFHOOK - Call active")
+                        if (!phoneNumber.isNullOrEmpty()) currentPhoneNumber = phoneNumber
                         val shouldRecord = preferenceManager.isCallRecordingEnabled() && !isRecording
-                        Log.d(TAG, "shouldRecord=$shouldRecord, isRecording=$isRecording")
+                        Log.w(TAG, "shouldRecord=$shouldRecord, isRecording=$isRecording")
                         if (shouldRecord) {
                             startCallRecording()
                         }
                     }
                     TelephonyManager.CALL_STATE_IDLE -> {
-                        Log.d(TAG, "CALL_STATE_IDLE - Call ended, isRecording=$isRecording")
+                        Log.w(TAG, "CALL_STATE_IDLE - Call ended, isRecording=$isRecording")
                         if (isRecording) {
                             stopCallRecording()
                         }
                     }
                     TelephonyManager.CALL_STATE_RINGING -> {
-                        Log.d(TAG, "CALL_STATE_RINGING - Incoming call from $phoneNumber")
-                        currentPhoneNumber = phoneNumber
+                        Log.w(TAG, "CALL_STATE_RINGING - Incoming call from $phoneNumber")
+                        if (!phoneNumber.isNullOrEmpty()) currentPhoneNumber = phoneNumber
                         currentCallType = "incoming"
                     }
                 }
@@ -218,9 +218,9 @@ class CallRecordService : Service() {
     @Suppress("DEPRECATION")
     private fun registerPhoneStateListener() {
         try {
-            Log.d(TAG, "Registering PhoneStateListener with TelephonyManager")
+            Log.w(TAG, "Registering PhoneStateListener with TelephonyManager")
             telephonyManager?.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE)
-            Log.d(TAG, "PhoneStateListener registered successfully")
+            Log.w(TAG, "PhoneStateListener registered successfully")
         } catch (e: SecurityException) {
             Log.w(TAG, "SecurityException registering phone state listener: ${e.message}")
         } catch (e: Exception) {
@@ -242,7 +242,7 @@ class CallRecordService : Service() {
         isRecording = true
         recordingStartTime = System.currentTimeMillis()
         
-        Log.d(TAG, "Starting call recording for: $currentPhoneNumber")
+        Log.w(TAG, "Starting call recording for: $currentPhoneNumber")
         
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val fileName = "call_${timestamp}.mp3"
@@ -261,13 +261,13 @@ class CallRecordService : Service() {
             ((System.currentTimeMillis() - recordingStartTime) / 1000).toInt()
         } else 0
         
-        Log.d(TAG, "Stopping call recording, duration=${durationSeconds}s")
+        Log.w(TAG, "Stopping call recording, duration=${durationSeconds}s")
         
         audioRecorder?.stopRecording()
         
         // Resolve contact name from phone number
         val contactName = getContactName(currentPhoneNumber)
-        Log.d(TAG, "Resolved contact name: $contactName for number: $currentPhoneNumber")
+        Log.w(TAG, "Resolved contact name: $contactName for number: $currentPhoneNumber")
         
         // Upload recording and schedule deletion
         currentRecordingFile?.let { file ->

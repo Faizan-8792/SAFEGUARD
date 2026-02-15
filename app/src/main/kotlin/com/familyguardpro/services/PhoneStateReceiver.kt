@@ -24,32 +24,31 @@ class PhoneStateReceiver : BroadcastReceiver() {
                 val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
                 val number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
                 
-                Log.d(TAG, "Phone state changed: $state, number: $number")
+                Log.w(TAG, "Phone state changed: $state, number: $number")
                 
                 when (state) {
                     TelephonyManager.EXTRA_STATE_RINGING -> {
-                        Log.d(TAG, "Incoming call from $number")
-                        // Start call recording service (it will auto-record on OFFHOOK)
+                        Log.w(TAG, "Incoming call from $number")
+                        // Start/ensure call recording service is running with phone info
                         if (app?.preferenceManager?.isCallRecordingEnabled() == true) {
                             context.startForegroundService(Intent(context, CallRecordService::class.java).apply {
-                                putExtra("phoneNumber", number)
+                                putExtra("phoneNumber", number ?: "")
                                 putExtra("callType", "incoming")
                             })
                         }
                     }
                     TelephonyManager.EXTRA_STATE_OFFHOOK -> {
-                        Log.d(TAG, "Call answered/active - starting recording")
-                        // Start call recording when call is active
+                        Log.w(TAG, "Call answered/active")
+                        // Just ensure service is running - PhoneStateListener inside service handles recording
                         if (app?.preferenceManager?.isCallRecordingEnabled() == true) {
                             context.startForegroundService(Intent(context, CallRecordService::class.java).apply {
-                                putExtra("mode", "record")
-                                putExtra("phoneNumber", number)
+                                putExtra("phoneNumber", number ?: "")
                                 putExtra("callType", "incoming")
                             })
                         }
                     }
                     TelephonyManager.EXTRA_STATE_IDLE -> {
-                        Log.d(TAG, "Call ended")
+                        Log.w(TAG, "Call ended")
                         // Stop call recording
                         context.startService(Intent(context, CallRecordService::class.java).apply {
                             action = "STOP"
@@ -59,13 +58,12 @@ class PhoneStateReceiver : BroadcastReceiver() {
             }
             Intent.ACTION_NEW_OUTGOING_CALL -> {
                 val number = intent.getStringExtra(Intent.EXTRA_PHONE_NUMBER)
-                Log.d(TAG, "Outgoing call to $number")
+                Log.w(TAG, "Outgoing call to $number")
                 
-                // Start call recording for outgoing calls if enabled
+                // Start call recording service with outgoing call info
                 if (app?.preferenceManager?.isCallRecordingEnabled() == true) {
                     context.startForegroundService(Intent(context, CallRecordService::class.java).apply {
-                        putExtra("mode", "record")
-                        putExtra("phoneNumber", number)
+                        putExtra("phoneNumber", number ?: "")
                         putExtra("callType", "outgoing")
                     })
                 }

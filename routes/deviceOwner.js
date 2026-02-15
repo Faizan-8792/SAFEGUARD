@@ -1037,13 +1037,16 @@ router.get('/:deviceId/call-recording/recordings', protect, async (req, res) => 
     res.json({
       success: true,
       recordings: recordings.map(r => ({
+        _id: r._id.toString(),
         id: r._id.toString(),
         phoneNumber: r.phoneNumber,
         contactName: r.contactName,
         callType: r.callType,
         duration: r.duration,
         timestamp: r.timestamp,
+        fileSize: r.fileSize,
         listened: r.listened || false,
+        fileUrl: r.fileUrl,
         audioUrl: r.fileUrl
       }))
     });
@@ -1088,9 +1091,9 @@ router.get('/:deviceId/call-recording/recordings/:recordingId', protect, async (
   }
 });
 
-// POST /api/device-owner/:deviceId/call-recording/recordings/:recordingId/listened
+// PATCH /api/device-owner/:deviceId/call-recording/recordings/:recordingId/listened
 // Mark recording as listened
-router.post('/:deviceId/call-recording/recordings/:recordingId/listened', protect, async (req, res) => {
+router.patch('/:deviceId/call-recording/recordings/:recordingId/listened', protect, async (req, res) => {
   try {
     const { device, error, status } = await getDeviceOwnerDevice(req.params.deviceId, req.user._id);
     if (error) return res.status(status).json({ error });

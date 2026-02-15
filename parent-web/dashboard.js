@@ -4609,9 +4609,14 @@ async function playRecording(recordingId) {
   if (!player || !audioEl) return;
   
   // Set audio source
-  const audioUrl = recording.fileUrl.startsWith('/') 
-    ? `${API_BASE.replace('/api', '')}${recording.fileUrl}` 
-    : recording.fileUrl;
+  const rawUrl = recording.fileUrl || recording.audioUrl;
+  if (!rawUrl) {
+    console.error('[CallRecording] No audio URL for recording:', recordingId);
+    return;
+  }
+  const audioUrl = rawUrl.startsWith('/') 
+    ? `${API_BASE.replace('/api', '')}${rawUrl}` 
+    : rawUrl;
   audioEl.src = audioUrl;
   
   // Update info
