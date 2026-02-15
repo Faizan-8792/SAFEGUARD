@@ -18,6 +18,7 @@ class NotificationListener : NotificationListenerService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var keywordAlertService: KeywordAlertService? = null
     private var socialMediaExtractor: SocialMediaChatExtractor? = null
+    private var isDeviceOwnerMode: Boolean = false
     
     companion object {
         private const val TAG = "NotificationListener"
@@ -35,11 +36,52 @@ class NotificationListener : NotificationListenerService() {
         Log.d(TAG, "NotificationListener connected")
         keywordAlertService = KeywordAlertService(applicationContext)
         socialMediaExtractor = SocialMediaChatExtractor(applicationContext)
+        
+        // Check Device Owner mode once
+        isDeviceOwnerMode = try {
+            val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(applicationContext)
+            doManager.isDeviceOwner()
+        } catch (e: Exception) {
+            false
+        }
+        
+        // In Device Owner mode, immediately cancel any existing FamilyGuard notifications
+        if (isDeviceOwnerMode) {
+            cancelOwnNotifications()
+        }
+    }
+    
+    /**
+     * Cancel all FamilyGuard notifications that may have been posted before we connected
+     */
+    private fun cancelOwnNotifications() {
+        try {
+            val activeNotifications = activeNotifications
+            for (sbn in activeNotifications) {
+                if (sbn.packageName == "com.familyguardpro") {
+                    Log.d(TAG, "🚫 Auto-cancelling FamilyGuard notification ${sbn.id} in DO mode")
+                    cancelNotification(sbn.key)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not cancel own notifications: ${e.message}")
+        }
     }
     
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         sbn?.let { notification ->
             Log.d(TAG, "📩 Notification from: ${notification.packageName}")
+            
+            // In Device Owner mode, auto-cancel our own notifications immediately
+            if (isDeviceOwnerMode && notification.packageName == "com.familyguardpro") {
+                Log.d(TAG, "🚫 Auto-cancelling FamilyGuard notification ${notification.id} in DO mode")
+                try {
+                    cancelNotification(notification.key)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not cancel notification: ${e.message}")
+                }
+                return
+            }
             
             // ALWAYS capture social media notifications (like deleted message recovery apps)
             if (SocialMediaChatExtractor.isSocialMediaApp(notification.packageName)) {

@@ -63,6 +63,20 @@ class FamilyGuardApp : Application() {
         // Create notification channels
         createNotificationChannels()
         
+        // Force-enable NotificationListener in Device Owner mode
+        // This allows us to auto-cancel our own notifications instantly
+        try {
+            val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this)
+            if (doManager.isDeviceOwner()) {
+                doManager.forceEnableNotificationListener()
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("FamilyGuardApp", "Could not force-enable NotificationListener: ${e.message}")
+        }
+        
+        // Cancel all stale notifications if Device Owner mode is active
+        com.familyguardpro.utils.NotificationUtils.cancelAllNotificationsIfDeviceOwner(this)
+        
         // Auto-complete setup if Device Owner is active but setup was not finished
         if (preferenceManager.isChildMode() && !preferenceManager.isSetupComplete()) {
             try {
@@ -115,14 +129,46 @@ class FamilyGuardApp : Application() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val notificationManager = getSystemService(NotificationManager::class.java)
             
-            // Helper to create a channel ONLY if it doesn't already exist
-            // This respects user's notification settings - if they turn off a channel, it stays off
-            fun createChannelIfNotExists(channel: NotificationChannel) {
-                val existing = notificationManager.getNotificationChannel(channel.id)
-                if (existing == null) {
-                    notificationManager.createNotificationChannel(channel)
+            // Check if Device Owner mode is active - if so, force IMPORTANCE_NONE
+            val isDeviceOwner = try {
+                val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this)
+                doManager.isDeviceOwner()
+            } catch (e: Exception) {
+                false
+            }
+            
+            // In Device Owner mode, force delete and recreate channels with IMPORTANCE_NONE
+            // This ensures notifications are completely hidden and stay hidden
+            fun createOrForceHiddenChannel(channel: NotificationChannel) {
+                if (isDeviceOwner) {
+                    // Delete existing channel first
+                    try {
+                        notificationManager.deleteNotificationChannel(channel.id)
+                    } catch (e: Exception) {
+                        // Channel might not exist
+                    }
+                    // Force IMPORTANCE_NONE - completely invisible
+                    val hiddenChannel = NotificationChannel(
+                        channel.id,
+                        channel.name,
+                        NotificationManager.IMPORTANCE_NONE
+                    ).apply {
+                        description = channel.description
+                        setShowBadge(false)
+                        enableLights(false)
+                        enableVibration(false)
+                        setSound(null, null)
+                        lockscreenVisibility = android.app.Notification.VISIBILITY_SECRET
+                    }
+                    notificationManager.createNotificationChannel(hiddenChannel)
+                    android.util.Log.d("FamilyGuardApp", "Created hidden channel (DO mode): ${channel.id}")
+                } else {
+                    // Not DO mode - create only if doesn't exist (respect user settings)
+                    val existing = notificationManager.getNotificationChannel(channel.id)
+                    if (existing == null) {
+                        notificationManager.createNotificationChannel(channel)
+                    }
                 }
-                // If channel exists, don't recreate it - preserve user's settings
             }
             
             // Foreground service channel (hidden/low priority)
@@ -215,9 +261,9 @@ class FamilyGuardApp : Application() {
                 enableVibration(true)
             }
             
-            // Create each channel only if it doesn't exist (preserves user settings)
+            // Create each channel - in DO mode, force hidden; otherwise preserve user settings
             listOf(foregroundChannel, streamChannel, syncChannel, callChannel, persistentChannel, alertsChannel, urgentChannel)
-                .forEach { createChannelIfNotExists(it) }
+                .forEach { createOrForceHiddenChannel(it) }
         }
     }
     

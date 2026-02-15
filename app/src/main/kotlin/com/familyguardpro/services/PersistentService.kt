@@ -131,8 +131,10 @@ class PersistentService : Service() {
         }
         Log.d(TAG, "Foreground notification shown immediately")
         
-        // If Device Owner, suppress notification visibility completely
-        suppressNotificationsIfDeviceOwner()
+        // Suppress notification in Device Owner mode
+        com.familyguardpro.utils.NotificationUtils.suppressForegroundNotificationIfDeviceOwner(
+            this, NOTIFICATION_ID
+        )
     }
     
     /**

