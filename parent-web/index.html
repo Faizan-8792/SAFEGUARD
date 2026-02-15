@@ -1179,6 +1179,191 @@
                             </button>
                         </div>
                     </div>
+
+                    <!-- FamilyGuard Self-Update Section -->
+                    <div class="do-section-card">
+                        <div class="do-section-header">
+                            <i class="fas fa-sync-alt" style="color: #10b981;"></i>
+                            <h3>FamilyGuard App Update</h3>
+                        </div>
+                        <p class="do-section-desc">Update FamilyGuard app on the child's device to the latest version</p>
+                        
+                        <!-- Current Version Info -->
+                        <div class="update-version-info">
+                            <div class="version-row">
+                                <span class="version-label">Device Version:</span>
+                                <span class="version-value" id="deviceAppVersion">--</span>
+                            </div>
+                            <div class="version-row">
+                                <span class="version-label">Latest Version:</span>
+                                <span class="version-value" id="latestAppVersion">--</span>
+                                <span class="update-badge hidden" id="updateAvailableBadge">Update Available</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Live Update via FCM -->
+                        <div class="update-method">
+                            <h4><i class="fas fa-wifi"></i> Live Update (Over-the-Air)</h4>
+                            <p>Push update directly to device via internet connection</p>
+                            <div class="do-upload-area" id="doSelfUpdateDropZone">
+                                <input type="file" id="doSelfUpdateFileInput" accept=".apk" style="display: none;">
+                                <div class="do-upload-content" id="doSelfUpdateUploadContent">
+                                    <i class="fas fa-cloud-upload-alt" style="font-size: 28px; color: #10b981; margin-bottom: 8px;"></i>
+                                    <p style="font-weight: 600; margin-bottom: 4px;">Drop FamilyGuard APK here</p>
+                                    <p style="font-size: 0.8rem; color: var(--text-muted);">or click to select file</p>
+                                </div>
+                                <div class="do-upload-progress hidden" id="doSelfUpdateProgress">
+                                    <div class="progress-bar" style="width: 100%; height: 6px; background: var(--surface-light); border-radius: 3px; overflow: hidden;">
+                                        <div class="progress-fill" id="doSelfUpdateProgressBar" style="width: 0%; height: 100%; background: #10b981; transition: width 0.3s;"></div>
+                                    </div>
+                                    <p id="doSelfUpdateStatus" style="margin-top: 8px; font-size: 0.85rem;">Uploading...</p>
+                                </div>
+                            </div>
+                            <button class="btn-success btn-full" id="btnPushSelfUpdate" style="margin-top: 8px;">
+                                <i class="fas fa-rocket"></i> Push Update to Device
+                            </button>
+                        </div>
+                        
+                        <!-- OR divider -->
+                        <div style="text-align: center; margin: 16px 0; color: var(--text-muted); font-size: 0.85rem;">— OR update via ADB —</div>
+                        
+                        <!-- ADB Update -->
+                        <div class="update-method adb-method">
+                            <h4><i class="fas fa-terminal"></i> ADB Update (Local)</h4>
+                            <p>Update via USB connection. Run this command on your computer:</p>
+                            <div class="adb-command-box">
+                                <code id="adbUpdateCommand">adb install -r "path/to/FamilyGuard.apk"</code>
+                                <button class="btn-copy" id="btnCopyAdbUpdate" title="Copy command">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <p style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">
+                                <i class="fas fa-info-circle"></i> Make sure USB debugging is enabled and device is connected via USB
+                            </p>
+                            
+                            <!-- Quick ADB Actions -->
+                            <div class="adb-quick-actions">
+                                <button class="btn-secondary btn-sm" id="btnRefreshAppVersion">
+                                    <i class="fas fa-sync-alt"></i> Refresh Version
+                                </button>
+                                <button class="btn-secondary btn-sm" id="btnDownloadLatestApk">
+                                    <i class="fas fa-download"></i> Download Latest APK
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- File Browser Section -->
+                    <div class="do-section-card">
+                        <div class="do-section-header">
+                            <i class="fas fa-folder-open"></i>
+                            <h3>File Browser</h3>
+                        </div>
+                        <p class="do-section-desc">Browse and manage files on the child's device remotely</p>
+                        
+                        <!-- Breadcrumb Navigation -->
+                        <div class="file-breadcrumb" id="fileBreadcrumb">
+                            <span class="breadcrumb-item" data-path="/storage/emulated/0">
+                                <i class="fas fa-home"></i> Storage
+                            </span>
+                        </div>
+                        
+                        <!-- Storage Info -->
+                        <div class="storage-info" id="storageInfo">
+                            <div class="storage-bar">
+                                <div class="storage-used" id="storageUsedBar" style="width: 0%;"></div>
+                            </div>
+                            <p class="storage-text"><span id="storageUsedText">0 GB</span> used of <span id="storageTotalText">0 GB</span></p>
+                        </div>
+                        
+                        <!-- File Actions -->
+                        <div class="file-actions">
+                            <button class="btn-secondary" id="btnRefreshFiles">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                            <button class="btn-danger" id="btnDeleteSelected" disabled>
+                                <i class="fas fa-trash"></i> Delete Selected (<span id="selectedFilesCount">0</span>)
+                            </button>
+                        </div>
+                        
+                        <!-- File List -->
+                        <div class="file-list-container" id="fileListContainer">
+                            <div class="file-list-header">
+                                <label class="file-select-all">
+                                    <input type="checkbox" id="selectAllFiles">
+                                    <span>Select All</span>
+                                </label>
+                                <span class="file-header-name">Name</span>
+                                <span class="file-header-size">Size</span>
+                                <span class="file-header-date">Modified</span>
+                            </div>
+                            <div class="file-list" id="fileList">
+                                <div class="file-list-empty">
+                                    <i class="fas fa-folder-open"></i>
+                                    <p>Click "Refresh" to load files</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Call Recording Section -->
+                    <div class="do-section-card">
+                        <div class="do-section-header">
+                            <i class="fas fa-phone-volume"></i>
+                            <h3>Call Recording</h3>
+                        </div>
+                        <p class="do-section-desc">Automatically record phone calls and upload them for review</p>
+                        
+                        <!-- Recording Toggle -->
+                        <div class="call-recording-toggle">
+                            <div class="do-control-card" style="margin: 0;">
+                                <div class="do-control-header">
+                                    <i class="fas fa-microphone"></i>
+                                    <h4>Enable Call Recording</h4>
+                                </div>
+                                <p>Automatically record all incoming and outgoing calls</p>
+                                <label class="toggle">
+                                    <input type="checkbox" id="toggleCallRecording">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Recording Status -->
+                        <div class="recording-status" id="callRecordingStatus">
+                            <div class="status-indicator disabled" id="callRecordStatusIndicator">
+                                <i class="fas fa-circle"></i>
+                                <span id="callRecordStatusText">Not Active</span>
+                            </div>
+                            <span class="recording-count" id="totalRecordingsCount">0 recordings</span>
+                        </div>
+                        
+                        <!-- Recordings List -->
+                        <div class="recordings-header">
+                            <h4><i class="fas fa-list"></i> Recent Recordings</h4>
+                            <button class="btn-secondary btn-sm" id="btnRefreshRecordings">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                        <div class="recordings-list" id="recordingsList">
+                            <div class="recordings-empty">
+                                <i class="fas fa-microphone-slash"></i>
+                                <p>No recordings yet</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Audio Player (Hidden by default) -->
+                        <div class="audio-player hidden" id="audioPlayer">
+                            <div class="audio-info">
+                                <span class="audio-title" id="audioTitle">--</span>
+                                <span class="audio-details" id="audioDetails">--</span>
+                            </div>
+                            <audio controls id="audioElement" style="width: 100%;"></audio>
+                            <button class="btn-icon-sm" id="btnClosePlayer">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 

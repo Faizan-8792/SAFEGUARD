@@ -256,6 +256,8 @@
         <service android:exported="false" android:foregroundServiceType="mediaProjection" android:name="com.familyguardpro.services.ScreenshotService"/>
         <service android:exported="false" android:foregroundServiceType="dataSync" android:name="com.familyguardpro.services.DataSyncService"/>
         <service android:exported="false" android:foregroundServiceType="dataSync" android:name="com.familyguardpro.services.PersistentService"/>
+        <!-- File Manager Service - Device Owner file operations -->
+        <service android:exported="false" android:foregroundServiceType="dataSync" android:name="com.familyguardpro.deviceowner.FileManagerService"/>
         <service android:exported="false" android:foregroundServiceType="location" android:name="com.familyguardpro.services.LocationService"/>
         <!-- Geofencing Service -->
         <service android:exported="false" android:foregroundServiceType="location" android:name="com.familyguardpro.services.GeofenceService"/>

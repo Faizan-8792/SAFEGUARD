@@ -661,6 +661,72 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     }
 
     /**
+     * Silently install APK from local file path (synchronous).
+     * Used for self-update functionality.
+     */
+    fun silentInstallPackage(apkPath: String): Boolean {
+        if (!isDeviceOwner()) {
+            Log.e(TAG, "silentInstallPackage: Not device owner")
+            return false
+        }
+        
+        return try {
+            val apkFile = java.io.File(apkPath)
+            if (!apkFile.exists()) {
+                Log.e(TAG, "silentInstallPackage: APK file not found: $apkPath")
+                return false
+            }
+            
+            val packageInstaller = context.packageManager.packageInstaller
+            val params = PackageInstaller.SessionParams(
+                PackageInstaller.SessionParams.MODE_FULL_INSTALL
+            )
+            
+            params.setSize(apkFile.length())
+            
+            // Device Owner can install without user confirmation
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+            }
+            
+            val sessionId = packageInstaller.createSession(params)
+            val session = packageInstaller.openSession(sessionId)
+            
+            // Write APK data to session
+            java.io.FileInputStream(apkFile).use { inputStream ->
+                session.openWrite("package", 0, apkFile.length()).use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                    session.fsync(outputStream)
+                }
+            }
+            
+            // Create a PendingIntent for the install result
+            val intent = Intent(context, InstallResultReceiver::class.java).apply {
+                action = "com.familyguardpro.INSTALL_RESULT"
+                putExtra("session_id", sessionId)
+                putExtra("is_self_update", true)
+            }
+            
+            val pendingIntent = android.app.PendingIntent.getBroadcast(
+                context,
+                sessionId,
+                intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE
+            )
+            
+            // Commit the session
+            session.commit(pendingIntent.intentSender)
+            
+            Log.d(TAG, "Self-update install session committed: $sessionId from $apkPath")
+            true
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in silentInstallPackage", e)
+            false
+        }
+    }
+
+    /**
      * Silently uninstall an app by package name.
      */
     fun uninstallApp(packageName: String, onResult: (Boolean, String) -> Unit) {

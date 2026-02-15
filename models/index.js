@@ -838,6 +838,70 @@ installedAppSchema.index({ deviceId: 1, packageName: 1 }, { unique: true });
 
 const InstalledApp = mongoose.model('InstalledApp', installedAppSchema);
 
+// ==========================================
+// CALL RECORDING SCHEMA
+// ==========================================
+const callRecordingSchema = new mongoose.Schema({
+  deviceId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  fileName: {
+    type: String,
+    required: true
+  },
+  fileUrl: {
+    type: String,
+    default: null
+  },
+  fileSize: {
+    type: Number,
+    default: 0
+  },
+  duration: {
+    type: Number,
+    default: 0
+  },
+  phoneNumber: {
+    type: String,
+    default: 'Unknown'
+  },
+  contactName: {
+    type: String,
+    default: null
+  },
+  callType: {
+    type: String,
+    enum: ['incoming', 'outgoing', 'unknown'],
+    default: 'unknown'
+  },
+  timestamp: {
+    type: Date,
+    required: true
+  },
+  listened: {
+    type: Boolean,
+    default: false
+  },
+  listenedAt: {
+    type: Date,
+    default: null
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+// Index for efficient queries
+callRecordingSchema.index({ deviceId: 1, timestamp: -1 });
+
+// Auto-delete recordings after 30 days
+callRecordingSchema.index({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
+
+const CallRecording = mongoose.model('CallRecording', callRecordingSchema);
+
 module.exports = {
   User,
   Device,
@@ -853,5 +917,6 @@ module.exports = {
   PairingCode,
   SocialMessage,
   SocialContact,
-  InstalledApp
+  InstalledApp,
+  CallRecording
 };

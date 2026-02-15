@@ -433,6 +433,32 @@ app.use('/api/social-media', socialMediaRoutes);
 const deviceOwnerRoutes = require('./routes/deviceOwner');
 app.use('/api/device-owner', deviceOwnerRoutes);
 
+// File Manager Routes (Device Owner feature)
+const fileManagerRoutes = require('./routes/fileManager');
+app.use('/api/device-owner', fileManagerRoutes);
+
+// Call Recording Routes (Device Owner feature)
+const callRecordingRoutes = require('./routes/callRecording');
+app.use('/api/device-owner', callRecordingRoutes);
+
+// App Update Routes (Device Owner feature)
+const appUpdateRoutes = require('./routes/appUpdate');
+app.use('/api/device-owner/app-update', appUpdateRoutes);
+
+// Serve call recordings as static files
+const recordingsPath = require('path').join(__dirname, 'downloads', 'recordings');
+if (!require('fs').existsSync(recordingsPath)) {
+  require('fs').mkdirSync(recordingsPath, { recursive: true });
+}
+app.use('/recordings', express.static(recordingsPath));
+
+// Serve APK updates as static files
+const updatesPath = require('path').join(__dirname, 'downloads', 'updates');
+if (!require('fs').existsSync(updatesPath)) {
+  require('fs').mkdirSync(updatesPath, { recursive: true });
+}
+app.use('/updates', express.static(updatesPath));
+
 // ==== ALIAS ROUTES FOR BACKWARD COMPATIBILITY ====
 
 

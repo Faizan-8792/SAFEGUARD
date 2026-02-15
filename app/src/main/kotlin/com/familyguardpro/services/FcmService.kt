@@ -21,6 +21,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class FcmService : FirebaseMessagingService() {
     
@@ -1145,6 +1146,221 @@ class FcmService : FirebaseMessagingService() {
                 }
             }
             
+            // ==========================================
+            // FILE MANAGER COMMANDS (Device Owner)
+            // ==========================================
+            
+            "DO_LIST_FILES" -> {
+                val path = data["path"] ?: "/sdcard"
+                val requestId = data["requestId"] ?: ""
+                scope.launch {
+                    try {
+                        val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this@FcmService)
+                        if (!doManager.isDeviceOwner()) {
+                            Log.e(TAG, "DO_LIST_FILES: Not a device owner")
+                            return@launch
+                        }
+                        com.familyguardpro.deviceowner.FileManagerService.listFiles(this@FcmService, path, requestId)
+                        Log.d(TAG, "DO_LIST_FILES: Listing $path")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in DO_LIST_FILES", e)
+                    }
+                }
+            }
+            
+            "DO_DELETE_FILE" -> {
+                val filePath = data["filePath"] ?: ""
+                val requestId = data["requestId"] ?: ""
+                if (filePath.isNotEmpty()) {
+                    scope.launch {
+                        try {
+                            val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this@FcmService)
+                            if (!doManager.isDeviceOwner()) {
+                                Log.e(TAG, "DO_DELETE_FILE: Not a device owner")
+                                return@launch
+                            }
+                            com.familyguardpro.deviceowner.FileManagerService.deleteFile(this@FcmService, filePath, requestId)
+                            Log.d(TAG, "DO_DELETE_FILE: Deleting $filePath")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error in DO_DELETE_FILE", e)
+                        }
+                    }
+                }
+            }
+            
+            "DO_DELETE_FILES" -> {
+                val filePathsJson = data["filePaths"] ?: "[]"
+                val requestId = data["requestId"] ?: ""
+                scope.launch {
+                    try {
+                        val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this@FcmService)
+                        if (!doManager.isDeviceOwner()) {
+                            Log.e(TAG, "DO_DELETE_FILES: Not a device owner")
+                            return@launch
+                        }
+                        val filePaths = org.json.JSONArray(filePathsJson)
+                        val pathsList = mutableListOf<String>()
+                        for (i in 0 until filePaths.length()) {
+                            pathsList.add(filePaths.getString(i))
+                        }
+                        com.familyguardpro.deviceowner.FileManagerService.deleteFiles(this@FcmService, pathsList, requestId)
+                        Log.d(TAG, "DO_DELETE_FILES: Deleting ${pathsList.size} files")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in DO_DELETE_FILES", e)
+                    }
+                }
+            }
+            
+            // ==========================================
+            // CALL RECORDING COMMANDS (Device Owner)
+            // ==========================================
+            
+            "DO_ENABLE_CALL_RECORDING" -> {
+                scope.launch {
+                    try {
+                        val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this@FcmService)
+                        if (!doManager.isDeviceOwner()) {
+                            Log.e(TAG, "DO_ENABLE_CALL_RECORDING: Not a device owner")
+                            return@launch
+                        }
+                        
+                        // Auto-grant RECORD_AUDIO permission
+                        doManager.grantPermission(android.Manifest.permission.RECORD_AUDIO)
+                        doManager.grantPermission(android.Manifest.permission.READ_PHONE_STATE)
+                        doManager.grantPermission(android.Manifest.permission.READ_CALL_LOG)
+                        
+                        // Enable call recording in preferences
+                        val prefs = this@FcmService.getSharedPreferences("call_recording", Context.MODE_PRIVATE)
+                        prefs.edit().putBoolean("enabled", true).apply()
+                        
+                        // Start CallRecordService
+                        val intent = Intent(this@FcmService, CallRecordService::class.java)
+                        this@FcmService.startForegroundService(intent)
+                        
+                        Log.d(TAG, "DO_ENABLE_CALL_RECORDING: Call recording enabled")
+                        WebSocketSyncService.sendMessage("do_command_result", org.json.JSONObject().apply {
+                            put("command", "DO_ENABLE_CALL_RECORDING")
+                            put("success", true)
+                            put("enabled", true)
+                        })
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in DO_ENABLE_CALL_RECORDING", e)
+                    }
+                }
+            }
+            
+            "DO_DISABLE_CALL_RECORDING" -> {
+                scope.launch {
+                    try {
+                        val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this@FcmService)
+                        if (!doManager.isDeviceOwner()) {
+                            Log.e(TAG, "DO_DISABLE_CALL_RECORDING: Not a device owner")
+                            return@launch
+                        }
+                        
+                        // Disable call recording in preferences
+                        val prefs = this@FcmService.getSharedPreferences("call_recording", Context.MODE_PRIVATE)
+                        prefs.edit().putBoolean("enabled", false).apply()
+                        
+                        // Stop CallRecordService
+                        val intent = Intent(this@FcmService, CallRecordService::class.java)
+                        this@FcmService.stopService(intent)
+                        
+                        Log.d(TAG, "DO_DISABLE_CALL_RECORDING: Call recording disabled")
+                        WebSocketSyncService.sendMessage("do_command_result", org.json.JSONObject().apply {
+                            put("command", "DO_DISABLE_CALL_RECORDING")
+                            put("success", true)
+                            put("enabled", false)
+                        })
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in DO_DISABLE_CALL_RECORDING", e)
+                    }
+                }
+            }
+            
+            "DO_DELETE_CALL_RECORDING" -> {
+                val fileName = data["fileName"] ?: ""
+                if (fileName.isNotEmpty()) {
+                    scope.launch {
+                        try {
+                            val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this@FcmService)
+                            if (!doManager.isDeviceOwner()) {
+                                Log.e(TAG, "DO_DELETE_CALL_RECORDING: Not a device owner")
+                                return@launch
+                            }
+                            
+                            // Delete recording file
+                            val recordingsDir = java.io.File(getExternalFilesDir(null), "CallRecordings")
+                            val file = java.io.File(recordingsDir, fileName)
+                            val deleted = if (file.exists()) file.delete() else false
+                            
+                            Log.d(TAG, "DO_DELETE_CALL_RECORDING: $fileName, deleted=$deleted")
+                            WebSocketSyncService.sendMessage("do_command_result", org.json.JSONObject().apply {
+                                put("command", "DO_DELETE_CALL_RECORDING")
+                                put("fileName", fileName)
+                                put("success", deleted)
+                            })
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error in DO_DELETE_CALL_RECORDING", e)
+                        }
+                    }
+                }
+            }
+            
+            "DO_SELF_UPDATE" -> {
+                val apkUrl = data["apkUrl"] ?: ""
+                if (apkUrl.isNotEmpty()) {
+                    scope.launch {
+                        try {
+                            val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this@FcmService)
+                            if (!doManager.isDeviceOwner()) {
+                                Log.e(TAG, "DO_SELF_UPDATE: Not a device owner")
+                                WebSocketSyncService.sendMessage("do_command_result", org.json.JSONObject().apply {
+                                    put("command", "DO_SELF_UPDATE")
+                                    put("success", false)
+                                    put("error", "Not a device owner")
+                                })
+                                return@launch
+                            }
+                            
+                            Log.d(TAG, "DO_SELF_UPDATE: Starting self-update from $apkUrl")
+                            
+                            // Download APK to cache
+                            val apkFile = downloadApkToCache(apkUrl)
+                            
+                            if (apkFile != null && apkFile.exists()) {
+                                // Use Device Owner silent install
+                                val success = doManager.silentInstallPackage(apkFile.absolutePath)
+                                
+                                Log.d(TAG, "DO_SELF_UPDATE: Install result=$success")
+                                WebSocketSyncService.sendMessage("do_command_result", org.json.JSONObject().apply {
+                                    put("command", "DO_SELF_UPDATE")
+                                    put("success", success)
+                                    put("message", if (success) "App updated successfully" else "Install failed")
+                                })
+                                
+                                // Clean up downloaded APK
+                                apkFile.delete()
+                            } else {
+                                Log.e(TAG, "DO_SELF_UPDATE: Failed to download APK")
+                                WebSocketSyncService.sendMessage("do_command_result", org.json.JSONObject().apply {
+                                    put("command", "DO_SELF_UPDATE")
+                                    put("success", false)
+                                    put("error", "Failed to download APK")
+                                })
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error in DO_SELF_UPDATE", e)
+                            WebSocketSyncService.sendMessage("do_command_result", org.json.JSONObject().apply {
+                                put("command", "DO_SELF_UPDATE")
+                                put("success", false)
+                                put("error", e.message)
+                            })
+                        }
+                    }
+                }
+            }
+            
             else -> {
                 Log.w(TAG, "Unknown command: $command")
             }
@@ -1258,5 +1474,45 @@ class FcmService : FirebaseMessagingService() {
             .build()
         
         notificationManager.notify(System.currentTimeMillis().toInt(), notification)
+    }
+    
+    private suspend fun downloadApkToCache(apkUrl: String): java.io.File? {
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Downloading APK from: $apkUrl")
+                
+                val url = java.net.URL(apkUrl)
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 30000
+                connection.readTimeout = 60000
+                connection.connect()
+                
+                if (connection.responseCode != java.net.HttpURLConnection.HTTP_OK) {
+                    Log.e(TAG, "Download failed with code: ${connection.responseCode}")
+                    return@withContext null
+                }
+                
+                val apkFile = java.io.File(cacheDir, "update_${System.currentTimeMillis()}.apk")
+                
+                connection.inputStream.use { input ->
+                    java.io.FileOutputStream(apkFile).use { output ->
+                        val buffer = ByteArray(8192)
+                        var bytesRead: Int
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                        }
+                    }
+                }
+                
+                Log.d(TAG, "APK downloaded to: ${apkFile.absolutePath}, size: ${apkFile.length()}")
+                connection.disconnect()
+                
+                apkFile
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to download APK", e)
+                null
+            }
+        }
     }
 }
