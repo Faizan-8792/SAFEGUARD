@@ -265,6 +265,9 @@ class CallRecordService : Service() {
         
         audioRecorder?.stopRecording()
         
+        // Check cache file
+        Log.w(TAG, "Cache file: ${currentRecordingFile?.absolutePath}, exists=${currentRecordingFile?.exists()}, size=${currentRecordingFile?.length()}")
+        
         // Resolve contact name from phone number
         val contactName = getContactName(currentPhoneNumber)
         Log.w(TAG, "Resolved contact name: $contactName for number: $currentPhoneNumber")
@@ -344,7 +347,7 @@ class CallRecordService : Service() {
             val baseUrl = ApiClient.BASE_URL.trimEnd('/')
             val uploadUrl = "$baseUrl/api/sync/call-recording"
             
-            Log.i(TAG, "Uploading call recording: ${file.name}, size=${file.length()}, duration=${durationSeconds}s, contact=$contactName, deviceId=$deviceId")
+            Log.w(TAG, "Uploading call recording: ${file.name}, size=${file.length()}, duration=${durationSeconds}s, contact=$contactName, deviceId=$deviceId")
             
             val duration = durationSeconds
             
@@ -412,7 +415,7 @@ class CallRecordService : Service() {
             connection.disconnect()
             
             if (responseCode in 200..299) {
-                Log.i(TAG, "Call recording uploaded successfully: ${file.name}")
+                Log.w(TAG, "Call recording uploaded successfully: ${file.name}")
                 true
             } else {
                 // Read error response

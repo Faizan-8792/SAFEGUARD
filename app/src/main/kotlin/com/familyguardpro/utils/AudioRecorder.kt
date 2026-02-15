@@ -287,14 +287,26 @@ class AudioRecorder(private val context: Context) {
     
     fun stopRecording(): File? {
         isRecording = false
-        recordingJob?.cancel()
+        
+        // Wait for the recording coroutine to finish saving the file
+        // Don't cancel it - let it complete the saveAsWav() call
+        runBlocking {
+            try {
+                withTimeout(10000) { // 10 second timeout
+                    recordingJob?.join()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Timeout waiting for recording job: ${e.message}")
+                recordingJob?.cancel()
+            }
+        }
         recordingJob = null
         
         audioRecord?.stop()
         audioRecord?.release()
         audioRecord = null
         
-        Log.d(TAG, "Recording stopped")
+        Log.w(TAG, "Recording stopped, file=${outputFile?.absolutePath}, size=${outputFile?.length()}")
         return outputFile
     }
     
@@ -334,7 +346,7 @@ class AudioRecorder(private val context: Context) {
                 fos.write(audioData)
             }
             
-            Log.d(TAG, "Saved WAV file: ${file.absolutePath}")
+            Log.w(TAG, "Saved WAV file: ${file.absolutePath}, size=${file.length()}")
         } catch (e: Exception) {
             Log.e(TAG, "Error saving WAV file", e)
         }
