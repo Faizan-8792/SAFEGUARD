@@ -23,8 +23,8 @@ object FcmTokenManager {
     private const val TAG = "FcmTokenManager"
     
     // Token refresh retry configuration
-    private const val MAX_RETRY_ATTEMPTS = 5
-    private const val INITIAL_RETRY_DELAY_MS = 1000L
+    private const val MAX_RETRY_ATTEMPTS = 10
+    private const val INITIAL_RETRY_DELAY_MS = 2000L
     private const val MAX_RETRY_DELAY_MS = 60000L
     
     // Track last successful registration to avoid spamming
@@ -32,8 +32,13 @@ object FcmTokenManager {
     private var lastSuccessfulRegistration = 0L
     private const val MIN_REGISTRATION_INTERVAL_MS = 30000L // 30 seconds
     
+    // Track whether token is registered
+    @Volatile
+    private var isTokenRegistered = false
+    
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var refreshJob: Job? = null
+    private var backgroundRetryJob: Job? = null
     
     /**
      * Initialize and refresh token immediately
@@ -42,6 +47,7 @@ object FcmTokenManager {
     fun init(context: Context) {
         Log.d(TAG, "Initializing FcmTokenManager...")
         refreshTokenAsync()
+        startBackgroundRetry()
     }
     
     /**
@@ -104,7 +110,18 @@ object FcmTokenManager {
                     val success = registerTokenWithServer(token)
                     if (success) {
                         Log.d(TAG, "✅ Token refresh successful on attempt ${attempt + 1}")
+                        isTokenRegistered = true
                         return
+                    }
+                    // If device ID is empty, don't count this attempt — 
+                    // the ID might not be ready yet (encrypted prefs lag)
+                    val deviceId = FamilyGuardApp.instance.preferenceManager.getDeviceId()
+                    if (deviceId.isEmpty()) {
+                        Log.w(TAG, "Device ID not available yet, will retry...")
+                        // Don't increment attempt for device-ID-missing failures
+                        delay(delay)
+                        delay = (delay * 2).coerceAtMost(MAX_RETRY_DELAY_MS)
+                        continue
                     }
                 }
             } catch (e: CancellationException) {
@@ -122,8 +139,40 @@ object FcmTokenManager {
         }
         
         Log.e(TAG, "❌ Token refresh failed after $MAX_RETRY_ATTEMPTS attempts")
-    }
-    
+    }    
+    /**
+     * Background retry: periodically try to register FCM token until successful.
+     * This handles the case where device ID isn't available at startup
+     * (encrypted prefs not yet decrypted) but becomes available later.
+     */
+    private fun startBackgroundRetry() {
+        backgroundRetryJob?.cancel()
+        backgroundRetryJob = scope.launch {
+            while (!isTokenRegistered) {
+                delay(30_000L) // Check every 30 seconds
+                if (isTokenRegistered) break
+                
+                val deviceId = FamilyGuardApp.instance.preferenceManager.getDeviceId()
+                if (deviceId.isEmpty()) continue
+                
+                try {
+                    val token = getToken()
+                    if (token != null) {
+                        val success = registerTokenWithServer(token)
+                        if (success) {
+                            Log.d(TAG, "\u2705 Background retry: FCM token registered!")
+                            isTokenRegistered = true
+                            break
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Background retry failed: ${e.message}")
+                }
+            }
+        }
+    }    
     /**
      * Get current FCM token or request a new one
      */
@@ -146,10 +195,10 @@ object FcmTokenManager {
      * Register token with the backend server
      */
     private suspend fun registerTokenWithServer(token: String): Boolean {
-        // Rate limiting check
+        // Rate limiting check (skip if token was never registered)
         val now = System.currentTimeMillis()
-        if (now - lastSuccessfulRegistration < MIN_REGISTRATION_INTERVAL_MS) {
-            Log.d(TAG, "Skipping registration (rate limited)")
+        if (isTokenRegistered && now - lastSuccessfulRegistration < MIN_REGISTRATION_INTERVAL_MS) {
+            Log.d(TAG, "Skipping registration (rate limited, already registered)")
             return true
         }
         
@@ -183,6 +232,9 @@ object FcmTokenManager {
      * Check if token needs refresh based on age or server indications
      */
     fun shouldRefreshToken(): Boolean {
+        // Always refresh if token was never successfully registered with server
+        if (!isTokenRegistered) return true
+        
         val prefs = FamilyGuardApp.instance.preferenceManager
         val lastRefresh = prefs.getLastFcmTokenRefresh()
         val now = System.currentTimeMillis()

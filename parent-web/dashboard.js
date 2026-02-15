@@ -3906,9 +3906,8 @@ async function doUploadInstallApp() {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${API_BASE}/device-owner/${deviceId}/upload-install-app`);
       
-      // Add auth header
-      const token = localStorage.getItem('token');
-      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      // Add auth header - use the same token as api() function
+      if (authToken) xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
       
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
