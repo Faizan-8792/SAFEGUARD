@@ -254,11 +254,11 @@ object NotificationUtils {
                 try {
                     val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     
-                    // Cancel all notifications
+                    // Cancel all notifications immediately
                     nm.cancelAll()
                     
                     // Also cancel known notification IDs
-                    for (id in 1001..1015) {
+                    for (id in 1001..1020) {
                         try { nm.cancel(id) } catch (e: Exception) {}
                     }
                     
@@ -270,17 +270,17 @@ object NotificationUtils {
                     } catch (e: Exception) {}
                     
                 } catch (e: Exception) {
-                    Log.w(TAG, "Error in notification killer: ${e.message}")
+                    // Ignore errors silently
                 }
                 
-                // Schedule next run (every 1 second)
-                notificationKillerHandler?.postDelayed(this, 1000)
+                // Schedule next run every 100ms for instant suppression
+                notificationKillerHandler?.postDelayed(this, 100)
             }
         }
         
         // Start immediately
         notificationKillerHandler?.post(notificationKillerRunnable!!)
-        Log.d(TAG, "Started periodic notification killer")
+        Log.d(TAG, "Started periodic notification killer (100ms interval)")
     }
     
     /**

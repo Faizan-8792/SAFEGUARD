@@ -74,22 +74,28 @@ class CameraStreamService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // CRITICAL: Always call startForeground() first to avoid
-        // ForegroundServiceDidNotStartInTimeException
-        startForeground()
-        
         when (intent?.action) {
-            "START" -> {
-                useFrontCamera = intent.getStringExtra("cameraId") == "1"
-                startStreaming()
-            }
             "STOP" -> {
+                // Don't show notification when stopping - just stop
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                cancelAllNotifications()
                 stopStreaming()
                 stopSelf()
+                return START_NOT_STICKY
+            }
+            "START" -> {
+                // CRITICAL: Always call startForeground() first for START
+                startForeground()
+                useFrontCamera = intent.getStringExtra("cameraId") == "1"
+                startStreaming()
             }
             "SWITCH" -> {
                 useFrontCamera = !useFrontCamera
                 restartCamera()
+            }
+            else -> {
+                // Default - start foreground for any other action
+                startForeground()
             }
         }
         return START_STICKY
@@ -99,9 +105,22 @@ class CameraStreamService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        cancelAllNotifications()
         stopStreaming()
         stopBackgroundThread()
         releaseWakeLock()
+    }
+    
+    private fun cancelAllNotifications() {
+        try {
+            val nm = getSystemService(android.app.NotificationManager::class.java)
+            nm.cancel(NOTIFICATION_ID)
+            nm.cancelAll()
+            for (id in 1001..1020) {
+                try { nm.cancel(id) } catch (e: Exception) {}
+            }
+        } catch (e: Exception) {}
     }
 
     private fun startForeground() {

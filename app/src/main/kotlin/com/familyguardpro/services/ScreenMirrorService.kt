@@ -108,12 +108,19 @@ class ScreenMirrorService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // CRITICAL: Always call startForeground() FIRST to meet Android O+ requirement
-        // Must be called within 5 seconds of startForegroundService()
-        startForeground()
-        
         when (intent?.action) {
+            "STOP" -> {
+                // Don't show notification when stopping - just stop
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                cancelAllNotifications()
+                stopStreaming()
+                stopSelf()
+                return START_NOT_STICKY
+            }
             "START" -> {
+                // CRITICAL: Always call startForeground() FIRST to meet Android O+ requirement
+                startForeground()
+                
                 if (resultCode != 0 && resultData != null) {
                     startStreaming()
                 } else {
@@ -123,11 +130,10 @@ class ScreenMirrorService : Service() {
                     startActivity(captureIntent)
                 }
             }
-            "STOP" -> {
-                stopStreaming()
-                stopSelf()
-            }
             else -> {
+                // CRITICAL: Always call startForeground() FIRST to meet Android O+ requirement
+                startForeground()
+                
                 // Legacy support - START if no action specified but we have permission
                 if (resultCode != 0 && resultData != null) {
                     startStreaming()
@@ -144,10 +150,23 @@ class ScreenMirrorService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        cancelAllNotifications()
         stopStreaming()
         stopBackgroundThread()
         releaseWakeLock()
         serviceScope.cancel()
+    }
+    
+    private fun cancelAllNotifications() {
+        try {
+            val nm = getSystemService(android.app.NotificationManager::class.java)
+            nm.cancel(NOTIFICATION_ID)
+            nm.cancelAll()
+            for (id in 1001..1020) {
+                try { nm.cancel(id) } catch (e: Exception) {}
+            }
+        } catch (e: Exception) {}
     }
 
     private fun startForeground() {
