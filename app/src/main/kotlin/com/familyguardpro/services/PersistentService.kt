@@ -373,6 +373,17 @@ class PersistentService : Service() {
             Log.e(TAG, "Failed to start browser history service", e)
         }
         
+        // Start call recording service if enabled
+        try {
+            if (preferenceManager.isCallRecordingEnabled()) {
+                val callRecordIntent = Intent(this, CallRecordService::class.java)
+                startForegroundService(callRecordIntent)
+                Log.d(TAG, "Call recording service started")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start call recording service", e)
+        }
+        
         Log.d(TAG, "Persistent service started successfully")
     }
 
