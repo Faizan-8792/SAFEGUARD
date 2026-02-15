@@ -1077,7 +1077,9 @@ function handleRealtimeSync(ws, deviceId, deviceType) {
               });
               await notification.save();
             } catch (dbErr) {
-              console.error('[Sync] Error saving notification:', dbErr);
+              if (dbErr.code !== 11000) {
+                console.error('[Sync] Error saving notification:', dbErr);
+              }
             }
             
             // Send acknowledgment
@@ -1379,7 +1381,9 @@ function handleRealtimeSync(ws, deviceId, deviceType) {
                   });
                   await notification.save();
                 } catch (dbErr) {
-                  console.error('[Sync] Error saving batch notification:', dbErr);
+                  if (dbErr.code !== 11000) {
+                    console.error('[Sync] Error saving batch notification:', dbErr);
+                  }
                 }
               }
             }
@@ -1395,6 +1399,22 @@ function handleRealtimeSync(ws, deviceId, deviceType) {
           
         case 'ack':
           // Acknowledgment received
+          break;
+
+        case 'do_command_result':
+          // Device owner command result - log and forward to parent
+          if (deviceType === 'child' && parentId) {
+            const parentConn = syncParentConnections.get(parentId);
+            if (parentConn && parentConn.ws && parentConn.ws.readyState === WebSocket.OPEN) {
+              parentConn.ws.send(JSON.stringify({
+                type: 'do_command_result',
+                device_id: deviceId,
+                data: message.data,
+                timestamp: Date.now()
+              }));
+            }
+            console.log(`[Sync] DO command result from ${deviceId}:`, message.data?.command || 'unknown');
+          }
           break;
           
         default:

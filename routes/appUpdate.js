@@ -39,7 +39,15 @@ router.get('/:deviceId/app-version', async (req, res) => {
   try {
     const { deviceId } = req.params;
     
-    const device = await Device.findOne({ deviceId });
+    // Try finding by MongoDB _id first (dashboard sends _id), then by Android deviceId
+    const mongoose = require('mongoose');
+    let device = null;
+    if (mongoose.Types.ObjectId.isValid(deviceId)) {
+      device = await Device.findById(deviceId);
+    }
+    if (!device) {
+      device = await Device.findOne({ deviceId });
+    }
     if (!device) {
       return res.status(404).json({ error: 'Device not found' });
     }
