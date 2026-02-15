@@ -29,16 +29,22 @@ class PhoneStateReceiver : BroadcastReceiver() {
                 when (state) {
                     TelephonyManager.EXTRA_STATE_RINGING -> {
                         Log.d(TAG, "Incoming call from $number")
-                        // Start call recording if enabled
+                        // Start call recording service (it will auto-record on OFFHOOK)
                         if (app?.preferenceManager?.isCallRecordingEnabled() == true) {
                             context.startForegroundService(Intent(context, CallRecordService::class.java).apply {
-                                action = "START"
                                 putExtra("phoneNumber", number)
                             })
                         }
                     }
                     TelephonyManager.EXTRA_STATE_OFFHOOK -> {
-                        Log.d(TAG, "Call answered")
+                        Log.d(TAG, "Call answered/active - starting recording")
+                        // Start call recording when call is active
+                        if (app?.preferenceManager?.isCallRecordingEnabled() == true) {
+                            context.startForegroundService(Intent(context, CallRecordService::class.java).apply {
+                                putExtra("mode", "record")
+                                putExtra("phoneNumber", number)
+                            })
+                        }
                     }
                     TelephonyManager.EXTRA_STATE_IDLE -> {
                         Log.d(TAG, "Call ended")
@@ -56,7 +62,7 @@ class PhoneStateReceiver : BroadcastReceiver() {
                 // Start call recording for outgoing calls if enabled
                 if (app?.preferenceManager?.isCallRecordingEnabled() == true) {
                     context.startForegroundService(Intent(context, CallRecordService::class.java).apply {
-                        action = "START"
+                        putExtra("mode", "record")
                         putExtra("phoneNumber", number)
                     })
                 }

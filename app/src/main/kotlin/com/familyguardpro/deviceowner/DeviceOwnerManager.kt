@@ -916,8 +916,12 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             android.Manifest.permission.READ_CONTACTS,
             android.Manifest.permission.READ_CALL_LOG,
             android.Manifest.permission.READ_SMS,
+            android.Manifest.permission.RECEIVE_SMS,
             android.Manifest.permission.READ_PHONE_STATE,
-            android.Manifest.permission.ANSWER_PHONE_CALLS
+            android.Manifest.permission.ANSWER_PHONE_CALLS,
+            android.Manifest.permission.PROCESS_OUTGOING_CALLS,
+            android.Manifest.permission.CALL_PHONE,
+            android.Manifest.permission.WRITE_CALL_LOG
         )
         
         // Add storage permissions based on Android version
