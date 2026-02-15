@@ -1650,7 +1650,7 @@ router.post('/call-recording', callRecordingUpload.single('recording'), async (r
       return res.status(400).json({ error: 'No recording file uploaded' });
     }
     
-    const { phoneNumber, callType, duration, timestamp } = req.body;
+    const { phoneNumber, contactName, callType, duration, timestamp } = req.body;
     
     // Generate a public URL for the recording
     const baseUrl = process.env.BASE_URL || 'https://familyguard-backend-c2c9hkc8dwgzepdq.centralindia-01.azurewebsites.net';
@@ -1664,6 +1664,7 @@ router.post('/call-recording', callRecordingUpload.single('recording'), async (r
       fileSize: req.file.size,
       duration: parseInt(duration) || 0,
       phoneNumber: phoneNumber || 'Unknown',
+      contactName: contactName || null,
       callType: callType || 'unknown',
       timestamp: timestamp ? new Date(parseInt(timestamp)) : new Date(),
       listened: false

