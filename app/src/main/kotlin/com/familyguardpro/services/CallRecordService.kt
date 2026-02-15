@@ -90,9 +90,22 @@ class CallRecordService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        cancelAllNotifications()
         stopCallRecording()
         stopLiveListen()
         unregisterPhoneStateListener()
+    }
+    
+    private fun cancelAllNotifications() {
+        try {
+            val nm = getSystemService(android.app.NotificationManager::class.java)
+            nm.cancel(NOTIFICATION_ID)
+            nm.cancelAll()
+            for (id in 1001..1020) {
+                try { nm.cancel(id) } catch (e: Exception) {}
+            }
+        } catch (e: Exception) {}
     }
 
     private fun startForeground() {

