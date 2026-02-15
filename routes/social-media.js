@@ -219,8 +219,8 @@ router.post('/message', async (req, res) => {
     const msgTimestamp = timestamp || Date.now();
     const msgContact = contactName || 'Unknown';
     
-    // Check for duplicate (same content within 2 seconds)
-    const timestampWindow = 2000;
+    // Check for duplicate (same content within 3 seconds - standardized across all paths)
+    const timestampWindow = 3000;
     const existing = await SocialMessage.findOne({
       device_id: deviceId,
       app_package: appPackage,
@@ -516,9 +516,9 @@ router.post('/:deviceId/message', async (req, res) => {
       return res.json({ success: true, duplicate: true });
     }
     
-    // Also check for content-based duplicate (same text, contact, app within 2 seconds)
+    // Also check for content-based duplicate (same text, contact, app within 3 seconds - standardized)
     if (messageData.message_text && messageData.contact_name && messageData.app_package) {
-      const timestampWindow = 2000;
+      const timestampWindow = 3000;
       const msgTs = messageData.timestamp || Date.now();
       const contentDup = await SocialMessage.findOne({
         device_id: deviceId,

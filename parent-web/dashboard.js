@@ -3492,6 +3492,9 @@ async function loadDeviceOwnerPage(autoActivateAttempted = false) {
       const accessibilityToggle = document.getElementById('toggleAccessibilityRecovery');
       if (uninstallToggle) uninstallToggle.checked = policies.uninstallProtected || false;
       if (accessibilityToggle) accessibilityToggle.checked = policies.accessibilityAutoRecover || false;
+      
+      // Load installed apps list for hide/uninstall management
+      loadInstalledApps();
     } else if (!autoActivateAttempted) {
       // DO not yet active in backend — auto-activate for user
       console.log('[DO] Mode not set, attempting auto-activation...');
@@ -3593,12 +3596,11 @@ async function generateProvisioningQR() {
 }
 
 /**
- * Send Device Owner command to hide an app
+ * Send Device Owner command to hide an app by packageName
  */
-async function doHideApp() {
-  const packageName = document.getElementById('doHideAppInput')?.value?.trim();
+async function doHideApp(packageName) {
   if (!packageName) {
-    showToast('Enter a package name', 'error');
+    showToast('Package name required', 'error');
     return;
   }
   
@@ -3608,19 +3610,20 @@ async function doHideApp() {
       method: 'POST',
       body: JSON.stringify({ packageName })
     });
-    showToast(`App ${packageName} hidden successfully`, 'success');
+    showToast(`App hidden: ${packageName}`, 'success');
+    // Refresh the app list
+    loadInstalledApps();
   } catch (error) {
     showToast('Failed to hide app: ' + error.message, 'error');
   }
 }
 
 /**
- * Send Device Owner command to unhide an app
+ * Send Device Owner command to unhide an app by packageName
  */
-async function doUnhideApp() {
-  const packageName = document.getElementById('doHideAppInput')?.value?.trim();
+async function doUnhideApp(packageName) {
   if (!packageName) {
-    showToast('Enter a package name', 'error');
+    showToast('Package name required', 'error');
     return;
   }
   
@@ -3630,10 +3633,110 @@ async function doUnhideApp() {
       method: 'POST',
       body: JSON.stringify({ packageName })
     });
-    showToast(`App ${packageName} shown successfully`, 'success');
+    showToast(`App shown: ${packageName}`, 'success');
+    // Refresh the app list
+    loadInstalledApps();
   } catch (error) {
     showToast('Failed to show app: ' + error.message, 'error');
   }
+}
+
+/**
+ * Silent uninstall app by packageName
+ */
+async function doUninstallAppByPackage(packageName, appName) {
+  if (!packageName) return;
+  
+  if (!confirm(`Uninstall "${appName || packageName}" from device?\n\nThis cannot be undone.`)) return;
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    await api(`/device-owner/${deviceId}/uninstall-app`, {
+      method: 'POST',
+      body: JSON.stringify({ packageName })
+    });
+    showToast(`Uninstall command sent: ${appName || packageName}`, 'success');
+    // Refresh after a short delay to let device process
+    setTimeout(loadInstalledApps, 2000);
+  } catch (error) {
+    showToast('Failed to uninstall: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Load and display all installed apps from child device
+ */
+let doInstalledAppsCache = [];
+
+async function loadInstalledApps() {
+  if (!selectedDevice) return;
+  
+  const listEl = document.getElementById('doInstalledAppsList');
+  const countEl = document.getElementById('doAppsCount');
+  if (!listEl) return;
+  
+  try {
+    const deviceId = getDeviceId(selectedDevice);
+    const data = await api(`/devices/${deviceId}/installed-apps`);
+    doInstalledAppsCache = data.apps || [];
+    
+    if (countEl) countEl.textContent = `${doInstalledAppsCache.length} apps installed`;
+    
+    renderInstalledAppsList(doInstalledAppsCache);
+  } catch (error) {
+    console.error('Failed to load installed apps:', error);
+    listEl.innerHTML = `
+      <div style="text-align: center; padding: 30px 16px; color: var(--text-muted);">
+        <i class="fas fa-exclamation-circle" style="font-size: 24px; margin-bottom: 8px; color: var(--warning);"></i>
+        <p>Failed to load apps. Sync device first.</p>
+        <p style="font-size: 0.8rem; margin-top: 4px;">${error.message}</p>
+      </div>
+    `;
+  }
+}
+
+function renderInstalledAppsList(apps) {
+  const listEl = document.getElementById('doInstalledAppsList');
+  if (!listEl) return;
+  
+  if (!apps || apps.length === 0) {
+    listEl.innerHTML = `
+      <div style="text-align: center; padding: 30px 16px; color: var(--text-muted);">
+        <i class="fas fa-mobile-alt" style="font-size: 24px; margin-bottom: 8px;"></i>
+        <p>No installed apps found.</p>
+        <p style="font-size: 0.8rem;">Wait for device to sync or click Refresh.</p>
+      </div>
+    `;
+    return;
+  }
+  
+  listEl.innerHTML = apps.map(app => `
+    <div class="do-app-item">
+      <div class="do-app-info">
+        <div class="do-app-name">${escapeHtml(app.appName)}${app.isHidden ? ' <span style="color: var(--warning); font-size: 10px;">(HIDDEN)</span>' : ''}</div>
+        <div class="do-app-package">${escapeHtml(app.packageName)}</div>
+      </div>
+      <div class="do-app-actions">
+        ${app.isHidden 
+          ? `<button class="btn-hide" onclick="doUnhideApp('${escapeHtml(app.packageName)}')" title="Show app">
+               <i class="fas fa-eye"></i> Show
+             </button>`
+          : `<button class="btn-hide" onclick="doHideApp('${escapeHtml(app.packageName)}')" title="Hide app">
+               <i class="fas fa-eye-slash"></i> Hide
+             </button>`
+        }
+        <button class="btn-uninstall" onclick="doUninstallAppByPackage('${escapeHtml(app.packageName)}', '${escapeHtml(app.appName)}')" title="Uninstall app">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// Helper: escape HTML for safe rendering
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /**
@@ -3737,46 +3840,6 @@ async function doGrantAllPermissions() {
 }
 
 /**
- * Set factory reset PIN
- */
-async function doSetResetPin() {
-  const pin = document.getElementById('doResetPinInput')?.value?.trim();
-  if (!pin || pin.length < 4) {
-    showToast('PIN must be at least 4 digits', 'error');
-    return;
-  }
-  
-  try {
-    const deviceId = getDeviceId(selectedDevice);
-    await api(`/device-owner/${deviceId}/set-reset-pin`, {
-      method: 'POST',
-      body: JSON.stringify({ pin })
-    });
-    document.getElementById('doResetPinInput').value = '';
-    showToast('Factory reset PIN set successfully', 'success');
-  } catch (error) {
-    showToast('Failed to set PIN: ' + error.message, 'error');
-  }
-}
-
-/**
- * Clear factory reset PIN
- */
-async function doClearResetPin() {
-  if (!confirm('Remove the factory reset PIN protection?')) return;
-  
-  try {
-    const deviceId = getDeviceId(selectedDevice);
-    await api(`/device-owner/${deviceId}/reset-pin`, {
-      method: 'DELETE'
-    });
-    showToast('Factory reset PIN removed', 'success');
-  } catch (error) {
-    showToast('Failed to remove PIN: ' + error.message, 'error');
-  }
-}
-
-/**
  * Silent install app from URL
  */
 async function doInstallApp() {
@@ -3798,6 +3861,102 @@ async function doInstallApp() {
     showToast('Install command sent to device', 'success');
   } catch (error) {
     showToast('Failed to send install command: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Upload APK file and install silently on device
+ */
+async function doUploadInstallApp() {
+  const fileInput = document.getElementById('doInstallFileInput');
+  if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+    showToast('Please select an APK file first', 'error');
+    return;
+  }
+  
+  const file = fileInput.files[0];
+  if (!file.name.endsWith('.apk')) {
+    showToast('Only .apk files are allowed', 'error');
+    return;
+  }
+  
+  if (file.size > 200 * 1024 * 1024) {
+    showToast('File too large (max 200MB)', 'error');
+    return;
+  }
+  
+  if (!confirm(`Upload and install ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB) on the device?`)) return;
+  
+  const deviceId = getDeviceId(selectedDevice);
+  const formData = new FormData();
+  formData.append('apk', file);
+  
+  // Show progress
+  const progressDiv = document.getElementById('doApkUploadProgress');
+  const progressBar = document.getElementById('doApkProgressBar');
+  const statusText = document.getElementById('doApkUploadStatus');
+  const uploadContent = document.getElementById('doApkUploadContent');
+  
+  if (progressDiv) progressDiv.classList.remove('hidden');
+  if (uploadContent) uploadContent.classList.add('hidden');
+  
+  try {
+    // Use XMLHttpRequest for progress tracking
+    const result = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE}/device-owner/${deviceId}/upload-install-app`);
+      
+      // Add auth header
+      const token = localStorage.getItem('token');
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          if (progressBar) progressBar.style.width = `${pct}%`;
+          if (statusText) statusText.textContent = `Uploading... ${pct}%`;
+        }
+      };
+      
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText));
+        } else {
+          try {
+            const err = JSON.parse(xhr.responseText);
+            reject(new Error(err.error || 'Upload failed'));
+          } catch {
+            reject(new Error('Upload failed'));
+          }
+        }
+      };
+      
+      xhr.onerror = () => reject(new Error('Network error'));
+      xhr.send(formData);
+    });
+    
+    if (statusText) statusText.textContent = '✅ Uploaded! Installing on device...';
+    if (progressBar) progressBar.style.width = '100%';
+    
+    showToast(`APK uploaded and install command sent: ${file.name}`, 'success');
+    
+    // Reset after 3 seconds
+    setTimeout(() => {
+      if (progressDiv) progressDiv.classList.add('hidden');
+      if (uploadContent) uploadContent.classList.remove('hidden');
+      if (progressBar) progressBar.style.width = '0%';
+      fileInput.value = '';
+    }, 3000);
+    
+  } catch (error) {
+    if (statusText) statusText.textContent = `❌ ${error.message}`;
+    showToast('Failed to upload APK: ' + error.message, 'error');
+    
+    setTimeout(() => {
+      if (progressDiv) progressDiv.classList.add('hidden');
+      if (uploadContent) uploadContent.classList.remove('hidden');
+      if (progressBar) progressBar.style.width = '0%';
+    }, 3000);
   }
 }
 
@@ -3854,12 +4013,23 @@ function setupDeviceOwnerListeners() {
   // DO action buttons
   document.getElementById('btnForceAccessibility')?.addEventListener('click', doForceEnableAccessibility);
   document.getElementById('btnDoGrantAllPerms')?.addEventListener('click', doGrantAllPermissions);
-  document.getElementById('btnSetResetPin')?.addEventListener('click', doSetResetPin);
-  document.getElementById('btnClearResetPin')?.addEventListener('click', doClearResetPin);
-  document.getElementById('btnDoHideApp')?.addEventListener('click', doHideApp);
-  document.getElementById('btnDoUnhideApp')?.addEventListener('click', doUnhideApp);
   document.getElementById('btnDoInstallApp')?.addEventListener('click', doInstallApp);
-  document.getElementById('btnDoUninstallApp')?.addEventListener('click', doUninstallApp);
+  
+  // App Management - search filter + refresh
+  document.getElementById('doAppSearchInput')?.addEventListener('input', (e) => {
+    const term = e.target.value.toLowerCase().trim();
+    if (!term) {
+      renderInstalledAppsList(doInstalledAppsCache);
+    } else {
+      const filtered = doInstalledAppsCache.filter(app =>
+        (app.appName && app.appName.toLowerCase().includes(term)) ||
+        (app.packageName && app.packageName.toLowerCase().includes(term))
+      );
+      renderInstalledAppsList(filtered);
+    }
+  });
+  document.getElementById('btnRefreshInstalledApps')?.addEventListener('click', loadInstalledApps);
+  document.getElementById('btnDoUploadInstall')?.addEventListener('click', doUploadInstallApp);
   document.getElementById('btnRunOemOptimizer')?.addEventListener('click', doRunOemOptimizer);
   document.getElementById('btnGenerateQR')?.addEventListener('click', generateProvisioningQR);
   document.getElementById('btnActivateADB')?.addEventListener('click', activateDeviceOwnerADB);
@@ -3869,6 +4039,52 @@ function setupDeviceOwnerListeners() {
     const wifiFields = document.getElementById('doWifiFields');
     if (wifiFields) wifiFields.classList.toggle('hidden');
   });
+  
+  // APK file upload - drag & drop + click to browse
+  const dropZone = document.getElementById('doApkDropZone');
+  const fileInput = document.getElementById('doInstallFileInput');
+  
+  if (dropZone && fileInput) {
+    // Click to open file browser
+    dropZone.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'INPUT') fileInput.click();
+    });
+    
+    // File selected via browser
+    fileInput.addEventListener('change', () => {
+      const uploadContent = document.getElementById('doApkUploadContent');
+      if (fileInput.files.length > 0) {
+        const file = fileInput.files[0];
+        if (uploadContent) {
+          uploadContent.innerHTML = `
+            <i class="fas fa-file-archive" style="font-size: 32px; color: #10b981; margin-bottom: 8px;"></i>
+            <p style="font-weight: 600;">${file.name}</p>
+            <p style="font-size: 0.8rem; color: var(--text-muted);">${(file.size / 1024 / 1024).toFixed(1)} MB</p>
+          `;
+        }
+      }
+    });
+    
+    // Drag & drop handlers
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.style.borderColor = 'var(--primary)';
+      dropZone.style.background = 'rgba(59, 130, 246, 0.05)';
+    });
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.style.borderColor = '';
+      dropZone.style.background = '';
+    });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.style.borderColor = '';
+      dropZone.style.background = '';
+      if (e.dataTransfer.files.length > 0) {
+        fileInput.files = e.dataTransfer.files;
+        fileInput.dispatchEvent(new Event('change'));
+      }
+    });
+  }
 }
 
 // ========== BLOCKED APPS MANAGEMENT ==========
@@ -4428,15 +4644,13 @@ function initializeWebRTCConnection(type, isRetry = false) {
   }, 45000);
   
   webrtcSignalingSocket.onopen = () => {
-    debugLog('[WebRTC] Signaling connected');
+    debugLog('[WebRTC] Signaling connected to server, waiting for device...');
     
-    // Clear wakeup sequence if still running
-    if (deviceWakeupInterval) {
-      clearInterval(deviceWakeupInterval);
-      deviceWakeupInterval = null;
-    }
+    // DO NOT clear wakeup interval here — the WS opens immediately to the server
+    // but the child device hasn't received the FCM yet. Keep retrying until
+    // 'sender_joined' or 'offer' arrives (handled in handleWebRTCSignalingMessage).
     
-    streamVideo.innerHTML = '<p class="connecting">✅ Connected! Waiting for device stream...</p>';
+    streamVideo.innerHTML = '<p class="connecting">📡 Connected to server, waking up device...</p>';
     
     // Send join message
     webrtcSignalingSocket.send(JSON.stringify({
@@ -4548,10 +4762,15 @@ function handleWebRTCSignalingMessage(message, type) {
       break;
       
     case 'error':
+      // Clear wakeup interval on error too
+      if (deviceWakeupInterval) {
+        clearInterval(deviceWakeupInterval);
+        deviceWakeupInterval = null;
+      }
       streamVideo.innerHTML = `
         <div style="text-align: center;">
           <i class="fas fa-exclamation-circle" style="font-size: 48px; color: var(--error);"></i>
-          <p style="margin-top: 12px; color: var(--error);">Error: ${message.message || 'Unknown error'}</p>
+          <p style="margin-top: 12px; color: var(--error);">Error: ${message.error || message.message || 'Unknown error'}</p>
           <button class="btn-primary" style="margin-top: 12px;" onclick="startWebRTCStream('${type}')">
             <i class="fas fa-redo"></i> Retry
           </button>
@@ -7321,15 +7540,28 @@ async function deleteAllAppMessages(appPackage) {
 
 // Handle real-time social message from WebSocket
 function handleRealtimeSocialMessage(message) {
-  // If currently viewing this app/contact, add to messages
+  // Client-side dedup: check if same message already exists in current view
   if (selectedSocialApp === message.app_package && 
       selectedSocialContact === message.contact_name) {
-    socialMessages.push(message);
-    renderSocialMessages();
+    // Check for duplicate in currently loaded messages (same text within 3 seconds)
+    const isDup = socialMessages.some(m => 
+      m.message_text === message.message_text && 
+      m.contact_name === message.contact_name &&
+      m.app_package === message.app_package &&
+      Math.abs((m.timestamp || 0) - (message.timestamp || 0)) < 3000
+    );
     
-    // Scroll to bottom
-    const chatMessages = document.getElementById('chatMessages');
-    if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
+    if (!isDup) {
+      socialMessages.push(message);
+      renderSocialMessages();
+      
+      // Scroll to bottom
+      const chatMessages = document.getElementById('chatMessages');
+      if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
+    } else {
+      debugLog('[Social] Client-side duplicate skipped:', message.message_text?.substring(0, 30));
+      return; // Skip badge update too
+    }
   }
   
   // Update badge

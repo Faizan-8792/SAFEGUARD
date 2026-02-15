@@ -260,6 +260,40 @@ class DataCollector(private val context: Context) {
             }
     }
     
+    /**
+     * Get ALL installed apps (for Device Owner hide/uninstall feature)
+     * Returns user-installed apps only (no system apps) unless includeSystem is true
+     */
+    fun getAllInstalledApps(includeSystem: Boolean = false): List<InstalledAppData> {
+        val pm = context.packageManager
+        val packages = pm.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
+        
+        return packages
+            .filter { appInfo ->
+                if (includeSystem) true
+                else (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 ||
+                     (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            }
+            .filter { it.packageName != context.packageName } // Exclude FamilyGuard itself
+            .mapNotNull { appInfo ->
+                try {
+                    val appName = pm.getApplicationLabel(appInfo).toString()
+                    val isSystemApp = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                    val isEnabled = appInfo.enabled
+                    
+                    InstalledAppData(
+                        packageName = appInfo.packageName,
+                        appName = appName,
+                        isSystemApp = isSystemApp,
+                        isEnabled = isEnabled
+                    )
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            .sortedBy { it.appName.lowercase() }
+    }
+    
     // Total screen time (today - resets at midnight)
     fun getScreenTime(): Long {
         val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager

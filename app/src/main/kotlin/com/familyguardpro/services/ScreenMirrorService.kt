@@ -46,7 +46,7 @@ class ScreenMirrorService : Service() {
 
     companion object {
         private const val TAG = "ScreenMirrorService"
-        private const val NOTIFICATION_ID = 1004
+        private const val NOTIFICATION_ID = 1005
         
         // Screen capture settings - lower resolution for bandwidth
         private const val SCREEN_WIDTH = 540

@@ -1057,28 +1057,17 @@ function handleRealtimeSync(ws, deviceId, deviceType) {
           break;
           
         case 'social_message':
-          // Child sending social media message - forward to parent AND save
+          // Child sending social media message - DEDUPLICATE FIRST, then forward to parent IF not duplicate
           if (deviceType === 'child' && parentId) {
             const msgData = message.data;
             
-            // Forward to parent in real-time
-            const parentConn = syncParentConnections.get(parentId);
-            if (parentConn && parentConn.ws && parentConn.ws.readyState === WebSocket.OPEN) {
-              parentConn.ws.send(JSON.stringify({
-                type: 'social_message',
-                device_id: deviceId,
-                message: msgData,
-                timestamp: message.timestamp
-              }));
-              console.log(`[Sync] Social message forwarded: ${msgData?.app_name} - ${msgData?.contact_name}`);
-            }
-            
-            // Save to database with CONTENT-BASED deduplication
+            // Save to database with CONTENT-BASED deduplication BEFORE forwarding
+            let isDuplicate = false;
             try {
               const { SocialMessage, SocialContact } = require('./models');
               
-              // Create a time window for duplicate detection (1 second)
-              const timestampWindow = 1000; // 1 second
+              // Create a time window for duplicate detection (3 seconds - standardized)
+              const timestampWindow = 3000;
               const minTime = msgData.timestamp - timestampWindow;
               const maxTime = msgData.timestamp + timestampWindow;
               
@@ -1091,7 +1080,10 @@ function handleRealtimeSync(ws, deviceId, deviceType) {
                 timestamp: { $gte: minTime, $lte: maxTime }
               });
               
-              if (!existing) {
+              if (existing) {
+                isDuplicate = true;
+                console.log(`⏭️ Duplicate skipped: ${msgData.app_name} - ${msgData.message_text?.substring(0, 20)}`);
+              } else {
                 const socialMsg = new SocialMessage({
                   message_id: msgData.message_id,
                   device_id: deviceId,
@@ -1140,11 +1132,23 @@ function handleRealtimeSync(ws, deviceId, deviceType) {
                 );
                 
                 console.log(`💬 Saved: ${msgData.app_name} - ${msgData.contact_name}`);
-              } else {
-                console.log(`⏭️ Duplicate skipped: ${msgData.app_name} - ${msgData.message_text?.substring(0, 20)}`);
               }
             } catch (dbErr) {
               console.error('[Sync] Error saving social message:', dbErr);
+            }
+            
+            // Only forward to parent if NOT a duplicate
+            if (!isDuplicate) {
+              const parentConn = syncParentConnections.get(parentId);
+              if (parentConn && parentConn.ws && parentConn.ws.readyState === WebSocket.OPEN) {
+                parentConn.ws.send(JSON.stringify({
+                  type: 'social_message',
+                  device_id: deviceId,
+                  message: msgData,
+                  timestamp: message.timestamp
+                }));
+                console.log(`[Sync] Social message forwarded: ${msgData?.app_name} - ${msgData?.contact_name}`);
+              }
             }
             
             // Acknowledge

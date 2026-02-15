@@ -7487,6 +7487,127 @@ body {
   box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
 }
 
+/* APK Upload Drop Zone */
+.do-upload-area {
+  border: 2px dashed var(--border-color);
+  border-radius: 10px;
+  padding: 24px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  margin-top: 10px;
+}
+
+.do-upload-area:hover {
+  border-color: var(--primary-color);
+  background: rgba(59, 130, 246, 0.03);
+}
+
+.do-upload-content p {
+  margin: 0;
+}
+
+.do-upload-progress {
+  padding: 8px 0;
+}
+
+/* Installed Apps List in DO section */
+.do-app-list {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-top: 10px;
+}
+
+.do-app-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-color);
+  gap: 10px;
+}
+
+.do-app-item:last-child {
+  border-bottom: none;
+}
+
+.do-app-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.do-app-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.do-app-package {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.do-app-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.do-app-actions button {
+  padding: 5px 10px;
+  font-size: 11px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
+  transition: all 0.15s;
+}
+
+.do-app-actions button:hover {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.do-app-actions button.btn-hide {
+  color: var(--warning, #f59e0b);
+}
+
+.do-app-actions button.btn-uninstall {
+  color: var(--error, #ef4444);
+}
+
+.do-app-actions button.btn-uninstall:hover {
+  background: var(--error, #ef4444);
+  color: white;
+  border-color: var(--error, #ef4444);
+}
+
+.do-app-search {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+.do-app-search:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
 /* DO page sidebar nav highlight */
 .nav-item[data-page="deviceowner"] i {
   color: #ffc107;

@@ -191,7 +191,8 @@ data class SyncRequestBody(
     val callLogs: List<CallLogItem>,
     val location: LocationItem?,
     val notifications: List<NotificationItem>,
-    val mobileDataEnabled: Boolean? = null
+    val mobileDataEnabled: Boolean? = null,
+    val installedApps: List<InstalledAppItem>? = null
 )
 
 data class AppUsageItem(
@@ -199,6 +200,13 @@ data class AppUsageItem(
     val appName: String,
     val usageTime: Long,
     val openCount: Int
+)
+
+data class InstalledAppItem(
+    val packageName: String,
+    val appName: String,
+    val isSystemApp: Boolean,
+    val isEnabled: Boolean
 )
 
 data class CallLogItem(

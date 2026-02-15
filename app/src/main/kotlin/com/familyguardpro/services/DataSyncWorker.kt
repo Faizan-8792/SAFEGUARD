@@ -150,6 +150,16 @@ class DataSyncWorker(
                 )
             }
             
+            // Collect ALL installed apps (for Device Owner hide/uninstall feature)
+            val installedAppsFormatted = dataCollector.getAllInstalledApps().map { app ->
+                com.familyguardpro.network.InstalledAppItem(
+                    packageName = app.packageName,
+                    appName = app.appName,
+                    isSystemApp = app.isSystemApp,
+                    isEnabled = app.isEnabled
+                )
+            }
+            
             // Check mobile data status
             val mobileDataOn = isMobileDataEnabled()
             Log.d(TAG, "Mobile data enabled: $mobileDataOn")
@@ -162,7 +172,8 @@ class DataSyncWorker(
                 callLogs = callLogsFormatted,
                 location = locationItem,
                 notifications = emptyList(),
-                mobileDataEnabled = mobileDataOn
+                mobileDataEnabled = mobileDataOn,
+                installedApps = installedAppsFormatted
             )
             
             // Upload to server

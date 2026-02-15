@@ -1179,6 +1179,7 @@ class FcmService : FirebaseMessagingService() {
     
     /**
      * Send stream error back to parent via WebSocket
+     * Sends to BOTH legacy and WebRTC signaling paths so the parent always receives the error
      */
     private fun sendStreamError(streamType: String, errorMessage: String) {
         val app = applicationContext as? FamilyGuardApp
@@ -1186,36 +1187,43 @@ class FcmService : FirebaseMessagingService() {
         
         scope.launch {
             try {
-                // Connect to WebSocket and send error
                 val baseUrl = com.familyguardpro.network.ApiClient.BASE_URL
                     .trimEnd('/')
                     .replace("https://", "wss://")
                     .replace("http://", "ws://")
                 
-                val sessionId = "${deviceId}_${streamType}"
-                val wsUrl = "$baseUrl/ws?session=$sessionId&role=sender&deviceId=$deviceId&type=$streamType"
+                val errorJson = org.json.JSONObject().apply {
+                    put("type", "error")
+                    put("error", errorMessage)
+                    put("streamType", streamType)
+                    put("deviceId", deviceId)
+                }
+                val errorStr = errorJson.toString()
                 
-                val client = object : org.java_websocket.client.WebSocketClient(java.net.URI(wsUrl)) {
-                    override fun onOpen(handshakedata: org.java_websocket.handshake.ServerHandshake?) {
-                        // Send error message
-                        val errorJson = org.json.JSONObject().apply {
-                            put("type", "error")
-                            put("error", errorMessage)
-                            put("streamType", streamType)
-                            put("deviceId", deviceId)
+                // Send to BOTH WebSocket paths (legacy + WebRTC) so parent receives it regardless of which stream mode is active
+                val paths = listOf(
+                    "$baseUrl/ws?session=${deviceId}_${streamType}&role=sender&deviceId=$deviceId&type=$streamType",
+                    "$baseUrl/ws/webrtc?session=${deviceId}_${streamType}_webrtc&role=sender&deviceId=$deviceId&type=$streamType"
+                )
+                
+                for (wsUrl in paths) {
+                    try {
+                        val client = object : org.java_websocket.client.WebSocketClient(java.net.URI(wsUrl)) {
+                            override fun onOpen(handshakedata: org.java_websocket.handshake.ServerHandshake?) {
+                                send(errorStr)
+                                close()
+                            }
+                            override fun onMessage(message: String?) {}
+                            override fun onClose(code: Int, reason: String?, remote: Boolean) {}
+                            override fun onError(ex: Exception?) {
+                                Log.e(TAG, "Error sending stream error to $wsUrl", ex)
+                            }
                         }
-                        send(errorJson.toString())
-                        
-                        // Close after sending
-                        close()
-                    }
-                    override fun onMessage(message: String?) {}
-                    override fun onClose(code: Int, reason: String?, remote: Boolean) {}
-                    override fun onError(ex: Exception?) {
-                        Log.e(TAG, "Error sending stream error", ex)
+                        client.connect()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to connect for stream error: $wsUrl", e)
                     }
                 }
-                client.connect()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send stream error", e)
             }

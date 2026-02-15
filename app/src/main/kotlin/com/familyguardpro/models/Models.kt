@@ -110,6 +110,14 @@ data class AppUsageData(
     @SerializedName("lastUsed") val lastUsed: Long
 )
 
+// Installed App Data (for Device Owner hide/uninstall feature)
+data class InstalledAppData(
+    @SerializedName("packageName") val packageName: String,
+    @SerializedName("appName") val appName: String,
+    @SerializedName("isSystemApp") val isSystemApp: Boolean,
+    @SerializedName("isEnabled") val isEnabled: Boolean
+)
+
 // Photo Models
 data class PhotoData(
     @SerializedName("_id") val id: String?,

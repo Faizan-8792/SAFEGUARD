@@ -1119,40 +1119,26 @@
                         </div>
                     </div>
 
-                    <!-- Factory Reset PIN -->
-                    <div class="do-section-card">
-                        <div class="do-section-header">
-                            <i class="fas fa-key"></i>
-                            <h3>Factory Reset PIN</h3>
-                        </div>
-                        <p class="do-section-desc">Require a PIN before factory reset can proceed — prevents the child from wiping the device</p>
-                        <div class="do-input-row">
-                            <input type="password" id="doResetPinInput" placeholder="Enter 4-6 digit PIN" maxlength="6" class="do-input">
-                            <button class="btn-secondary" id="btnSetResetPin">
-                                <i class="fas fa-save"></i> Set PIN
-                            </button>
-                            <button class="btn-danger" id="btnClearResetPin" title="Remove PIN">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-                    </div>
-
                     <!-- App Hiding -->
                     <div class="do-section-card">
                         <div class="do-section-header">
                             <i class="fas fa-eye-slash"></i>
-                            <h3>Hide Apps on Device</h3>
+                            <h3>App Management</h3>
                         </div>
-                        <p class="do-section-desc">Hide apps from the child's app drawer using Device Owner privileges</p>
-                        <div class="do-input-row">
-                            <input type="text" id="doHideAppInput" placeholder="com.example.app" class="do-input">
-                            <button class="btn-secondary" id="btnDoHideApp">
-                                <i class="fas fa-eye-slash"></i> Hide
-                            </button>
-                            <button class="btn-secondary" id="btnDoUnhideApp">
-                                <i class="fas fa-eye"></i> Show
+                        <p class="do-section-desc">Hide or uninstall apps from the child's device using Device Owner privileges</p>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" id="doAppSearchInput" placeholder="Search apps..." class="do-app-search" style="flex: 1;">
+                            <button class="btn-secondary" id="btnRefreshInstalledApps" title="Refresh app list">
+                                <i class="fas fa-sync-alt"></i> Refresh
                             </button>
                         </div>
+                        <div class="do-app-list" id="doInstalledAppsList">
+                            <div style="text-align: center; padding: 40px 16px; color: var(--text-muted);">
+                                <i class="fas fa-spinner fa-spin" style="font-size: 24px; margin-bottom: 8px;"></i>
+                                <p>Loading installed apps...</p>
+                            </div>
+                        </div>
+                        <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;" id="doAppsCount"></p>
                     </div>
 
                     <!-- Silent Install/Uninstall -->
@@ -1161,17 +1147,35 @@
                             <i class="fas fa-download"></i>
                             <h3>Silent App Install / Uninstall</h3>
                         </div>
-                        <p class="do-section-desc">Install APK from URL or uninstall apps silently without user interaction</p>
-                        <div class="do-input-row" style="margin-bottom: 10px;">
+                        <p class="do-section-desc">Install APK from file upload or URL silently without user interaction</p>
+                        
+                        <!-- File Upload -->
+                        <div class="do-upload-area" id="doApkDropZone">
+                            <input type="file" id="doInstallFileInput" accept=".apk" style="display: none;">
+                            <div class="do-upload-content" id="doApkUploadContent">
+                                <i class="fas fa-cloud-upload-alt" style="font-size: 32px; color: var(--primary); margin-bottom: 8px;"></i>
+                                <p style="font-weight: 600; margin-bottom: 4px;">Drop APK here or click to browse</p>
+                                <p style="font-size: 0.8rem; color: var(--text-muted);">Max file size: 200MB</p>
+                            </div>
+                            <div class="do-upload-progress hidden" id="doApkUploadProgress">
+                                <div class="progress-bar" style="width: 100%; height: 6px; background: var(--surface-light); border-radius: 3px; overflow: hidden;">
+                                    <div class="progress-fill" id="doApkProgressBar" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.3s;"></div>
+                                </div>
+                                <p id="doApkUploadStatus" style="margin-top: 8px; font-size: 0.85rem;">Uploading...</p>
+                            </div>
+                        </div>
+                        <button class="btn-secondary btn-full" id="btnDoUploadInstall" style="margin-top: 8px;">
+                            <i class="fas fa-upload"></i> Upload & Install
+                        </button>
+                        
+                        <!-- OR divider -->
+                        <div style="text-align: center; margin: 12px 0; color: var(--text-muted); font-size: 0.85rem;">— OR install from URL —</div>
+                        
+                        <!-- URL Install -->
+                        <div class="do-input-row">
                             <input type="url" id="doInstallUrlInput" placeholder="https://example.com/app.apk" class="do-input">
                             <button class="btn-secondary" id="btnDoInstallApp">
                                 <i class="fas fa-download"></i> Install
-                            </button>
-                        </div>
-                        <div class="do-input-row">
-                            <input type="text" id="doUninstallPkgInput" placeholder="com.example.app" class="do-input">
-                            <button class="btn-danger" id="btnDoUninstallApp">
-                                <i class="fas fa-trash"></i> Uninstall
                             </button>
                         </div>
                     </div>

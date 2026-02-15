@@ -4,6 +4,31 @@ const { protect } = require('./auth');
 const { Device } = require('../models');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+// Temp APK storage directory
+const TEMP_APK_DIR = path.join(__dirname, '..', 'downloads', 'temp');
+if (!fs.existsSync(TEMP_APK_DIR)) {
+  fs.mkdirSync(TEMP_APK_DIR, { recursive: true });
+}
+
+// Configure multer for APK uploads (max 200MB, .apk files only)
+const apkUpload = multer({
+  dest: TEMP_APK_DIR,
+  limits: { fileSize: 200 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.originalname.endsWith('.apk') || file.mimetype === 'application/vnd.android.package-archive') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .apk files are allowed'), false);
+    }
+  }
+});
+
+// In-memory map to track temp APK files for download
+const tempApkFiles = new Map(); // tempId -> { filePath, originalName, expiresAt }
 
 // ============================================================
 // DEVICE OWNER MODE API ROUTES
@@ -283,17 +308,34 @@ router.post('/:deviceId/hide-app', protect, async (req, res) => {
       return res.status(403).json({ error: 'Device Owner mode not active on this device' });
     }
     
-    // Send FCM command to hide the app
-    await sendFcmCommand(device, 'DO_HIDE_APP', { hide: true, packageName: req.body.packageName || device.packageName || 'com.familyguardpro' });
+    const packageName = req.body.packageName;
+    if (!packageName) {
+      return res.status(400).json({ error: 'packageName is required' });
+    }
     
-    // Update database
+    // Send FCM command to hide the app
+    await sendFcmCommand(device, 'DO_HIDE_APP', { hide: true, packageName });
+    
+    // Track hidden app in policies
     if (!device.deviceOwnerPolicies) device.deviceOwnerPolicies = {};
+    if (!device.deviceOwnerPolicies.hiddenApps) device.deviceOwnerPolicies.hiddenApps = [];
+    if (!device.deviceOwnerPolicies.hiddenApps.includes(packageName)) {
+      device.deviceOwnerPolicies.hiddenApps.push(packageName);
+    }
     device.deviceOwnerPolicies.appHidden = true;
     device.deviceOwnerPolicies.hiddenTimestamp = new Date();
+    device.markModified('deviceOwnerPolicies');
     await device.save();
     
-    console.log(`[DO] App hidden on device ${device.deviceId}`);
-    res.json({ success: true, appHidden: true });
+    // Also update InstalledApp record
+    const { InstalledApp } = require('../models');
+    await InstalledApp.updateOne(
+      { deviceId: device.deviceId, packageName },
+      { $set: { isHidden: true } }
+    );
+    
+    console.log(`[DO] App hidden: ${packageName} on device ${device.deviceId}`);
+    res.json({ success: true, appHidden: true, packageName });
   } catch (error) {
     console.error('[DO] Hide app error:', error);
     res.status(500).json({ error: 'Failed to hide app: ' + error.message });
@@ -310,14 +352,33 @@ router.post('/:deviceId/unhide-app', protect, async (req, res) => {
       return res.status(403).json({ error: 'Device Owner mode not active on this device' });
     }
     
-    await sendFcmCommand(device, 'DO_HIDE_APP', { hide: false, packageName: req.body.packageName || device.packageName || 'com.familyguardpro' });
+    const packageName = req.body.packageName;
+    if (!packageName) {
+      return res.status(400).json({ error: 'packageName is required' });
+    }
     
+    await sendFcmCommand(device, 'DO_HIDE_APP', { hide: false, packageName });
+    
+    // Remove from hidden apps list
     if (!device.deviceOwnerPolicies) device.deviceOwnerPolicies = {};
-    device.deviceOwnerPolicies.appHidden = false;
+    if (device.deviceOwnerPolicies.hiddenApps) {
+      device.deviceOwnerPolicies.hiddenApps = device.deviceOwnerPolicies.hiddenApps.filter(p => p !== packageName);
+    }
+    if (!device.deviceOwnerPolicies.hiddenApps || device.deviceOwnerPolicies.hiddenApps.length === 0) {
+      device.deviceOwnerPolicies.appHidden = false;
+    }
+    device.markModified('deviceOwnerPolicies');
     await device.save();
     
-    console.log(`[DO] App unhidden on device ${device.deviceId}`);
-    res.json({ success: true, appHidden: false });
+    // Also update InstalledApp record
+    const { InstalledApp } = require('../models');
+    await InstalledApp.updateOne(
+      { deviceId: device.deviceId, packageName },
+      { $set: { isHidden: false } }
+    );
+    
+    console.log(`[DO] App unhidden: ${packageName} on device ${device.deviceId}`);
+    res.json({ success: true, appHidden: false, packageName });
   } catch (error) {
     console.error('[DO] Unhide app error:', error);
     res.status(500).json({ error: 'Failed to unhide app: ' + error.message });
@@ -350,66 +411,6 @@ router.put('/:deviceId/uninstall-protection', protect, async (req, res) => {
   } catch (error) {
     console.error('[DO] Uninstall protection error:', error);
     res.status(500).json({ error: 'Failed to update uninstall protection: ' + error.message });
-  }
-});
-
-// ==========================================
-// FACTORY RESET PIN (DO Feature #3)
-// ==========================================
-
-// POST /api/device-owner/:deviceId/set-reset-pin
-router.post('/:deviceId/set-reset-pin', protect, async (req, res) => {
-  try {
-    const { device, error, status } = await getDeviceOwnerDevice(req.params.deviceId, req.user._id);
-    if (error) return res.status(status).json({ error });
-    
-    if (device.mode !== 'deviceOwner') {
-      return res.status(403).json({ error: 'Device Owner mode not active' });
-    }
-    
-    const { pin } = req.body;
-    
-    if (!pin || pin.length < 4 || pin.length > 8) {
-      return res.status(400).json({ error: 'PIN must be 4-8 digits' });
-    }
-    
-    await sendFcmCommand(device, 'DO_SET_RESET_PIN', { pin });
-    
-    if (!device.deviceOwnerPolicies) device.deviceOwnerPolicies = {};
-    device.deviceOwnerPolicies.factoryResetPinEnabled = true;
-    // Store hashed PIN for verification
-    const bcrypt = require('bcryptjs');
-    device.deviceOwnerPolicies.factoryResetPin = await bcrypt.hash(pin, 10);
-    await device.save();
-    
-    res.json({ success: true, factoryResetPinEnabled: true });
-  } catch (error) {
-    console.error('[DO] Set reset PIN error:', error);
-    res.status(500).json({ error: 'Failed to set reset PIN: ' + error.message });
-  }
-});
-
-// DELETE /api/device-owner/:deviceId/reset-pin
-router.delete('/:deviceId/reset-pin', protect, async (req, res) => {
-  try {
-    const { device, error, status } = await getDeviceOwnerDevice(req.params.deviceId, req.user._id);
-    if (error) return res.status(status).json({ error });
-    
-    if (device.mode !== 'deviceOwner') {
-      return res.status(403).json({ error: 'Device Owner mode not active' });
-    }
-    
-    await sendFcmCommand(device, 'DO_CLEAR_RESET_PIN', {});
-    
-    if (!device.deviceOwnerPolicies) device.deviceOwnerPolicies = {};
-    device.deviceOwnerPolicies.factoryResetPinEnabled = false;
-    device.deviceOwnerPolicies.factoryResetPin = null;
-    await device.save();
-    
-    res.json({ success: true, factoryResetPinEnabled: false });
-  } catch (error) {
-    console.error('[DO] Clear reset PIN error:', error);
-    res.status(500).json({ error: 'Failed to clear reset PIN: ' + error.message });
   }
 });
 
@@ -634,6 +635,134 @@ router.post('/:deviceId/install-app', protect, async (req, res) => {
   } catch (error) {
     console.error('[DO] Install app error:', error);
     res.status(500).json({ error: 'Failed to install app: ' + error.message });
+  }
+});
+
+// POST /api/device-owner/:deviceId/upload-install-app
+// Upload an APK file, store temporarily, and send install command to device
+router.post('/:deviceId/upload-install-app', protect, apkUpload.single('apk'), async (req, res) => {
+  try {
+    const { device, error, status } = await getDeviceOwnerDevice(req.params.deviceId, req.user._id);
+    if (error) {
+      // Clean up uploaded file on error
+      if (req.file) fs.unlink(req.file.path, () => {});
+      return res.status(status).json({ error });
+    }
+    
+    if (device.mode !== 'deviceOwner') {
+      if (req.file) fs.unlink(req.file.path, () => {});
+      return res.status(403).json({ error: 'Device Owner mode not active' });
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'No APK file uploaded' });
+    }
+    
+    // Generate a temp download ID
+    const tempId = crypto.randomBytes(16).toString('hex');
+    const apkFileName = `${tempId}.apk`;
+    const apkPath = path.join(TEMP_APK_DIR, apkFileName);
+    
+    // Rename uploaded file to .apk extension
+    fs.renameSync(req.file.path, apkPath);
+    
+    // Store in temp map with 10-minute expiry
+    tempApkFiles.set(tempId, {
+      filePath: apkPath,
+      originalName: req.file.originalname,
+      expiresAt: Date.now() + 10 * 60 * 1000
+    });
+    
+    // Auto-delete after 10 minutes
+    setTimeout(() => {
+      const entry = tempApkFiles.get(tempId);
+      if (entry) {
+        fs.unlink(entry.filePath, () => {});
+        tempApkFiles.delete(tempId);
+        console.log(`[DO] Temp APK cleaned up: ${tempId}`);
+      }
+    }, 10 * 60 * 1000);
+    
+    // Build the download URL - use the server's own URL
+    const serverBaseUrl = process.env.SERVER_URL || 
+      `${req.protocol}://${req.get('host')}`;
+    const apkUrl = `${serverBaseUrl}/api/device-owner/apk-download/${tempId}`;
+    
+    // Send install command to device
+    await sendFcmCommand(device, 'DO_INSTALL_APP', {
+      apkUrl,
+      packageName: req.body.packageName || '',
+      appName: req.body.appName || req.file.originalname.replace('.apk', '')
+    });
+    
+    // Track installed app
+    if (!device.deviceOwnerPolicies) device.deviceOwnerPolicies = {};
+    if (!device.deviceOwnerPolicies.installedApps) {
+      device.deviceOwnerPolicies.installedApps = [];
+    }
+    device.deviceOwnerPolicies.installedApps.push({
+      packageName: req.body.packageName || 'pending',
+      appName: req.body.appName || req.file.originalname.replace('.apk', ''),
+      installedAt: new Date(),
+      source: 'upload'
+    });
+    await device.save();
+    
+    console.log(`[DO] APK uploaded and install command sent: ${req.file.originalname} (${(req.file.size / 1024 / 1024).toFixed(1)}MB)`);
+    
+    res.json({ 
+      success: true, 
+      message: 'APK uploaded and install command sent to device',
+      fileName: req.file.originalname,
+      fileSize: req.file.size
+    });
+  } catch (error) {
+    // Clean up file on error
+    if (req.file) fs.unlink(req.file.path, () => {});
+    console.error('[DO] Upload install error:', error);
+    res.status(500).json({ error: 'Failed to upload and install: ' + error.message });
+  }
+});
+
+// GET /api/device-owner/apk-download/:tempId
+// Temporary download endpoint for uploaded APK files (used by child device)
+router.get('/apk-download/:tempId', async (req, res) => {
+  try {
+    const { tempId } = req.params;
+    const entry = tempApkFiles.get(tempId);
+    
+    if (!entry) {
+      return res.status(404).json({ error: 'APK not found or expired' });
+    }
+    
+    if (Date.now() > entry.expiresAt) {
+      // Expired - clean up
+      fs.unlink(entry.filePath, () => {});
+      tempApkFiles.delete(tempId);
+      return res.status(410).json({ error: 'APK download link has expired' });
+    }
+    
+    if (!fs.existsSync(entry.filePath)) {
+      tempApkFiles.delete(tempId);
+      return res.status(404).json({ error: 'APK file not found' });
+    }
+    
+    // Send the file
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    res.setHeader('Content-Disposition', `attachment; filename="${entry.originalName}"`);
+    
+    const stream = fs.createReadStream(entry.filePath);
+    stream.pipe(res);
+    
+    // Clean up after successful download
+    res.on('finish', () => {
+      fs.unlink(entry.filePath, () => {});
+      tempApkFiles.delete(tempId);
+      console.log(`[DO] APK downloaded and cleaned up: ${tempId}`);
+    });
+  } catch (error) {
+    console.error('[DO] APK download error:', error);
+    res.status(500).json({ error: 'Failed to download APK' });
   }
 });
 

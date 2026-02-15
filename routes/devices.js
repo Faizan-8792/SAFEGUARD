@@ -1,5 +1,5 @@
 const express = require('express');
-const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS, Screenshot, User } = require('../models');
+const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS, Screenshot, User, InstalledApp } = require('../models');
 const { protect } = require('./auth');
 const admin = require('firebase-admin');
 
@@ -748,6 +748,51 @@ router.get('/:deviceId/apps', protect, async (req, res) => {
   }
 });
 
+// Get all installed apps on device (for Device Owner hide/uninstall)
+router.get('/:deviceId/installed-apps', protect, async (req, res) => {
+  try {
+    const deviceIdParam = req.params.deviceId;
+    const mongoose = require('mongoose');
+    
+    let device = null;
+    if (mongoose.Types.ObjectId.isValid(deviceIdParam)) {
+      device = await Device.findOne({ _id: deviceIdParam, owner: req.user._id });
+    }
+    if (!device) {
+      device = await Device.findOne({ deviceId: deviceIdParam, owner: req.user._id });
+    }
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    
+    // Get all installed apps
+    const apps = await InstalledApp.find({ deviceId: device.deviceId })
+      .sort({ appName: 1 });
+    
+    // Get hidden apps from device policies
+    const hiddenApps = device.deviceOwnerPolicies?.hiddenApps || [];
+    
+    // Mark which apps are hidden
+    const appsWithStatus = apps.map(app => ({
+      packageName: app.packageName,
+      appName: app.appName,
+      isSystemApp: app.isSystemApp,
+      isEnabled: app.isEnabled,
+      isHidden: hiddenApps.includes(app.packageName) || app.isHidden,
+      lastSeenAt: app.lastSeenAt
+    }));
+    
+    res.json({
+      success: true,
+      apps: appsWithStatus,
+      total: appsWithStatus.length
+    });
+  } catch (error) {
+    console.error('Failed to fetch installed apps:', error);
+    res.status(500).json({ error: 'Failed to fetch installed apps' });
+  }
+});
+
 // Get device photos/gallery with date filtering
 router.get('/:deviceId/photos', protect, async (req, res) => {
   try {
@@ -851,10 +896,22 @@ router.get('/:deviceId/photos', protect, async (req, res) => {
     // Recalculate 'all' as sum of all albums
     albums.all = Object.keys(albums).filter(k => k !== 'all').reduce((sum, k) => sum + albums[k], 0);
 
-    // Get storage info
+    // Get storage info - RECALCULATE from actual Photo collection to handle TTL auto-deletes
     const user = await User.findById(req.user._id);
-    const storageUsed = user?.photoStorageUsed || 0;
+    const storageAgg = await Photo.aggregate([
+      { $match: { deviceId: device.deviceId } },
+      { $group: { _id: null, totalSize: { $sum: '$size' } } }
+    ]);
+    const actualStorageUsed = storageAgg.length > 0 ? storageAgg[0].totalSize : 0;
     const storageLimit = user?.photoStorageLimit || (200 * 1024 * 1024);
+    
+    // Fix stale storage counter if it differs from reality (e.g., TTL deleted photos)
+    if (user && Math.abs((user.photoStorageUsed || 0) - actualStorageUsed) > 1024) {
+      user.photoStorageUsed = actualStorageUsed;
+      await user.save();
+      console.log(`[Photos] Fixed stale storage: was ${user.photoStorageUsed}, actual ${actualStorageUsed}`);
+    }
+    const storageUsed = actualStorageUsed;
 
     res.json({
       success: true,
@@ -1048,16 +1105,16 @@ router.delete('/:deviceId/photos/delete-all', protect, async (req, res) => {
     // Delete all photos for this device
     const result = await Photo.deleteMany({ deviceId: device.deviceId });
     
-    // Reset user's photo storage used
-    await User.findByIdAndUpdate(req.user._id, {
-      $inc: { photoStorageUsed: -totalSize }
-    });
+    // Always recalculate and set storage to actual value (handles TTL-deleted photos too)
+    const remaining = await Photo.aggregate([
+      { $match: { deviceId: device.deviceId } },
+      { $group: { _id: null, totalSize: { $sum: '$size' } } }
+    ]);
+    const remainingSize = remaining.length > 0 ? remaining[0].totalSize : 0;
     
-    // Ensure it doesn't go negative
-    await User.updateOne(
-      { _id: req.user._id, photoStorageUsed: { $lt: 0 } },
-      { $set: { photoStorageUsed: 0 } }
-    );
+    await User.findByIdAndUpdate(req.user._id, {
+      $set: { photoStorageUsed: remainingSize }
+    });
   
     console.log(`[Photos] Deleted ${result.deletedCount} photos (${(totalSize / 1024 / 1024).toFixed(2)}MB) for device ${device.name}`);
     

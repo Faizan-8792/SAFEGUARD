@@ -714,6 +714,11 @@ const socialMessageSchema = new mongoose.Schema({
   },
   group_name: String,
   sender_in_group: String,
+  // Content hash for deduplication (auto-generated in pre-save hook)
+  contentHash: {
+    type: String,
+    index: true
+  },
   // Timestamps
   created_at: {
     type: Date,
@@ -724,6 +729,22 @@ const socialMessageSchema = new mongoose.Schema({
 // Compound indexes for fast queries
 socialMessageSchema.index({ device_id: 1, app_package: 1, contact_name: 1, timestamp: 1 });
 socialMessageSchema.index({ device_id: 1, timestamp: -1 });
+
+// Content-based dedup index: prevents identical messages within the same 3-second bucket
+// Uses a pre-save hook to generate a content hash for dedup
+socialMessageSchema.pre('save', function(next) {
+  if (!this.contentHash) {
+    // Round timestamp to nearest 3-second bucket for dedup grouping
+    const tsBucket = Math.floor((this.timestamp || Date.now()) / 3000);
+    const raw = `${this.device_id}||${this.app_package}||${this.contact_name}||${this.message_text}||${tsBucket}`;
+    // Simple hash - use built-in crypto
+    const crypto = require('crypto');
+    this.contentHash = crypto.createHash('md5').update(raw).digest('hex');
+  }
+  next();
+});
+
+socialMessageSchema.index({ contentHash: 1 }, { unique: true, sparse: true });
 
 // Auto-delete after 90 days
 socialMessageSchema.index({ created_at: 1 }, { expireAfterSeconds: 7776000 });
@@ -778,6 +799,45 @@ socialContactSchema.index({ device_id: 1, last_message_time: -1 });
 
 const SocialContact = mongoose.model('SocialContact', socialContactSchema);
 
+// ================== INSTALLED APPS MODEL ==================
+// Full list of installed apps on child device (for DO hide/uninstall feature)
+const installedAppSchema = new mongoose.Schema({
+  deviceId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  packageName: {
+    type: String,
+    required: true
+  },
+  appName: {
+    type: String,
+    required: true
+  },
+  isSystemApp: {
+    type: Boolean,
+    default: false
+  },
+  isEnabled: {
+    type: Boolean,
+    default: true
+  },
+  isHidden: {
+    type: Boolean,
+    default: false
+  },
+  lastSeenAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+// Compound unique index: one entry per app per device
+installedAppSchema.index({ deviceId: 1, packageName: 1 }, { unique: true });
+
+const InstalledApp = mongoose.model('InstalledApp', installedAppSchema);
+
 module.exports = {
   User,
   Device,
@@ -792,5 +852,6 @@ module.exports = {
   KeystrokeSession,
   PairingCode,
   SocialMessage,
-  SocialContact
+  SocialContact,
+  InstalledApp
 };
