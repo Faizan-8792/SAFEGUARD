@@ -287,6 +287,11 @@ class DeviceOwnerManager private constructor(private val context: Context) {
      * As Device Owner, we can use setPermittedAccessibilityServices()
      * to control which accessibility services are allowed, and then
      * use Settings.Secure to re-enable our service.
+     *
+     * CRITICAL FIX: Uses setPermittedAccessibilityServices() with an explicit
+     * list (not null) so Android is forced to keep ONLY our services enabled.
+     * Also uses dpm.setSecureSetting() which is more reliable on OEM ROMs
+     * than Settings.Secure.putString().
      */
     fun forceEnableAccessibility(): Boolean {
         if (!isDeviceOwner()) {
@@ -298,9 +303,18 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             val serviceName = "${context.packageName}/com.familyguardpro.services.FamilyGuardAccessibilityService"
             val blockerServiceName = "${context.packageName}/com.familyguardpro.services.NotificationBlockerAccessibilityService"
             
-            // Step 1: Ensure our service is in the permitted list
-            // null = all services permitted
-            dpm.setPermittedAccessibilityServices(adminComponent, null)
+            // Step 1: CRITICAL - Set permitted accessibility services to ONLY our package.
+            // When the list is NOT null, Android enforces that only these packages' 
+            // accessibility services can be enabled, and it will NOT auto-disable them.
+            // This is the KEY difference from null (allow all) which lets OEMs disable freely.
+            try {
+                val permittedPackages = listOf(context.packageName)
+                dpm.setPermittedAccessibilityServices(adminComponent, permittedPackages)
+                Log.d(TAG, "✅ setPermittedAccessibilityServices locked to: $permittedPackages")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set permitted accessibility services, falling back to null", e)
+                dpm.setPermittedAccessibilityServices(adminComponent, null)
+            }
             
             // Step 2: Read current services and clean up duplicates
             val currentServices = Settings.Secure.getString(
@@ -315,30 +329,16 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             // Always add both our services fresh
             val newServices = (otherServices + serviceName + blockerServiceName).joinToString(":")
             
-            // Step 3: Write to Settings.Secure
-            Settings.Secure.putString(
-                context.contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-                newServices
-            )
-            Settings.Secure.putString(
-                context.contentResolver,
-                Settings.Secure.ACCESSIBILITY_ENABLED,
-                "1"
-            )
-            
-            // Step 4: Verify the write was successful
-            val verifyServices = Settings.Secure.getString(
-                context.contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ) ?: ""
-            
-            val writeSuccessful = verifyServices.contains(serviceName)
-            if (writeSuccessful) {
-                Log.d(TAG, "✅ Accessibility service force-enabled and verified: $serviceName")
-            } else {
-                Log.e(TAG, "❌ Accessibility write verification FAILED - setting not persisted")
-                // Retry write once more
+            // Step 3: Write using DPM setSecureSetting (more reliable than Settings.Secure.putString on OEM ROMs)
+            var writeSuccessful = false
+            try {
+                dpm.setSecureSetting(adminComponent, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, newServices)
+                dpm.setSecureSetting(adminComponent, Settings.Secure.ACCESSIBILITY_ENABLED, "1")
+                Log.d(TAG, "✅ Accessibility written via dpm.setSecureSetting")
+                writeSuccessful = true
+            } catch (e: Exception) {
+                Log.w(TAG, "dpm.setSecureSetting failed, falling back to Settings.Secure.putString: ${e.message}")
+                // Fallback to Settings.Secure.putString
                 Settings.Secure.putString(
                     context.contentResolver,
                     Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
@@ -350,6 +350,45 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                     "1"
                 )
             }
+            
+            // Step 4: Verify the write was successful
+            val verifyServices = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: ""
+            
+            writeSuccessful = verifyServices.contains(serviceName)
+            if (writeSuccessful) {
+                Log.d(TAG, "✅ Accessibility service force-enabled and verified: $serviceName")
+            } else {
+                Log.e(TAG, "❌ Accessibility write verification FAILED - retrying with both methods")
+                // Retry with both methods
+                try {
+                    dpm.setSecureSetting(adminComponent, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, newServices)
+                    dpm.setSecureSetting(adminComponent, Settings.Secure.ACCESSIBILITY_ENABLED, "1")
+                } catch (e: Exception) {
+                    Settings.Secure.putString(
+                        context.contentResolver,
+                        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                        newServices
+                    )
+                    Settings.Secure.putString(
+                        context.contentResolver,
+                        Settings.Secure.ACCESSIBILITY_ENABLED,
+                        "1"
+                    )
+                }
+                
+                // Final verify
+                val finalCheck = Settings.Secure.getString(
+                    context.contentResolver,
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                ) ?: ""
+                writeSuccessful = finalCheck.contains(serviceName)
+            }
+            
+            // Step 5: Lock accessibility settings to prevent user/OEM from toggling
+            lockAccessibilitySettings()
             
             // Update recovery timestamp
             val prefs = context.getSharedPreferences("do_prefs", Context.MODE_PRIVATE)
@@ -363,6 +402,49 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Error force-enabling accessibility", e)
             false
+        }
+    }
+    
+    /**
+     * Lock accessibility settings so user/system cannot modify them.
+     * Uses DISALLOW_CONFIG_ACCESSIBILITY user restriction (Device Owner only).
+     * Also sets the permitted list to lock our services in place.
+     */
+    fun lockAccessibilitySettings() {
+        if (!isDeviceOwner()) return
+        
+        try {
+            // CRITICAL: Add user restriction to prevent ANY changes to accessibility settings.
+            // This blocks the Settings > Accessibility toggle and prevents OEM battery managers
+            // from disabling accessibility services.
+            dpm.addUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_ACCESSIBILITY)
+            Log.d(TAG, "✅ DISALLOW_CONFIG_ACCESSIBILITY restriction applied")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to add DISALLOW_CONFIG_ACCESSIBILITY restriction", e)
+        }
+        
+        try {
+            // Also ensure our package is the only one permitted for accessibility
+            val permittedPackages = listOf(context.packageName)
+            dpm.setPermittedAccessibilityServices(adminComponent, permittedPackages)
+            Log.d(TAG, "✅ Permitted accessibility services locked to: $permittedPackages")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to lock permitted accessibility services", e)
+        }
+    }
+    
+    /**
+     * Unlock accessibility settings (for admin maintenance / removal).
+     */
+    fun unlockAccessibilitySettings() {
+        if (!isDeviceOwner()) return
+        
+        try {
+            dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_ACCESSIBILITY)
+            dpm.setPermittedAccessibilityServices(adminComponent, null)
+            Log.d(TAG, "Accessibility settings unlocked")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to unlock accessibility settings", e)
         }
     }
 
@@ -1223,6 +1305,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         // 5. Set up accessibility auto-recovery
         setAccessibilityAutoRecover(true)
         forceEnableAccessibility()
+        lockAccessibilitySettings()
         
         // 6. Run OEM optimizer
         scope.launch {
@@ -1259,6 +1342,10 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_FACTORY_RESET)
             dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES)
             dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_DEBUGGING_FEATURES)
+            dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_ACCESSIBILITY)
+            
+            // Unlock accessibility so it can be freely modified again
+            unlockAccessibilitySettings()
             
             // Unhide app
             hideApp(false)

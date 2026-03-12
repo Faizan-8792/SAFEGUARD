@@ -23,9 +23,17 @@ apk_decompiled/
 # Android generated
 android/
 
-FIXES_AND_TESTING.md
-
 # IDE
 *.iml
 .DS_Store
 Thumbs.db
+
+# Test/debug artifacts
+*.txt
+*.xml
+!app/**/*.xml
+*.png
+!parent-web/**
+*.mp3
+*.m4a
+backend/

@@ -963,14 +963,14 @@ function handleWebRTCSignaling(ws, deviceId, type, role) {
     console.error('[WebRTC] WebSocket error:', error);
   });
   
-  // Send ping every 30 seconds to keep connection alive
+  // Send ping every 15 seconds to keep connection alive (faster for streaming resilience)
   const pingInterval = setInterval(() => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'ping' }));
     } else {
       clearInterval(pingInterval);
     }
-  }, 30000);
+  }, 15000);
 }
 
 // === REAL-TIME SYNC HANDLER ===

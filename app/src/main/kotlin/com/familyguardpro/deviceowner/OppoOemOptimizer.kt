@@ -32,6 +32,10 @@ class OppoOemOptimizer(context: Context) : BaseOemOptimizer(context) {
         // Disable app quick freeze
         tryDisableAppFreeze()
         
+        // CRITICAL: Lock accessibility service and whitelist for background
+        lockAccessibilityService()
+        whitelistForBackground()
+        
         reportStatus(autoStartEnabled, batteryOptDisabled, backgroundRunAllowed)
         Log.d(TAG, "=== OPPO optimization complete ===")
     }

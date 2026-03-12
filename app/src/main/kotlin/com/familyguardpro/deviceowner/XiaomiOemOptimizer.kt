@@ -45,6 +45,10 @@ class XiaomiOemOptimizer(context: Context) : BaseOemOptimizer(context) {
         // 6. Global settings tweaks via DPM
         applyDpmSettings()
         
+        // 7. CRITICAL: Lock accessibility service and whitelist for background
+        lockAccessibilityService()
+        whitelistForBackground()
+        
         reportStatus(autoStartEnabled, batteryOptDisabled, backgroundRunAllowed)
         Log.d(TAG, "=== Xiaomi optimization complete ===")
     }

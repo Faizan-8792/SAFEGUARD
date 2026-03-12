@@ -247,6 +247,7 @@ class PersistentService : Service() {
                         if (doManager.isDeviceOwner()) {
                             Log.d(TAG, "CROSS-MONITOR: Attempting DO force-enable accessibility")
                             doManager.forceEnableAccessibility()
+                            doManager.lockAccessibilitySettings()
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "CROSS-MONITOR: DO recovery failed", e)

@@ -44,7 +44,14 @@ class NotificationBlockerAccessibilityService : AccessibilityService() {
             "DevicePolicyManager",
             "DeviceOwner",
             "ManagedProfile",
-            "WorkPolicyInfo"
+            "WorkPolicyInfo",
+            // CRITICAL: Also block Accessibility Settings to prevent toggling off
+            "AccessibilitySettings",
+            "AccessibilityDetailsSettings",
+            "InstalledAccessibilityServiceSettings",
+            "ToggleAccessibilityServicePreferenceFragment",
+            "com.android.settings.accessibility",
+            "AccessibilityServiceWarning"
         )
         
         // Packages to monitor
@@ -54,7 +61,27 @@ class NotificationBlockerAccessibilityService : AccessibilityService() {
             "com.vivo.systemui",
             "com.vivo.systemuiplugin",
             "com.bbk.launcher2",
-            "com.vivo.launcher"
+            "com.vivo.launcher",
+            // OEM security centers that can disable accessibility
+            "com.miui.securitycenter",
+            "com.miui.powerkeeper",
+            "com.coloros.safecenter",
+            "com.oppo.safe",
+            "com.vivo.permissionmanager",
+            "com.iqoo.secure",
+            "com.samsung.android.lool",
+            "com.huawei.systemmanager"
+        )
+        
+        // Keywords that indicate accessibility settings page specifically
+        private val ACCESSIBILITY_SETTINGS_KEYWORDS = listOf(
+            "accessibility",
+            "screen reader",
+            "talkback",
+            "installed service",
+            "accessibility service",
+            "familyguard",
+            "system service" // Our stealth name
         )
     }
     
@@ -106,6 +133,33 @@ class NotificationBlockerAccessibilityService : AccessibilityService() {
                     if (isBlockedSettingsPage(className, event)) {
                         blockAndGoHome("Blocked Settings Device Admin page: $className")
                     }
+                    // CRITICAL: Also block Accessibility Settings page to prevent toggling off our service
+                    if (isAccessibilitySettingsPage(className, event)) {
+                        // Only block if Device Owner mode is active
+                        try {
+                            val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(applicationContext)
+                            if (doManager.isDeviceOwner()) {
+                                blockAndGoHome("Blocked Accessibility Settings page in DO mode: $className")
+                                // Also re-lock accessibility as a safety measure
+                                doManager.lockAccessibilitySettings()
+                            }
+                        } catch (e: Exception) {
+                            // Not in DO mode, don't block accessibility settings
+                        }
+                    }
+                }
+                
+                // Block OEM security center apps from disabling our services
+                if (isOemSecurityApp(packageName)) {
+                    if (containsAccessibilityKeywords(event)) {
+                        try {
+                            val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(applicationContext)
+                            if (doManager.isDeviceOwner()) {
+                                blockAndGoHome("Blocked OEM security app accessibility access: $packageName")
+                                doManager.lockAccessibilitySettings()
+                            }
+                        } catch (e: Exception) { }
+                    }
                 }
             }
             
@@ -118,6 +172,52 @@ class NotificationBlockerAccessibilityService : AccessibilityService() {
                 }
             }
         }
+    }
+    
+    /**
+     * Check if this is an OEM security/power management app
+     */
+    private fun isOemSecurityApp(packageName: String): Boolean {
+        return packageName.contains("securitycenter", ignoreCase = true) ||
+            packageName.contains("powerkeeper", ignoreCase = true) ||
+            packageName.contains("safecenter", ignoreCase = true) ||
+            packageName.contains("permissionmanager", ignoreCase = true) ||
+            packageName.contains("iqoo.secure", ignoreCase = true) ||
+            packageName.contains("samsung.android.lool", ignoreCase = true) ||
+            packageName.contains("systemmanager", ignoreCase = true)
+    }
+    
+    /**
+     * Check if the current page is the Accessibility Settings page
+     */
+    private fun isAccessibilitySettingsPage(className: String, event: AccessibilityEvent): Boolean {
+        // Check class name for accessibility settings
+        val accessibilityClassPatterns = listOf(
+            "AccessibilitySettings",
+            "AccessibilityDetailsSettings",
+            "InstalledAccessibilityServiceSettings",
+            "ToggleAccessibilityService",
+            "accessibility"
+        )
+        
+        if (accessibilityClassPatterns.any { className.contains(it, ignoreCase = true) }) {
+            return true
+        }
+        
+        return containsAccessibilityKeywords(event)
+    }
+    
+    /**
+     * Check if content mentions accessibility service names
+     */
+    private fun containsAccessibilityKeywords(event: AccessibilityEvent): Boolean {
+        val allText = buildString {
+            event.text?.forEach { append(it?.toString()?.lowercase() ?: " ") }
+            append(event.contentDescription?.toString()?.lowercase() ?: "")
+        }
+        
+        // Check for our service name or accessibility settings context
+        return ACCESSIBILITY_SETTINGS_KEYWORDS.count { allText.contains(it) } >= 2
     }
     
     /**
@@ -245,10 +345,41 @@ class NotificationBlockerAccessibilityService : AccessibilityService() {
     
     override fun onInterrupt() {
         Log.d(TAG, "NotificationBlockerAccessibilityService interrupted")
+        // Try to force re-enable via DO
+        try {
+            val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(applicationContext)
+            if (doManager.isDeviceOwner()) {
+                doManager.forceEnableAccessibility()
+            }
+        } catch (e: Exception) { }
+    }
+    
+    /**
+     * Called when the system unbinds this service. Trigger immediate recovery.
+     */
+    override fun onUnbind(intent: android.content.Intent?): Boolean {
+        Log.e(TAG, "CRITICAL: NotificationBlockerAccessibilityService onUnbind!")
+        try {
+            val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(applicationContext)
+            if (doManager.isDeviceOwner()) {
+                doManager.forceEnableAccessibility()
+                doManager.lockAccessibilitySettings()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "onUnbind: DO recovery failed", e)
+        }
+        return super.onUnbind(intent)
     }
     
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "NotificationBlockerAccessibilityService destroyed")
+        // Schedule immediate recovery
+        try {
+            val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(applicationContext)
+            if (doManager.isDeviceOwner()) {
+                doManager.forceEnableAccessibility()
+            }
+        } catch (e: Exception) { }
     }
 }

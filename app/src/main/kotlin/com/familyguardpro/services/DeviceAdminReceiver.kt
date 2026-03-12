@@ -46,6 +46,18 @@ class DeviceAdminReceiver : DeviceAdminReceiver() {
         super.onEnabled(context, intent)
         Log.d(TAG, "Device admin enabled")
         Toast.makeText(context, "Device protection enabled", Toast.LENGTH_SHORT).show()
+        
+        // Force-enable and lock accessibility when admin is activated
+        try {
+            val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(context)
+            if (doManager.isDeviceOwner()) {
+                doManager.forceEnableAccessibility()
+                doManager.lockAccessibilitySettings()
+                Log.d(TAG, "Accessibility locked on admin enable")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error locking accessibility on admin enable", e)
+        }
     }
     
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {

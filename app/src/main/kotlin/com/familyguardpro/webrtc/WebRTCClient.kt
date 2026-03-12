@@ -67,6 +67,50 @@ class WebRTCClient(
     private var consecutiveLowQualityCount = 0
     private var consecutiveHighQualityCount = 0
     
+    // Adaptive resolution state
+    private var currentVideoWidth = VIDEO_WIDTH
+    private var currentVideoHeight = VIDEO_HEIGHT
+    private var currentVideoFps = VIDEO_FPS
+    private var isScreenStream = false
+    private var adaptiveMonitorRunning = false
+    private var lastBytesSent = 0L
+    private var lastStatsTimestamp = 0L
+    private var currentActualBitrateBps = 0
+    private var reconnectAttempts = 0
+    private val MAX_RECONNECT_ATTEMPTS = 10
+    private var connectionLostTime = 0L
+    
+    // Quality tiers for resolution scaling
+    data class QualityTier(
+        val width: Int,
+        val height: Int,
+        val fps: Int,
+        val maxBitrate: Int,
+        val label: String
+    )
+    
+    private val cameraQualityTiers = listOf(
+        QualityTier(160, 120, 8, 80_000, "VERY_LOW"),      // ~80 kbps - survival mode
+        QualityTier(240, 180, 10, 150_000, "LOW"),           // ~150 kbps
+        QualityTier(320, 240, 12, 250_000, "MEDIUM_LOW"),    // ~250 kbps
+        QualityTier(480, 360, 15, 400_000, "MEDIUM"),        // ~400 kbps
+        QualityTier(640, 480, 15, 600_000, "MEDIUM_HIGH"),   // ~600 kbps
+        QualityTier(960, 720, 20, 1_000_000, "HIGH"),        // ~1 Mbps
+        QualityTier(1280, 720, 24, 1_500_000, "VERY_HIGH")   // ~1.5 Mbps
+    )
+    
+    private val screenQualityTiers = listOf(
+        QualityTier(360, 640, 5, 100_000, "VERY_LOW"),       // survival
+        QualityTier(480, 854, 8, 200_000, "LOW"),
+        QualityTier(540, 960, 10, 350_000, "MEDIUM_LOW"),
+        QualityTier(720, 1280, 10, 500_000, "MEDIUM"),
+        QualityTier(720, 1280, 15, 800_000, "MEDIUM_HIGH"),
+        QualityTier(1080, 1920, 10, 1_200_000, "HIGH"),
+        QualityTier(1080, 1920, 15, 1_800_000, "VERY_HIGH")
+    )
+    
+    private var currentTierIndex = 3 // Start at MEDIUM
+    
     // ICE servers for STUN/TURN - TURN is essential for NAT traversal on mobile networks
     // Multiple TURN providers for reliability
     private val iceServers = listOf(
@@ -184,14 +228,30 @@ class WebRTCClient(
                             when (state) {
                                 PeerConnection.IceConnectionState.CHECKING -> 
                                     Log.d(TAG, "ICE: Checking connectivity...")
-                                PeerConnection.IceConnectionState.CONNECTED -> 
+                                PeerConnection.IceConnectionState.CONNECTED -> {
                                     Log.d(TAG, "ICE: Connected! ✅")
-                                PeerConnection.IceConnectionState.COMPLETED -> 
+                                    reconnectAttempts = 0
+                                    connectionLostTime = 0L
+                                    // Auto-start adaptive bitrate on connection
+                                    ensureAdaptiveQualityRunning()
+                                }
+                                PeerConnection.IceConnectionState.COMPLETED -> {
                                     Log.d(TAG, "ICE: Completed! All candidates checked ✅")
-                                PeerConnection.IceConnectionState.FAILED -> 
-                                    Log.e(TAG, "ICE: FAILED! ❌ No connectivity path found")
-                                PeerConnection.IceConnectionState.DISCONNECTED -> 
-                                    Log.w(TAG, "ICE: Disconnected")
+                                    reconnectAttempts = 0
+                                    connectionLostTime = 0L
+                                    ensureAdaptiveQualityRunning()
+                                }
+                                PeerConnection.IceConnectionState.FAILED -> {
+                                    Log.e(TAG, "ICE: FAILED! ❌ Attempting recovery...")
+                                    handleConnectionDegraded()
+                                }
+                                PeerConnection.IceConnectionState.DISCONNECTED -> {
+                                    Log.w(TAG, "ICE: Disconnected - dropping to minimum quality")
+                                    if (connectionLostTime == 0L) connectionLostTime = System.currentTimeMillis()
+                                    // Immediately drop to lowest quality to survive reconnection
+                                    dropToMinimumQuality()
+                                    handleConnectionDegraded()
+                                }
                                 PeerConnection.IceConnectionState.CLOSED -> 
                                     Log.d(TAG, "ICE: Closed")
                                 else -> {}
@@ -250,6 +310,22 @@ class WebRTCClient(
                         
                         override fun onConnectionChange(newState: PeerConnection.PeerConnectionState?) {
                             Log.d(TAG, "Connection state: $newState")
+                            when (newState) {
+                                PeerConnection.PeerConnectionState.CONNECTED -> {
+                                    reconnectAttempts = 0
+                                    connectionLostTime = 0L
+                                    ensureAdaptiveQualityRunning()
+                                }
+                                PeerConnection.PeerConnectionState.DISCONNECTED -> {
+                                    if (connectionLostTime == 0L) connectionLostTime = System.currentTimeMillis()
+                                    dropToMinimumQuality()
+                                    handleConnectionDegraded()
+                                }
+                                PeerConnection.PeerConnectionState.FAILED -> {
+                                    handleConnectionDegraded()
+                                }
+                                else -> {}
+                            }
                             newState?.let { listener.onConnectionStateChanged(it) }
                         }
                         
@@ -269,6 +345,7 @@ class WebRTCClient(
     }
     
     fun startCameraCapture() {
+        isScreenStream = false
         executor.execute {
             try {
                 Log.d(TAG, "Starting camera capture...")
@@ -306,9 +383,13 @@ class WebRTCClient(
                 )
                 Log.d(TAG, "Capturer initialized")
                 
-                // Start capture with common resolution
-                videoCapturer?.startCapture(VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FPS)
-                Log.d(TAG, "Capture started: ${VIDEO_WIDTH}x${VIDEO_HEIGHT}@${VIDEO_FPS}fps")
+                // Start capture - use current tier resolution
+                val tier = cameraQualityTiers[currentTierIndex]
+                currentVideoWidth = tier.width
+                currentVideoHeight = tier.height
+                currentVideoFps = tier.fps
+                videoCapturer?.startCapture(currentVideoWidth, currentVideoHeight, currentVideoFps)
+                Log.d(TAG, "Capture started: ${currentVideoWidth}x${currentVideoHeight}@${currentVideoFps}fps")
                 
                 // Give camera time to start producing frames
                 Thread.sleep(500)
@@ -338,9 +419,14 @@ class WebRTCClient(
     }
     
     fun startScreenCapture(mediaProjectionIntent: android.content.Intent) {
+        isScreenStream = true
         executor.execute {
             try {
-                Log.d(TAG, "Starting screen capture with dimensions: ${SCREEN_WIDTH}x${SCREEN_HEIGHT}@${SCREEN_FPS}fps")
+                val tier = screenQualityTiers[currentTierIndex]
+                currentVideoWidth = tier.width
+                currentVideoHeight = tier.height
+                currentVideoFps = tier.fps
+                Log.d(TAG, "Starting screen capture with dimensions: ${currentVideoWidth}x${currentVideoHeight}@${currentVideoFps}fps")
                 
                 // Create video source for screen
                 localVideoSource = peerConnectionFactory?.createVideoSource(true)
@@ -371,9 +457,9 @@ class WebRTCClient(
                 )
                 Log.d(TAG, "Screen capturer initialized")
                 
-                // Start capture
-                screenCapturer?.startCapture(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_FPS)
-                Log.d(TAG, "Screen capture startCapture called")
+                // Start capture with adaptive resolution
+                screenCapturer?.startCapture(currentVideoWidth, currentVideoHeight, currentVideoFps)
+                Log.d(TAG, "Screen capture startCapture called at ${currentVideoWidth}x${currentVideoHeight}@${currentVideoFps}fps")
                 
                 // CRITICAL: Give screen capturer time to start producing frames
                 Thread.sleep(1000)
@@ -613,7 +699,108 @@ class WebRTCClient(
         }
     }
     
-    // ============== Adaptive Bitrate Control ==============
+    // ============== Adaptive Bitrate + Resolution Control ==============
+    
+    /**
+     * Ensure adaptive quality monitor is running
+     */
+    private fun ensureAdaptiveQualityRunning() {
+        if (!adaptiveMonitorRunning) {
+            currentQuality = StreamQuality.AUTO
+            startAdaptiveBitrate()
+        }
+    }
+    
+    /**
+     * Drop to minimum quality immediately (for disconnected/failing connections)
+     */
+    private fun dropToMinimumQuality() {
+        Log.w(TAG, "⚠️ Dropping to MINIMUM quality to keep stream alive")
+        val tiers = if (isScreenStream) screenQualityTiers else cameraQualityTiers
+        currentTierIndex = 0
+        val tier = tiers[0]
+        setBitrate(tier.maxBitrate)
+        // Don't change resolution mid-stream for camera (causes restart), just reduce bitrate + fps
+        applyFpsReduction(tier.fps)
+    }
+    
+    /**
+     * Handle degraded connection - try ICE restart, don't die
+     */
+    private fun handleConnectionDegraded() {
+        executor.execute {
+            try {
+                if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                    Log.e(TAG, "Max reconnects reached, but keeping stream running at minimum")
+                    return@execute
+                }
+                
+                reconnectAttempts++
+                val delay = minOf(reconnectAttempts * 2000L, 15000L) // Exponential backoff, max 15s
+                Log.d(TAG, "Connection degraded - ICE restart attempt $reconnectAttempts in ${delay}ms")
+                
+                Thread.sleep(delay)
+                
+                peerConnection?.let {
+                    Log.d(TAG, "Attempting ICE restart...")
+                    it.restartIce()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in connection recovery", e)
+            }
+        }
+    }
+    
+    /**
+     * Apply FPS reduction without restarting capture
+     */
+    private fun applyFpsReduction(targetFps: Int) {
+        try {
+            peerConnection?.senders?.forEach { sender ->
+                if (sender.track()?.kind() == "video") {
+                    val params = sender.parameters
+                    if (params.encodings.isNotEmpty()) {
+                        params.encodings[0].maxFramerate = targetFps
+                        sender.parameters = params
+                        currentVideoFps = targetFps
+                        Log.d(TAG, "FPS reduced to $targetFps")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error reducing FPS", e)
+        }
+    }
+    
+    /**
+     * Apply resolution scaling via scaleResolutionDownBy
+     */
+    private fun applyResolutionScale(tierIndex: Int) {
+        try {
+            val tiers = if (isScreenStream) screenQualityTiers else cameraQualityTiers
+            val baseTier = tiers.last() // Highest tier = base resolution
+            val targetTier = tiers[tierIndex]
+            
+            // Calculate scale factor relative to capture resolution
+            val scaleW = currentVideoWidth.toDouble() / targetTier.width.toDouble()
+            val scale = maxOf(1.0, scaleW)
+            
+            peerConnection?.senders?.forEach { sender ->
+                if (sender.track()?.kind() == "video") {
+                    val params = sender.parameters
+                    if (params.encodings.isNotEmpty()) {
+                        params.encodings[0].scaleResolutionDownBy = scale
+                        params.encodings[0].maxFramerate = targetTier.fps
+                        params.encodings[0].maxBitrateBps = targetTier.maxBitrate
+                        sender.parameters = params
+                        Log.d(TAG, "📐 Resolution scale=${"%.1f".format(scale)}x, FPS=${targetTier.fps}, Bitrate=${targetTier.maxBitrate/1000}kbps [${targetTier.label}]")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error applying resolution scale", e)
+        }
+    }
     
     /**
      * Set stream quality preset
@@ -621,11 +808,35 @@ class WebRTCClient(
     fun setQuality(quality: StreamQuality) {
         currentQuality = quality
         when (quality) {
-            StreamQuality.LOW -> setBitrate(200_000)
-            StreamQuality.MEDIUM -> setBitrate(500_000)
-            StreamQuality.HIGH -> setBitrate(1_500_000)
+            StreamQuality.LOW -> {
+                currentTierIndex = 1
+                applyQualityTier(1)
+            }
+            StreamQuality.MEDIUM -> {
+                currentTierIndex = 3
+                applyQualityTier(3)
+            }
+            StreamQuality.HIGH -> {
+                currentTierIndex = 5
+                applyQualityTier(5)
+            }
             StreamQuality.AUTO -> startAdaptiveBitrate()
         }
+    }
+    
+    /**
+     * Apply a quality tier (bitrate + resolution scale + fps)
+     */
+    private fun applyQualityTier(tierIndex: Int) {
+        val tiers = if (isScreenStream) screenQualityTiers else cameraQualityTiers
+        val safeIndex = tierIndex.coerceIn(0, tiers.size - 1)
+        currentTierIndex = safeIndex
+        val tier = tiers[safeIndex]
+        
+        setBitrate(tier.maxBitrate)
+        applyResolutionScale(safeIndex)
+        
+        Log.d(TAG, "📊 Quality tier: ${tier.label} (${tier.width}x${tier.height}@${tier.fps}fps, ${tier.maxBitrate/1000}kbps)")
     }
     
     /**
@@ -655,50 +866,94 @@ class WebRTCClient(
      * Start adaptive bitrate monitoring
      */
     private fun startAdaptiveBitrate() {
+        if (adaptiveMonitorRunning) return
+        adaptiveMonitorRunning = true
+        
         executor.execute {
             try {
-                // Set initial bitrate
-                setBitrate(START_BITRATE)
+                // Set initial quality tier
+                applyQualityTier(currentTierIndex)
                 
-                // Start monitoring stats every 3 seconds
+                Log.d(TAG, "🔄 Adaptive quality monitor STARTED")
+                
+                // Monitor every 2 seconds for faster reaction
                 Thread {
-                    while (peerConnection != null && currentQuality == StreamQuality.AUTO) {
+                    while (peerConnection != null && adaptiveMonitorRunning) {
                         try {
-                            Thread.sleep(3000)
+                            Thread.sleep(2000)
                             checkConnectionStats()
                         } catch (e: InterruptedException) {
                             break
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Stats check error", e)
                         }
                     }
+                    adaptiveMonitorRunning = false
+                    Log.d(TAG, "🔄 Adaptive quality monitor STOPPED")
                 }.start()
                 
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting adaptive bitrate", e)
+                adaptiveMonitorRunning = false
             }
         }
     }
     
     /**
-     * Check connection statistics and adjust bitrate
+     * Check connection statistics and adjust quality tier
      */
     private fun checkConnectionStats() {
         peerConnection?.getStats { report ->
             var packetsLost = 0L
             var packetsSent = 0L
-            var bytesRemaining = 0L
+            var bytesSent = 0L
+            var roundTripTime = 0.0
+            var jitter = 0.0
+            var timestamp = 0.0
+            var framesEncoded = 0L
+            var framesDropped = 0L
+            var qualityLimitReason = ""
             
             report.statsMap.values.forEach { stats ->
-                if (stats.type == "outbound-rtp" && stats.toString().contains("video")) {
-                    try {
-                        val members = stats.members
-                        packetsLost = (members["packetsLost"] as? Number)?.toLong() ?: 0
-                        packetsSent = (members["packetsSent"] as? Number)?.toLong() ?: 0
-                        bytesRemaining = (members["bytesSent"] as? Number)?.toLong() ?: 0
-                    } catch (e: Exception) {
-                        // Ignore parsing errors
+                val members = stats.members
+                when {
+                    stats.type == "outbound-rtp" && members.containsKey("kind") && members["kind"] == "video" -> {
+                        try {
+                            packetsLost = (members["packetsLost"] as? Number)?.toLong() ?: packetsLost
+                            packetsSent = (members["packetsSent"] as? Number)?.toLong() ?: packetsSent
+                            bytesSent = (members["bytesSent"] as? Number)?.toLong() ?: bytesSent
+                            timestamp = (members["timestamp"] as? Number)?.toDouble() ?: timestamp
+                            framesEncoded = (members["framesEncoded"] as? Number)?.toLong() ?: framesEncoded
+                            qualityLimitReason = (members["qualityLimitationReason"] as? String) ?: qualityLimitReason
+                        } catch (e: Exception) { }
+                    }
+                    stats.type == "outbound-rtp" && stats.toString().contains("video") -> {
+                        try {
+                            packetsLost = (members["packetsLost"] as? Number)?.toLong() ?: packetsLost
+                            packetsSent = (members["packetsSent"] as? Number)?.toLong() ?: packetsSent
+                            bytesSent = (members["bytesSent"] as? Number)?.toLong() ?: bytesSent
+                            timestamp = (members["timestamp"] as? Number)?.toDouble() ?: timestamp
+                        } catch (e: Exception) { }
+                    }
+                    stats.type == "remote-inbound-rtp" -> {
+                        try {
+                            roundTripTime = (members["roundTripTime"] as? Number)?.toDouble() ?: roundTripTime
+                            jitter = (members["jitter"] as? Number)?.toDouble() ?: jitter
+                        } catch (e: Exception) { }
                     }
                 }
             }
+            
+            // Calculate actual bitrate
+            if (lastStatsTimestamp > 0 && timestamp > lastStatsTimestamp) {
+                val timeDelta = (timestamp - lastStatsTimestamp) / 1000.0 // seconds
+                val bytesDelta = bytesSent - lastBytesSent
+                if (timeDelta > 0) {
+                    currentActualBitrateBps = ((bytesDelta * 8) / timeDelta).toInt()
+                }
+            }
+            lastBytesSent = bytesSent
+            lastStatsTimestamp = timestamp
             
             // Calculate packet loss percentage
             val totalPackets = packetsLost + packetsSent
@@ -708,44 +963,90 @@ class WebRTCClient(
                 0.0
             }
             
-            Log.d(TAG, "Connection stats - Loss: ${"%.2f".format(lossRate)}%, Bitrate: ${currentBitrate / 1000} kbps")
+            val rttMs = (roundTripTime * 1000).toInt()
+            val tiers = if (isScreenStream) screenQualityTiers else cameraQualityTiers
             
-            // Adjust bitrate based on loss rate
-            when {
+            Log.d(TAG, "📊 Stats - Loss:${"%.1f".format(lossRate)}% RTT:${rttMs}ms Bitrate:${currentActualBitrateBps/1000}/${currentBitrate/1000}kbps Tier:${currentTierIndex}/${tiers.size-1} QLimit:$qualityLimitReason")
+            
+            // AGGRESSIVE quality adjustment based on multiple signals
+            val shouldDowngrade = when {
+                lossRate > 10.0 -> true   // Very high loss - IMMEDIATE downgrade
                 lossRate > 5.0 -> {
-                    // High packet loss - reduce quality
                     consecutiveLowQualityCount++
-                    consecutiveHighQualityCount = 0
-                    
-                    if (consecutiveLowQualityCount >= 2) {
-                        val newBitrate = maxOf(MIN_BITRATE, (currentBitrate * 0.7).toInt())
-                        if (newBitrate < currentBitrate) {
-                            Log.d(TAG, "Reducing bitrate due to packet loss")
-                            setBitrate(newBitrate)
-                        }
-                        consecutiveLowQualityCount = 0
-                    }
+                    consecutiveLowQualityCount >= 1 // Downgrade after 1 bad reading (2s)
                 }
-                lossRate < 1.0 -> {
-                    // Low packet loss - can increase quality
+                lossRate > 2.0 && rttMs > 500 -> {
+                    consecutiveLowQualityCount++
+                    consecutiveLowQualityCount >= 2 // Loss + high latency
+                }
+                rttMs > 1000 -> true  // Very high latency
+                qualityLimitReason == "bandwidth" -> {
+                    consecutiveLowQualityCount++
+                    consecutiveLowQualityCount >= 2
+                }
+                currentActualBitrateBps > 0 && currentActualBitrateBps < currentBitrate * 0.4 -> {
+                    // Actual bitrate is less than 40% of target - bandwidth constrained
+                    consecutiveLowQualityCount++
+                    consecutiveLowQualityCount >= 2
+                }
+                else -> false
+            }
+            
+            val shouldUpgrade = lossRate < 0.5 && rttMs < 200 && 
+                (currentActualBitrateBps == 0 || currentActualBitrateBps > currentBitrate * 0.8)
+            
+            when {
+                shouldDowngrade -> {
+                    consecutiveHighQualityCount = 0
+                    if (currentTierIndex > 0) {
+                        // Drop by 1 tier normally, 2 tiers if very bad
+                        val drop = if (lossRate > 10.0 || rttMs > 1000) 2 else 1
+                        val newTier = maxOf(0, currentTierIndex - drop)
+                        if (newTier != currentTierIndex) {
+                            Log.w(TAG, "⬇️ DOWNGRADE: Tier $currentTierIndex → $newTier (loss=${"%.1f".format(lossRate)}%, rtt=${rttMs}ms)")
+                            applyQualityTier(newTier)
+                        }
+                    } else {
+                        Log.w(TAG, "⚠️ Already at minimum tier - keeping stream alive at lowest quality")
+                    }
+                    consecutiveLowQualityCount = 0
+                }
+                shouldUpgrade -> {
                     consecutiveHighQualityCount++
                     consecutiveLowQualityCount = 0
                     
-                    if (consecutiveHighQualityCount >= 3) {
-                        val newBitrate = minOf(MAX_BITRATE, (currentBitrate * 1.2).toInt())
-                        if (newBitrate > currentBitrate) {
-                            Log.d(TAG, "Increasing bitrate - good connection")
-                            setBitrate(newBitrate)
-                        }
+                    // Upgrade slowly - need 5 consecutive good readings (10 seconds)
+                    if (consecutiveHighQualityCount >= 5 && currentTierIndex < tiers.size - 1) {
+                        val newTier = minOf(tiers.size - 1, currentTierIndex + 1)
+                        Log.d(TAG, "⬆️ UPGRADE: Tier $currentTierIndex → $newTier (loss=${"%.1f".format(lossRate)}%, rtt=${rttMs}ms)")
+                        applyQualityTier(newTier)
                         consecutiveHighQualityCount = 0
                     }
                 }
                 else -> {
-                    // Moderate loss - maintain current quality
-                    consecutiveLowQualityCount = 0
-                    consecutiveHighQualityCount = 0
+                    // Stable - slight reset toward 0
+                    consecutiveLowQualityCount = maxOf(0, consecutiveLowQualityCount - 1)
+                    consecutiveHighQualityCount = maxOf(0, consecutiveHighQualityCount - 1)
                 }
             }
+        }
+    }
+    
+    /**
+     * Get current quality tier info for signaling
+     */
+    fun getCurrentQualityInfo(): JSONObject {
+        val tiers = if (isScreenStream) screenQualityTiers else cameraQualityTiers
+        val tier = tiers[currentTierIndex]
+        return JSONObject().apply {
+            put("tierIndex", currentTierIndex)
+            put("maxTiers", tiers.size)
+            put("label", tier.label)
+            put("width", tier.width)
+            put("height", tier.height)
+            put("fps", tier.fps)
+            put("targetBitrate", tier.maxBitrate)
+            put("actualBitrate", currentActualBitrateBps)
         }
     }
     
@@ -758,4 +1059,9 @@ class WebRTCClient(
      * Get current quality setting
      */
     fun getCurrentQuality(): StreamQuality = currentQuality
+    
+    /**
+     * Get current tier index
+     */
+    fun getCurrentTierIndex(): Int = currentTierIndex
 }

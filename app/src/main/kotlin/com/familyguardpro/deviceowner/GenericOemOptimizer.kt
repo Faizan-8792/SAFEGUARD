@@ -26,6 +26,10 @@ class GenericOemOptimizer(context: Context) : BaseOemOptimizer(context) {
             Log.w(TAG, "Error applying generic DPM settings", e)
         }
         
+        // CRITICAL: Lock accessibility service and whitelist for background
+        lockAccessibilityService()
+        whitelistForBackground()
+        
         reportStatus(
             autoStartEnabled = true,
             batteryOptDisabled = batteryOptDisabled,

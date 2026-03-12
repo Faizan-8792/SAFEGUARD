@@ -41,6 +41,10 @@ class VivoOemOptimizer(context: Context) : BaseOemOptimizer(context) {
         // 5. Keep app alive settings
         tryKeepAlive()
         
+        // 6. CRITICAL: Lock accessibility service and whitelist for background
+        lockAccessibilityService()
+        whitelistForBackground()
+        
         reportStatus(autoStartEnabled, batteryOptDisabled, backgroundRunAllowed)
         Log.d(TAG, "=== Vivo optimization complete ===")
     }

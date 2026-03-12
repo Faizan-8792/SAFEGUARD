@@ -37,7 +37,7 @@ class CallRecordService : Service() {
     companion object {
         private const val TAG = "CallRecordService"
         private const val NOTIFICATION_ID = 1005
-        private const val SAMPLE_RATE = 16000
+        private const val SAMPLE_RATE = 44100 // 44.1kHz for high-quality call audio
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         
@@ -641,20 +641,54 @@ class CallRecordService : Service() {
             return
         }
         
-        val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-        
-        audioRecord = AudioRecord(
+        // Try multiple sample rates for best quality
+        val sampleRates = listOf(44100, 16000, 8000)
+        val audioSources = listOf(
+            MediaRecorder.AudioSource.VOICE_CALL,
             MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-            SAMPLE_RATE,
-            CHANNEL_CONFIG,
-            AUDIO_FORMAT,
-            bufferSize * 2
+            MediaRecorder.AudioSource.MIC
         )
+        
+        var activeSampleRate = SAMPLE_RATE
+        var initialized = false
+        
+        for (rate in sampleRates) {
+            if (initialized) break
+            for (source in audioSources) {
+                try {
+                    val minBuf = AudioRecord.getMinBufferSize(rate, CHANNEL_CONFIG, AUDIO_FORMAT)
+                    if (minBuf <= 0) continue
+                    val bufSize = minBuf * 8 // 8x buffer for smooth high-quality streaming
+                    
+                    audioRecord = AudioRecord(source, rate, CHANNEL_CONFIG, AUDIO_FORMAT, bufSize)
+                    
+                    if (audioRecord?.state == AudioRecord.STATE_INITIALIZED) {
+                        activeSampleRate = rate
+                        Log.w(TAG, "Call streaming AudioRecord initialized: source=$source, rate=${rate}Hz, buffer=$bufSize")
+                        initialized = true
+                        break
+                    } else {
+                        audioRecord?.release()
+                        audioRecord = null
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed init call stream: source=$source @${rate}Hz: ${e.message}")
+                    audioRecord?.release()
+                    audioRecord = null
+                }
+            }
+        }
+        
+        if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+            Log.e(TAG, "Call streaming AudioRecord init failed")
+            return
+        }
         
         audioRecord?.startRecording()
         
         serviceScope.launch(Dispatchers.IO) {
-            val buffer = ByteArray(bufferSize)
+            val minBuf = AudioRecord.getMinBufferSize(activeSampleRate, CHANNEL_CONFIG, AUDIO_FORMAT)
+            val buffer = ByteArray(minBuf)
             
             while (isLiveListening && audioRecord?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                 val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0

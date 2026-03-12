@@ -104,7 +104,6 @@ function getDeviceId(device) {
 }
 
 // DOM Elements
-const modeSelectionPage = document.getElementById('modeSelectionPage');
 const loginPage = document.getElementById('loginPage');
 const registerPage = document.getElementById('registerPage');
 const dashboardPage = document.getElementById('dashboardPage');
@@ -165,8 +164,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (authToken) {
     loadUserData();
   } else {
-    // Show mode selection page first (unless coming from WebView with token)
-    showModeSelectionPage();
+    // Show login page directly
+    showLoginPage();
   }
   
   setupEventListeners();
@@ -801,17 +800,7 @@ function setupEventListeners() {
     showLoginPage();
   });
   
-  // Mode Selection - Parent Mode
-  document.getElementById('btnParentMode')?.addEventListener('click', () => {
-    postLoginTargetPage = null;
-    showLoginPage();
-  });
-  
-  // Back to mode selection from login
-  document.getElementById('backToModeSelect')?.addEventListener('click', (e) => {
-    e.preventDefault();
-    showModeSelectionPage();
-  });
+
   
   // Navigation
   document.querySelectorAll('.nav-item').forEach(item => {
@@ -1184,7 +1173,7 @@ function handleLogout() {
   stopAutoRefresh();
   stopSessionValidation();
   
-  showModeSelectionPage();
+  showLoginPage();
 }
 
 async function loadUserData(preferredPage) {
@@ -1463,15 +1452,6 @@ function navigateTo(page) {
   
   // Close mobile sidebar
   sidebar.classList.remove('open');
-}
-
-// Mode Selection Page
-function showModeSelectionPage() {
-  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
-  modeSelectionPage.classList.remove('hidden');
-  document.querySelector('.sidebar').style.display = 'none';
-  document.querySelector('.header').style.display = 'none';
-  stopAutoRefresh();
 }
 
 function showLoginPage() {
@@ -5309,7 +5289,137 @@ let webrtcRemoteStream = null;
 let pendingIceCandidates = [];
 let isRemoteDescriptionSet = false;
 
-// ICE servers for STUN/TURN - TURN is essential for NAT traversal on mobile networks
+// ===== ADAPTIVE QUALITY MONITORING (Receiver Side) =====
+let qualityMonitorInterval = null;
+let lastReceiverBytesSent = 0;
+let lastReceiverStatsTime = 0;
+let qualityLevel = 'good'; // 'good', 'fair', 'poor', 'critical'
+let consecutivePoorReadings = 0;
+let consecutiveGoodReadings = 0;
+let connectionRecoveryAttempts = 0;
+const MAX_RECOVERY_ATTEMPTS = 20;
+let streamRecoveryTimeout = null;
+let isStreamRecovering = false;
+
+function startQualityMonitor() {
+  stopQualityMonitor();
+  qualityMonitorInterval = setInterval(() => {
+    if (!webrtcPeerConnection) return;
+    
+    webrtcPeerConnection.getStats().then(stats => {
+      let packetsReceived = 0;
+      let packetsLost = 0;
+      let bytesReceived = 0;
+      let framesReceived = 0;
+      let framesDropped = 0;
+      let framesDecoded = 0;
+      let jitter = 0;
+      let roundTripTime = 0;
+      let timestamp = 0;
+      
+      stats.forEach(report => {
+        if (report.type === 'inbound-rtp' && report.kind === 'video') {
+          packetsReceived = report.packetsReceived || 0;
+          packetsLost = report.packetsLost || 0;
+          bytesReceived = report.bytesReceived || 0;
+          framesReceived = report.framesReceived || 0;
+          framesDropped = report.framesDropped || 0;
+          framesDecoded = report.framesDecoded || 0;
+          jitter = report.jitter || 0;
+          timestamp = report.timestamp || 0;
+        }
+        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+          roundTripTime = report.currentRoundTripTime || 0;
+        }
+      });
+      
+      const totalPackets = packetsReceived + packetsLost;
+      const lossRate = totalPackets > 0 ? (packetsLost / totalPackets) * 100 : 0;
+      const rttMs = Math.round(roundTripTime * 1000);
+      
+      // Calculate actual receive bitrate
+      let actualBitrate = 0;
+      if (lastReceiverStatsTime > 0 && timestamp > lastReceiverStatsTime) {
+        const timeDelta = (timestamp - lastReceiverStatsTime) / 1000;
+        const bytesDelta = bytesReceived - lastReceiverBytesSent;
+        if (timeDelta > 0) actualBitrate = Math.round((bytesDelta * 8) / timeDelta);
+      }
+      lastReceiverBytesSent = bytesReceived;
+      lastReceiverStatsTime = timestamp;
+      
+      // Determine quality level
+      let newQuality = 'good';
+      if (lossRate > 10 || rttMs > 1000) {
+        newQuality = 'critical';
+      } else if (lossRate > 5 || rttMs > 500) {
+        newQuality = 'poor';
+      } else if (lossRate > 2 || rttMs > 250) {
+        newQuality = 'fair';
+      }
+      
+      qualityLevel = newQuality;
+      updateQualityIndicator(newQuality, lossRate, rttMs, actualBitrate);
+      
+    }).catch(e => {
+      // Stats not available yet, ignore
+    });
+  }, 2000); // Check every 2 seconds
+}
+
+function stopQualityMonitor() {
+  if (qualityMonitorInterval) {
+    clearInterval(qualityMonitorInterval);
+    qualityMonitorInterval = null;
+  }
+  lastReceiverBytesSent = 0;
+  lastReceiverStatsTime = 0;
+  qualityLevel = 'good';
+  consecutivePoorReadings = 0;
+  consecutiveGoodReadings = 0;
+}
+
+function updateQualityIndicator(quality, lossRate, rttMs, bitrate) {
+  let indicator = document.getElementById('streamQualityIndicator');
+  if (!indicator) {
+    // Create quality indicator overlay
+    const streamVideo = document.getElementById('streamVideo');
+    if (!streamVideo) return;
+    indicator = document.createElement('div');
+    indicator.id = 'streamQualityIndicator';
+    indicator.style.cssText = 'position:absolute;top:8px;right:8px;z-index:100;display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600;backdrop-filter:blur(8px);transition:all 0.3s ease;pointer-events:none;';
+    streamVideo.style.position = 'relative';
+    streamVideo.appendChild(indicator);
+  }
+  
+  const bitrateStr = bitrate > 1000000 ? `${(bitrate/1000000).toFixed(1)}M` : bitrate > 1000 ? `${Math.round(bitrate/1000)}k` : '...';
+  
+  const configs = {
+    good: { color: '#10b981', bg: 'rgba(16,185,129,0.15)', icon: '\u25cf', bars: 4, label: 'HD' },
+    fair: { color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', icon: '\u25cf', bars: 3, label: 'SD' },
+    poor: { color: '#f97316', bg: 'rgba(249,115,22,0.15)', icon: '\u25cf', bars: 2, label: 'Low' },
+    critical: { color: '#ef4444', bg: 'rgba(239,68,68,0.15)', icon: '\u25cf', bars: 1, label: 'Min' }
+  };
+  
+  const cfg = configs[quality] || configs.good;
+  indicator.style.background = cfg.bg;
+  indicator.style.color = cfg.color;
+  indicator.style.border = `1px solid ${cfg.color}33`;
+  
+  // Signal bars
+  let bars = '';
+  for (let i = 1; i <= 4; i++) {
+    const h = 4 + i * 3;
+    const active = i <= cfg.bars;
+    bars += `<div style="width:3px;height:${h}px;border-radius:1px;background:${active ? cfg.color : cfg.color + '33'};transition:all 0.3s;"></div>`;
+  }
+  
+  indicator.innerHTML = `
+    <div style="display:flex;align-items:flex-end;gap:1px;">${bars}</div>
+    <span>${cfg.label}</span>
+    <span style="opacity:0.7;font-size:10px;">${bitrateStr}bps</span>
+  `;
+}
+
 // Multiple TURN providers for reliability
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -5763,41 +5873,83 @@ async function handleWebRTCOffer(message, type) {
       debugLog('[WebRTC] ICE gathering state:', webrtcPeerConnection.iceGatheringState);
     };
     
-    // Handle connection state changes
+    // Handle connection state changes - RESILIENT: never auto-kill stream
     webrtcPeerConnection.onconnectionstatechange = () => {
       debugLog('[WebRTC] Connection state:', webrtcPeerConnection.connectionState);
       
       switch (webrtcPeerConnection.connectionState) {
         case 'connected':
           debugLog('[WebRTC] Connected!');
-          webrtcRetryCount = 0; // Reset retry count on success
+          webrtcRetryCount = 0;
+          connectionRecoveryAttempts = 0;
+          isStreamRecovering = false;
+          // Start quality monitoring
+          startQualityMonitor();
+          // Remove any recovery overlay
+          const recoveryOverlay = document.getElementById('streamRecoveryOverlay');
+          if (recoveryOverlay) recoveryOverlay.remove();
           break;
         case 'disconnected':
-          streamVideo.innerHTML = '<p class="connecting">Connection interrupted, waiting to reconnect...</p>';
+          // DON'T replace video - show overlay on top of last frame
+          debugLog('[WebRTC] Disconnected - keeping last frame, showing recovery status');
+          showRecoveryOverlay('Connection interrupted...', 'Attempting to reconnect automatically', 'warning');
+          // The sender (Android) will do ICE restart, we just wait
+          scheduleRecoveryCheck(type, 5000);
           break;
         case 'failed':
-          debugLog('[WebRTC] Connection failed, retry count:', webrtcRetryCount);
-          if (webrtcRetryCount < MAX_WEBRTC_RETRIES) {
-            webrtcRetryCount++;
-            streamVideo.innerHTML = `<p class="connecting">Connection failed. Retrying (${webrtcRetryCount}/${MAX_WEBRTC_RETRIES})...</p>`;
+          debugLog('[WebRTC] Connection failed, attempt recovery');
+          connectionRecoveryAttempts++;
+          if (connectionRecoveryAttempts <= MAX_RECOVERY_ATTEMPTS) {
+            showRecoveryOverlay(
+              `Reconnecting... (${connectionRecoveryAttempts}/${MAX_RECOVERY_ATTEMPTS})`, 
+              'Poor network detected, reducing quality', 'error'
+            );
             // Try ICE restart
             if (webrtcPeerConnection) {
               webrtcPeerConnection.restartIce();
             }
+            // Schedule escalated recovery
+            scheduleRecoveryCheck(type, connectionRecoveryAttempts * 3000);
           } else {
-            streamVideo.innerHTML = '<p class="error">Connection failed after multiple retries. Please try again.</p>';
+            // After many attempts, show retry button BUT keep last frame
+            showRecoveryOverlay(
+              'Connection lost', 
+              'Tap to reconnect',
+              'critical',
+              () => { connectionRecoveryAttempts = 0; startWebRTCStream(type); }
+            );
           }
           break;
       }
     };
     
-    // Handle ICE connection state
+    // Handle ICE connection state - RESILIENT: aggressive recovery
     webrtcPeerConnection.oniceconnectionstatechange = () => {
       debugLog('[WebRTC] ICE state:', webrtcPeerConnection.iceConnectionState);
-      if (webrtcPeerConnection.iceConnectionState === 'failed') {
-        // Try ICE restart
-        debugLog('[WebRTC] Attempting ICE restart...');
-        webrtcPeerConnection.restartIce();
+      switch (webrtcPeerConnection.iceConnectionState) {
+        case 'disconnected':
+          // Network blip - try ICE restart after brief wait
+          setTimeout(() => {
+            if (webrtcPeerConnection && webrtcPeerConnection.iceConnectionState === 'disconnected') {
+              debugLog('[WebRTC] Still disconnected after 3s, attempting ICE restart...');
+              webrtcPeerConnection.restartIce();
+            }
+          }, 3000);
+          break;
+        case 'failed':
+          debugLog('[WebRTC] ICE FAILED - attempting restart...');
+          if (webrtcPeerConnection) {
+            webrtcPeerConnection.restartIce();
+          }
+          break;
+        case 'connected':
+        case 'completed':
+          // Recovery successful
+          isStreamRecovering = false;
+          connectionRecoveryAttempts = 0;
+          const overlay = document.getElementById('streamRecoveryOverlay');
+          if (overlay) overlay.remove();
+          break;
       }
     };
     
@@ -6082,7 +6234,78 @@ function displayWebRTCAudio(stream) {
   playAudio();
 }
 
+// ===== RECOVERY OVERLAY (shown on top of last frame, not replacing it) =====
+function showRecoveryOverlay(title, subtitle, level, onClickAction) {
+  let overlay = document.getElementById('streamRecoveryOverlay');
+  const streamVideo = document.getElementById('streamVideo');
+  if (!streamVideo) return;
+  
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'streamRecoveryOverlay';
+    overlay.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);transition:opacity 0.3s;';
+    streamVideo.style.position = 'relative';
+    streamVideo.appendChild(overlay);
+  }
+  
+  const colors = {
+    warning: { icon: 'fas fa-wifi', color: '#f59e0b' },
+    error: { icon: 'fas fa-signal', color: '#f97316' },
+    critical: { icon: 'fas fa-exclamation-triangle', color: '#ef4444' }
+  };
+  const cfg = colors[level] || colors.warning;
+  
+  overlay.innerHTML = `
+    <div style="text-align:center;padding:24px;">
+      <i class="${cfg.icon}" style="font-size:36px;color:${cfg.color};${level !== 'critical' ? 'animation:pulse 1.5s infinite;' : ''}"></i>
+      <p style="margin-top:12px;color:#fff;font-weight:600;font-size:14px;">${title}</p>
+      <p style="margin-top:4px;color:#aaa;font-size:12px;">${subtitle}</p>
+      ${onClickAction ? '<button class="btn-primary" style="margin-top:16px;padding:8px 24px;font-size:13px;"><i class="fas fa-redo"></i> Reconnect</button>' : '<div style="margin-top:12px;"><div class="spinner" style="width:24px;height:24px;border:2px solid #555;border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto;"></div></div>'}
+    </div>
+  `;
+  
+  if (onClickAction) {
+    overlay.querySelector('button').onclick = () => {
+      overlay.remove();
+      onClickAction();
+    };
+  }
+}
+
+function scheduleRecoveryCheck(type, delayMs) {
+  if (streamRecoveryTimeout) clearTimeout(streamRecoveryTimeout);
+  streamRecoveryTimeout = setTimeout(() => {
+    if (!webrtcPeerConnection) return;
+    const state = webrtcPeerConnection.connectionState;
+    if (state === 'connected') {
+      // Recovered!
+      const overlay = document.getElementById('streamRecoveryOverlay');
+      if (overlay) overlay.remove();
+      isStreamRecovering = false;
+    } else if (state === 'disconnected' || state === 'failed') {
+      // Still disconnected, escalate
+      connectionRecoveryAttempts++;
+      if (connectionRecoveryAttempts <= MAX_RECOVERY_ATTEMPTS) {
+        debugLog(`[WebRTC] Recovery check: still ${state}, attempt ${connectionRecoveryAttempts}`);
+        // Re-send FCM to wake device
+        const commands = { screen: 'start_webrtc_screen', camera: 'start_webrtc_camera', audio: 'start_webrtc_audio' };
+        sendCommand(commands[type], {}, true);
+        if (webrtcPeerConnection) webrtcPeerConnection.restartIce();
+        scheduleRecoveryCheck(type, Math.min(connectionRecoveryAttempts * 3000, 15000));
+      }
+    }
+  }, delayMs);
+}
+
 function closeWebRTCConnection() {
+  // Stop quality monitor
+  stopQualityMonitor();
+  
+  // Clear recovery state
+  if (streamRecoveryTimeout) clearTimeout(streamRecoveryTimeout);
+  connectionRecoveryAttempts = 0;
+  isStreamRecovering = false;
+  
   if (webrtcPeerConnection) {
     webrtcPeerConnection.close();
     webrtcPeerConnection = null;

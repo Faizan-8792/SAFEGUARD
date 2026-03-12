@@ -31,20 +31,24 @@ object DOAccessibilityMonitor {
     private var contentObserver: ContentObserver? = null
     private var isMonitoring = false
     private var lastKnownState = false
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     
-    // Recovery cooldown to prevent rapid re-enables (1 second - fast recovery)
+    // Recovery cooldown to prevent rapid re-enables (500ms - fast recovery)
     private var lastRecoveryTime = 0L
-    private const val RECOVERY_COOLDOWN_MS = 1000L
+    private const val RECOVERY_COOLDOWN_MS = 500L
     
     // Max recovery attempts per hour (generous limit for aggressive protection)
     private var recoveryCountThisHour = 0
     private var hourStartTime = 0L
-    private const val MAX_RECOVERIES_PER_HOUR = 100
+    private const val MAX_RECOVERIES_PER_HOUR = 200
     
     // Retry configuration for failed recoveries
-    private const val MAX_RETRY_ATTEMPTS = 5
-    private const val RETRY_DELAY_MS = 500L
+    private const val MAX_RETRY_ATTEMPTS = 10
+    private const val RETRY_DELAY_MS = 300L
+    
+    // Periodic re-lock interval (every 30 seconds, re-assert accessibility settings)
+    private var periodicLockJob: Job? = null
+    private const val PERIODIC_LOCK_INTERVAL_MS = 30_000L
 
     /**
      * Start monitoring accessibility state with DO auto-recovery capability.
@@ -59,13 +63,21 @@ object DOAccessibilityMonitor {
             return
         }
         
+        // Ensure scope is active (fix: recreate if previously cancelled)
+        if (!scope.isActive) {
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        }
+        
         lastKnownState = isAccessibilityEnabled(context)
         
-        // Initial check
-        if (!lastKnownState && doManager.isAccessibilityAutoRecoverEnabled()) {
-            Log.w(TAG, "Accessibility disabled on startup - attempting recovery")
+        // Initial check: force-enable and lock if not already enabled
+        if (!lastKnownState) {
+            Log.w(TAG, "Accessibility disabled on startup - attempting recovery + lock")
             attemptRecovery(context)
         }
+        
+        // CRITICAL: Lock accessibility settings on startup to prevent disabling
+        doManager.lockAccessibilitySettings()
         
         contentObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
@@ -86,8 +98,27 @@ object DOAccessibilityMonitor {
             contentObserver!!
         )
         
+        // Start periodic re-lock job: every 30 seconds, re-assert accessibility is enabled and locked.
+        // This catches cases where the OEM battery manager silently removes the service
+        // without triggering the ContentObserver.
+        periodicLockJob = scope.launch {
+            while (isActive) {
+                delay(PERIODIC_LOCK_INTERVAL_MS)
+                try {
+                    if (!isAccessibilityEnabled(context)) {
+                        Log.w(TAG, "⚠️ Periodic check: Accessibility disabled! Force re-enabling...")
+                        attemptRecovery(context)
+                    }
+                    // Re-lock settings every cycle to prevent OEM from loosening the restriction
+                    doManager.lockAccessibilitySettings()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Periodic lock check error", e)
+                }
+            }
+        }
+        
         isMonitoring = true
-        Log.d(TAG, "DO Accessibility monitoring started")
+        Log.d(TAG, "DO Accessibility monitoring started (with periodic lock)")
     }
 
     /**
@@ -98,8 +129,10 @@ object DOAccessibilityMonitor {
             context.contentResolver.unregisterContentObserver(it)
         }
         contentObserver = null
+        periodicLockJob?.cancel()
+        periodicLockJob = null
         isMonitoring = false
-        scope.cancel()
+        // Don't cancel scope — it will be reused on next startMonitoring()
         Log.d(TAG, "DO Accessibility monitoring stopped")
     }
 
@@ -115,19 +148,23 @@ object DOAccessibilityMonitor {
             
             val doManager = DeviceOwnerManager.getInstance(context)
             
-            if (doManager.isAccessibilityAutoRecoverEnabled()) {
-                // Auto-recover using DO privileges - fast recovery (300ms)
-                scope.launch {
-                    delay(300)
-                    
-                    // Re-check (maybe it was re-enabled manually)
-                    if (!isAccessibilityEnabled(context)) {
-                        attemptRecoveryWithRetry(context)
-                    }
+            // ALWAYS auto-recover in Device Owner mode — don't rely on preference
+            // Immediate recovery (no delay) — every millisecond matters
+            if (!scope.isActive) {
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            }
+            scope.launch {
+                // Immediate first attempt
+                if (!isAccessibilityEnabled(context)) {
+                    attemptRecoveryWithRetry(context)
                 }
-            } else {
-                // No auto-recover - just alert parent
-                sendAlertToParent(false, recovered = false)
+            }
+            
+            // Also re-lock settings to prevent further changes
+            try {
+                doManager.lockAccessibilitySettings()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to re-lock accessibility settings", e)
             }
         } else if (newState && !lastKnownState) {
             // Accessibility was RE-ENABLED (maybe by user or recovery)
@@ -277,14 +314,17 @@ object DOAccessibilityMonitor {
     }
 
     /**
-     * Force an immediate accessibility check and recovery if needed
+     * Force an immediate accessibility check and recovery if needed.
+     * Also re-locks settings to prevent future disabling.
      */
     fun checkAndRecoverNow(context: Context) {
+        val doManager = DeviceOwnerManager.getInstance(context)
+        if (!doManager.isDeviceOwner()) return
+        
         if (!isAccessibilityEnabled(context)) {
-            val doManager = DeviceOwnerManager.getInstance(context)
-            if (doManager.isDeviceOwner()) {
-                attemptRecovery(context)
-            }
+            attemptRecovery(context)
         }
+        // Always re-lock settings regardless
+        doManager.lockAccessibilitySettings()
     }
 }

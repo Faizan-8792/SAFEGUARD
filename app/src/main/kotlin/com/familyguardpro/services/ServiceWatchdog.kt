@@ -214,6 +214,7 @@ class ServiceWatchdog : JobService() {
                     val recovered = doManager.forceEnableAccessibility()
                     if (recovered) {
                         Log.d(TAG, "ServiceWatchdog: DO accessibility recovery SUCCESS")
+                        doManager.lockAccessibilitySettings()
                     } else {
                         handleServiceDeath(context, prefs)
                     }

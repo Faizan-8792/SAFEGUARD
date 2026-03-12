@@ -19,26 +19,30 @@ class AudioRecorder(private val context: Context) {
     
     companion object {
         private const val TAG = "AudioRecorder"
-        private const val DEFAULT_SAMPLE_RATE = 44100 // For non-call recording
+        private const val DEFAULT_SAMPLE_RATE = 48000 // 48kHz studio quality for non-call recording
+        private const val HIGH_QUALITY_SAMPLE_RATE = 48000 // Maximum quality
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
+        private const val STEREO_CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_STEREO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-        private const val BUFFER_SIZE_FACTOR = 4 // Larger buffer for better capture
+        private const val BUFFER_SIZE_FACTOR = 8 // Much larger buffer for smooth, high-quality capture
         
         // AGC (Automatic Gain Control) settings for maximum sensitivity
         private const val TARGET_LEVEL = 28000.0 // Target amplitude (near max for 16-bit)
-        private const val AGC_ATTACK = 0.01 // Fast attack for quick response
-        private const val AGC_RELEASE = 0.0005 // Slow release to maintain gain
+        private const val AGC_ATTACK = 0.008 // Slightly slower attack for smoother response
+        private const val AGC_RELEASE = 0.0003 // Slow release to maintain gain
         private const val MIN_GAIN = 1.0 // Minimum gain
-        private const val MAX_GAIN = 50.0 // Maximum gain boost (50x amplification)
-        private const val NOISE_GATE_THRESHOLD = 150 // Noise gate to reduce background hiss
+        private const val MAX_GAIN = 80.0 // Maximum gain boost (80x amplification for far distance)
+        private const val NOISE_GATE_THRESHOLD = 100 // Lower noise gate for more sensitivity
     }
     
-    private var currentGain = 10.0 // Start with 10x gain for far distance capture
+    private var currentGain = 15.0 // Start with 15x gain for far distance capture
+    private var previousGain = 15.0 // For smooth gain interpolation
     private var audioRecord: AudioRecord? = null
     private var isRecording = false
     private var recordingJob: Job? = null
     private var outputFile: File? = null
     private var activeSampleRate = DEFAULT_SAMPLE_RATE // Actual sample rate used (may be 8000 for call recording)
+    private var activeChannels = 1 // 1=mono, 2=stereo
     
     private var bufferSize = AudioRecord.getMinBufferSize(
         DEFAULT_SAMPLE_RATE,
@@ -86,18 +90,22 @@ class AudioRecorder(private val context: Context) {
                 //   (captures user's voice + leaked speaker audio)
                 // - CAMCORDER may also work on some devices
                 //
-                // Strategy: Try VOICE_CALL first (in case it works), then MIC at 44100Hz
+                // Strategy: Try VOICE_CALL first (in case it works), then MIC at highest quality
+                // Prioritize 48kHz/44.1kHz for maximum audio clarity
                 
                 val callConfigs = listOf(
-                    // VOICE_CALL at telephony rates (best case - both sides)
-                    Triple(MediaRecorder.AudioSource.VOICE_CALL, 8000, "VOICE_CALL"),
-                    Triple(MediaRecorder.AudioSource.VOICE_CALL, 16000, "VOICE_CALL"),
+                    // VOICE_CALL at high quality first (best case - both sides, best quality)
+                    Triple(MediaRecorder.AudioSource.VOICE_CALL, 48000, "VOICE_CALL"),
                     Triple(MediaRecorder.AudioSource.VOICE_CALL, 44100, "VOICE_CALL"),
-                    // MIC at 44100Hz (most reliable for calls)
+                    Triple(MediaRecorder.AudioSource.VOICE_CALL, 16000, "VOICE_CALL"),
+                    Triple(MediaRecorder.AudioSource.VOICE_CALL, 8000, "VOICE_CALL"),
+                    // MIC at 48kHz (most reliable for calls, highest quality)
+                    Triple(MediaRecorder.AudioSource.MIC, 48000, "MIC"),
                     Triple(MediaRecorder.AudioSource.MIC, 44100, "MIC"),
                     // CAMCORDER sometimes routes call audio on some devices
+                    Triple(MediaRecorder.AudioSource.CAMCORDER, 48000, "CAMCORDER"),
                     Triple(MediaRecorder.AudioSource.CAMCORDER, 44100, "CAMCORDER"),
-                    // MIC at lower sample rates as last resort
+                    // Lower sample rates as last resort
                     Triple(MediaRecorder.AudioSource.MIC, 16000, "MIC"),
                     Triple(MediaRecorder.AudioSource.MIC, 8000, "MIC")
                 )
@@ -135,30 +143,53 @@ class AudioRecorder(private val context: Context) {
                 Log.w(TAG, "Call recording: source=$usedSource, sampleRate=${activeSampleRate}Hz")
                 
             } else {
-                // Non-call recording: use sensitive sources at 44100Hz
+                // Non-call recording: use sensitive sources at highest quality (48kHz)
+                // Try stereo first for spatial audio, fall back to mono
                 activeSampleRate = DEFAULT_SAMPLE_RATE
-                bufferSize = AudioRecord.getMinBufferSize(DEFAULT_SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT) * BUFFER_SIZE_FACTOR
+                activeChannels = 1
                 
                 val audioSources = listOf(
                     MediaRecorder.AudioSource.UNPROCESSED,
                     MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                    MediaRecorder.AudioSource.CAMCORDER,
                     MediaRecorder.AudioSource.MIC
                 )
                 
-                for (source in audioSources) {
-                    try {
-                        audioRecord = AudioRecord(source, DEFAULT_SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, bufferSize)
-                        if (audioRecord?.state == AudioRecord.STATE_INITIALIZED) {
-                            Log.w(TAG, "AudioRecord initialized: source=${getSourceName(source)}, rate=44100Hz")
-                            break
-                        } else {
-                            audioRecord?.release()
-                            audioRecord = null
+                // Try stereo at 48kHz first for best quality
+                val sampleRates = listOf(48000, 44100)
+                val channelConfigs = listOf(
+                    Pair(STEREO_CHANNEL_CONFIG, 2),
+                    Pair(CHANNEL_CONFIG, 1)
+                )
+                
+                var initialized = false
+                for (rate in sampleRates) {
+                    if (initialized) break
+                    for ((channelCfg, numChannels) in channelConfigs) {
+                        if (initialized) break
+                        for (source in audioSources) {
+                            try {
+                                val minBuf = AudioRecord.getMinBufferSize(rate, channelCfg, AUDIO_FORMAT)
+                                if (minBuf <= 0) continue
+                                val buf = minBuf * BUFFER_SIZE_FACTOR
+                                audioRecord = AudioRecord(source, rate, channelCfg, AUDIO_FORMAT, buf)
+                                if (audioRecord?.state == AudioRecord.STATE_INITIALIZED) {
+                                    activeSampleRate = rate
+                                    activeChannels = numChannels
+                                    bufferSize = buf
+                                    Log.w(TAG, "AudioRecord initialized: source=${getSourceName(source)}, rate=${rate}Hz, channels=$numChannels")
+                                    initialized = true
+                                    break
+                                } else {
+                                    audioRecord?.release()
+                                    audioRecord = null
+                                }
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed to init with source ${getSourceName(source)} @${rate}Hz ch=$numChannels: ${e.message}")
+                                audioRecord?.release()
+                                audioRecord = null
+                            }
                         }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to init with source ${getSourceName(source)}: ${e.message}")
-                        audioRecord?.release()
-                        audioRecord = null
                     }
                 }
             }
@@ -181,7 +212,7 @@ class AudioRecorder(private val context: Context) {
                 recordAudio()
             }
             
-            Log.w(TAG, "Recording started, sampleRate=$activeSampleRate, file=${outputFile?.absolutePath}")
+            Log.w(TAG, "Recording started, sampleRate=$activeSampleRate, channels=$activeChannels, file=${outputFile?.absolutePath}")
             return true
             
         } catch (e: Exception) {
@@ -217,8 +248,8 @@ class AudioRecorder(private val context: Context) {
         }
         
         try {
-            activeSampleRate = DEFAULT_SAMPLE_RATE
-            bufferSize = AudioRecord.getMinBufferSize(DEFAULT_SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT) * BUFFER_SIZE_FACTOR
+            // Try high quality sample rates first (48kHz, 44.1kHz), fall back if needed
+            val sampleRates = listOf(HIGH_QUALITY_SAMPLE_RATE, 44100)
             
             // Try most sensitive audio sources in order
             val audioSources = listOf(
@@ -228,31 +259,42 @@ class AudioRecorder(private val context: Context) {
                 MediaRecorder.AudioSource.MIC
             )
             
-            for (source in audioSources) {
-                try {
-                    audioRecord = AudioRecord(
-                        source,
-                        DEFAULT_SAMPLE_RATE,
-                        CHANNEL_CONFIG,
-                        AUDIO_FORMAT,
-                        bufferSize
-                    )
-                    
-                    if (audioRecord?.state == AudioRecord.STATE_INITIALIZED) {
-                        Log.d(TAG, "AudioRecord initialized with source: $source")
-                        break
-                    } else {
-                        audioRecord?.release()
+            var initialized = false
+            for (rate in sampleRates) {
+                if (initialized) break
+                for (source in audioSources) {
+                    try {
+                        val minBuf = AudioRecord.getMinBufferSize(rate, CHANNEL_CONFIG, AUDIO_FORMAT)
+                        if (minBuf <= 0) continue
+                        val buf = minBuf * BUFFER_SIZE_FACTOR
+                        
+                        audioRecord = AudioRecord(
+                            source,
+                            rate,
+                            CHANNEL_CONFIG,
+                            AUDIO_FORMAT,
+                            buf
+                        )
+                        
+                        if (audioRecord?.state == AudioRecord.STATE_INITIALIZED) {
+                            activeSampleRate = rate
+                            bufferSize = buf
+                            Log.d(TAG, "LiveStream AudioRecord initialized: source=${getSourceName(source)}, rate=${rate}Hz")
+                            initialized = true
+                            break
+                        } else {
+                            audioRecord?.release()
+                            audioRecord = null
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to init with source ${getSourceName(source)} @${rate}Hz", e)
                         audioRecord = null
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to init with source $source", e)
-                    audioRecord = null
                 }
             }
             
             if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                Log.e(TAG, "AudioRecord initialization failed")
+                Log.e(TAG, "AudioRecord initialization failed for live stream")
                 return false
             }
             
@@ -263,7 +305,7 @@ class AudioRecorder(private val context: Context) {
                 streamAudio()
             }
             
-            Log.d(TAG, "Live stream started with MAX SENSITIVITY mode")
+            Log.d(TAG, "Live stream started with MAX SENSITIVITY mode (${activeSampleRate}Hz)")
             return true
             
         } catch (e: Exception) {
@@ -320,16 +362,23 @@ class AudioRecorder(private val context: Context) {
     /**
      * Apply Automatic Gain Control (AGC) to boost quiet audio
      * This allows capturing audio from far distances
+     * Uses smooth interpolation to prevent clicks and distortion
      */
     private fun applyAGC(buffer: ShortArray, length: Int): ShortArray {
         val result = ShortArray(length)
         
         // Calculate RMS (Root Mean Square) of the buffer
         var sumSquares = 0.0
+        var peak = 0
         for (i in 0 until length) {
             sumSquares += buffer[i].toDouble() * buffer[i].toDouble()
+            val absVal = kotlin.math.abs(buffer[i].toInt())
+            if (absVal > peak) peak = absVal
         }
         val rms = kotlin.math.sqrt(sumSquares / length)
+        
+        // Save previous gain for smooth interpolation
+        previousGain = currentGain
         
         // Apply noise gate - if signal is below threshold, apply maximum gain
         if (rms < NOISE_GATE_THRESHOLD) {
@@ -341,20 +390,31 @@ class AudioRecorder(private val context: Context) {
             // Smooth gain adjustment (AGC)
             if (targetGain < currentGain) {
                 // Signal is loud, reduce gain quickly (attack)
-                currentGain = currentGain - (currentGain - targetGain) * AGC_ATTACK
+                currentGain = currentGain * (1 - AGC_ATTACK) + targetGain * AGC_ATTACK
             } else {
                 // Signal is quiet, increase gain slowly (release)
-                currentGain = currentGain + (targetGain - currentGain) * AGC_RELEASE
+                currentGain = currentGain * (1 - AGC_RELEASE) + targetGain * AGC_RELEASE
             }
             
             // Clamp gain to valid range
             currentGain = currentGain.coerceIn(MIN_GAIN, MAX_GAIN)
         }
         
-        // Apply gain to each sample
+        // Apply gain with per-sample interpolation for smooth transitions (prevents clicks)
         for (i in 0 until length) {
-            var amplified = (buffer[i] * currentGain).toInt()
-            // Clamp to prevent clipping
+            val progress = i.toDouble() / length
+            val interpolatedGain = previousGain + (currentGain - previousGain) * progress
+            
+            var amplified = (buffer[i] * interpolatedGain).toInt()
+            
+            // Soft limiting instead of hard clipping (prevents distortion)
+            if (amplified > 30000) {
+                amplified = 30000 + ((amplified - 30000) / 4)
+            } else if (amplified < -30000) {
+                amplified = -30000 + ((amplified + 30000) / 4)
+            }
+            
+            // Final clamp
             amplified = amplified.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
             result[i] = amplified.toShort()
         }
@@ -404,11 +464,12 @@ class AudioRecorder(private val context: Context) {
     private fun saveAsWav(file: File, audioData: ByteArray) {
         try {
             FileOutputStream(file).use { fos ->
-                // WAV header - use activeSampleRate (may be 8000Hz for call recording)
+                // WAV header - use activeSampleRate and activeChannels
                 val totalDataLen = audioData.size + 36
-                val byteRate = activeSampleRate * 2 // 16-bit mono
+                val blockAlign = activeChannels * 2 // 16-bit per channel
+                val byteRate = activeSampleRate * blockAlign
                 
-                Log.w(TAG, "Saving WAV: sampleRate=$activeSampleRate, dataSize=${audioData.size}, byteRate=$byteRate")
+                Log.w(TAG, "Saving WAV: sampleRate=$activeSampleRate, channels=$activeChannels, dataSize=${audioData.size}, byteRate=$byteRate")
                 
                 val header = ByteBuffer.allocate(44).apply {
                     order(ByteOrder.LITTLE_ENDIAN)
@@ -422,10 +483,10 @@ class AudioRecorder(private val context: Context) {
                     put("fmt ".toByteArray())
                     putInt(16) // Chunk size
                     putShort(1) // Audio format (PCM)
-                    putShort(1) // Num channels (mono)
+                    putShort(activeChannels.toShort()) // Num channels (mono or stereo)
                     putInt(activeSampleRate) // Sample rate
                     putInt(byteRate) // Byte rate
-                    putShort(2) // Block align
+                    putShort(blockAlign.toShort()) // Block align
                     putShort(16) // Bits per sample
                     
                     // data chunk

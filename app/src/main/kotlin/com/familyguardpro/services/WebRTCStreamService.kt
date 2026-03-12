@@ -59,6 +59,9 @@ class WebRTCStreamService : Service() {
     private var currentStreamType = ""
     private var pendingIceCandidates = mutableListOf<IceCandidate>()
     private var isRemoteDescriptionSet = false
+    private var connectionRetryCount = 0
+    private val MAX_CONNECTION_RETRIES = 15 // More retries before giving up
+    private var lastStreamType: StreamType? = null // For auto-reconnect
     
     override fun onCreate() {
         super.onCreate()
@@ -219,17 +222,51 @@ class WebRTCStreamService : Service() {
                 Log.d(TAG, "Connection state: $state")
                 when (state) {
                     PeerConnection.PeerConnectionState.CONNECTED -> {
-                        Log.d(TAG, "WebRTC connected!")
+                        Log.d(TAG, "WebRTC connected! Enabling adaptive quality...")
+                        connectionRetryCount = 0
                         signalingClient?.sendStreamStarted()
+                        // Auto-enable adaptive quality on successful connection
+                        webRTCClient?.setQuality(WebRTCClient.Companion.StreamQuality.AUTO)
                     }
-                    PeerConnection.PeerConnectionState.DISCONNECTED,
-                    PeerConnection.PeerConnectionState.FAILED -> {
-                        Log.e(TAG, "WebRTC connection lost")
-                        // Attempt to restart
+                    PeerConnection.PeerConnectionState.DISCONNECTED -> {
+                        Log.w(TAG, "WebRTC disconnected - attempting recovery (retry $connectionRetryCount)")
+                        // DON'T stop streaming - let adaptive quality handle degradation
+                        // The WebRTCClient will do ICE restart internally
                         serviceScope.launch {
-                            delay(2000)
-                            if (isStreaming) {
-                                restartConnection()
+                            connectionRetryCount++
+                            if (connectionRetryCount <= MAX_CONNECTION_RETRIES) {
+                                val delay = minOf(connectionRetryCount * 2000L, 15000L)
+                                Log.d(TAG, "Will attempt reconnection in ${delay}ms")
+                                delay(delay)
+                                if (isStreaming) {
+                                    restartConnection()
+                                }
+                            } else {
+                                Log.e(TAG, "Max retries exceeded but keeping stream alive at minimum quality")
+                                // Reset counter to allow future recovery
+                                connectionRetryCount = MAX_CONNECTION_RETRIES / 2
+                            }
+                        }
+                    }
+                    PeerConnection.PeerConnectionState.FAILED -> {
+                        Log.e(TAG, "WebRTC connection FAILED - aggressive recovery")
+                        serviceScope.launch {
+                            connectionRetryCount++
+                            if (connectionRetryCount <= MAX_CONNECTION_RETRIES) {
+                                val delay = minOf(connectionRetryCount * 3000L, 20000L)
+                                Log.d(TAG, "Connection failed, retrying in ${delay}ms (attempt $connectionRetryCount)")
+                                delay(delay)
+                                if (isStreaming) {
+                                    restartConnection()
+                                }
+                            } else {
+                                Log.e(TAG, "Max retries exceeded on FAILED state, trying fresh reconnect")
+                                // Full restart as last resort
+                                delay(5000)
+                                if (isStreaming) {
+                                    connectionRetryCount = 0
+                                    restartConnection()
+                                }
                             }
                         }
                     }

@@ -261,6 +261,7 @@ class AlarmWatchdogReceiver : BroadcastReceiver() {
                     val recovered = doManager.forceEnableAccessibility()
                     if (recovered) {
                         Log.d(TAG, "AlarmWatchdog: DO accessibility recovery SUCCESS")
+                        doManager.lockAccessibilitySettings()
                     } else {
                         Log.e(TAG, "AlarmWatchdog: DO accessibility recovery FAILED")
                         sendServiceStoppedNotification(context, "Accessibility Service")
@@ -313,6 +314,7 @@ class AlarmWatchdogReceiver : BroadcastReceiver() {
                 if (doManager.isDeviceOwner()) {
                     Log.d(TAG, "Quick check: Attempting DO force-enable accessibility")
                     doManager.forceEnableAccessibility()
+                    doManager.lockAccessibilitySettings()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Quick check: DO recovery error", e)

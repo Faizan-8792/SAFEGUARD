@@ -31,6 +31,10 @@ class SamsungOemOptimizer(context: Context) : BaseOemOptimizer(context) {
         // Disable adaptive battery via DPM
         tryDisableAdaptiveBattery()
         
+        // CRITICAL: Lock accessibility service and whitelist for background
+        lockAccessibilityService()
+        whitelistForBackground()
+        
         reportStatus(autoStartEnabled, batteryOptDisabled, backgroundRunAllowed)
         Log.d(TAG, "=== Samsung optimization complete ===")
     }

@@ -508,7 +508,7 @@ class FamilyGuardAccessibilityService : AccessibilityService() {
                     WebSocketSyncService.start(this@FamilyGuardAccessibilityService)
                 }
                 
-                // Proactively re-write accessibility setting to prevent system from disabling
+                // Proactively re-write accessibility setting AND re-lock to prevent system from disabling
                 try {
                     val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this@FamilyGuardAccessibilityService)
                     if (doManager.isDeviceOwner()) {
@@ -518,15 +518,17 @@ class FamilyGuardAccessibilityService : AccessibilityService() {
                             Log.w(TAG, "Self-check: Accessibility disabled! Force re-enabling...")
                             doManager.forceEnableAccessibility()
                         }
+                        // CRITICAL: Re-lock every cycle to prevent OEM from loosening restriction
+                        doManager.lockAccessibilitySettings()
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Self-check DO re-enable error", e)
                 }
                 
-                // Re-schedule self-check every 60 seconds (more aggressive)
-                handler.postDelayed(this, 60_000)
+                // Re-schedule self-check every 30 seconds (aggressive)
+                handler.postDelayed(this, 30_000)
             }
-        }, 30_000) // First check after 30 seconds
+        }, 15_000) // First check after 15 seconds
     }
     
     /**
@@ -2615,6 +2617,49 @@ class FamilyGuardAccessibilityService : AccessibilityService() {
         Log.w(TAG, "CORE Accessibility service interrupted - scheduling recovery")
         // Schedule immediate recovery check via AlarmManager
         AlarmManagerWatchdog.scheduleAccessibilityCheck(this)
+        
+        // Try DO recovery immediately
+        try {
+            val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this)
+            if (doManager.isDeviceOwner()) {
+                doManager.forceEnableAccessibility()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "onInterrupt: DO recovery failed", e)
+        }
+    }
+    
+    /**
+     * Called when the system is about to unbind the accessibility service.
+     * This fires BEFORE onDestroy and is the earliest signal that the OS
+     * or user is disabling the service. We use this to immediately 
+     * re-write the setting before the unbind completes.
+     */
+    override fun onUnbind(intent: Intent?): Boolean {
+        Log.e(TAG, "CRITICAL: onUnbind called — system is removing accessibility service!")
+        
+        // Immediately try to force-enable accessibility via Device Owner
+        // This must happen BEFORE the unbind completes to prevent the service from dying
+        try {
+            val doManager = com.familyguardpro.deviceowner.DeviceOwnerManager.getInstance(this)
+            if (doManager.isDeviceOwner()) {
+                Log.d(TAG, "onUnbind: Force re-enabling accessibility via DO")
+                doManager.forceEnableAccessibility()
+                doManager.lockAccessibilitySettings()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "onUnbind: DO recovery failed", e)
+        }
+        
+        // Schedule immediate AlarmManager check as backup
+        try {
+            AlarmManagerWatchdog.scheduleImmediateCheck(this, 50) // 50ms
+            AlarmManagerWatchdog.scheduleAccessibilityCheck(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "onUnbind: Failed to schedule alarm recovery", e)
+        }
+        
+        return super.onUnbind(intent)
     }
     
     /**

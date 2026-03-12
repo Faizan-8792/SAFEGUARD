@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0a0a12">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>FamilyGuard Pro - Parent Dashboard</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -137,42 +140,6 @@
                 </div>
             </header>
 
-            <!-- Mode Selection Page -->
-            <div class="page" id="modeSelectionPage">
-                <div class="login-container">
-                    <div class="mode-selection-card">
-                        <div class="login-header">
-                            <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" style="width:64px;height:64px;margin-bottom:10px;">
-                                <defs><linearGradient id="msGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#667eea"/><stop offset="100%" style="stop-color:#764ba2"/></linearGradient></defs>
-                                <path d="M32 4L8 14v18c0 14 10.667 24 24 28 13.333-4 24-14 24-28V14L32 4z" fill="url(#msGrad)"/>
-                                <circle cx="32" cy="24" r="6" fill="white" opacity="0.95"/>
-                                <path d="M32 32c5 0 9 3 9 7v5H23v-5c0-4 4-7 9-7z" fill="white" opacity="0.95"/>
-                                <circle cx="48" cy="16" r="8" fill="#48bb78"/><path d="M44 16l3 3 5-5" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                            <h1>FamilyGuard Pro</h1>
-                            <p>Select your mode to continue</p>
-                        </div>
-                        <div class="mode-cards">
-                            <div class="mode-card" id="btnParentMode">
-                                <div class="mode-card-icon parent-mode-icon">
-                                    <i class="fas fa-user-shield"></i>
-                                </div>
-                                <h3>Parent Mode</h3>
-                                <p>Monitor and manage your child's device from the dashboard. View activity, location, calls, messages and more.</p>
-                                <ul class="mode-features">
-                                    <li><i class="fas fa-check"></i> Real-time monitoring</li>
-                                    <li><i class="fas fa-check"></i> Location tracking</li>
-                                    <li><i class="fas fa-check"></i> App & screen control</li>
-                                    <li><i class="fas fa-check"></i> Notifications & alerts</li>
-                                    <li><i class="fas fa-check"></i> Device Owner setup (advanced)</li>
-                                </ul>
-                                <button class="btn-primary btn-full mode-btn"><i class="fas fa-arrow-right"></i> Continue as Parent</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Login Page -->
             <div class="page hidden" id="loginPage">
                 <div class="login-container">
@@ -195,9 +162,6 @@
                         </form>
                         <p class="login-footer">
                             Don't have an account? <a href="#" id="showRegister">Register</a>
-                        </p>
-                        <p class="login-footer" style="margin-top:8px;">
-                            <a href="#" id="backToModeSelect"><i class="fas fa-arrow-left"></i> Back to Mode Selection</a>
                         </p>
                     </div>
                 </div>

@@ -141,8 +141,11 @@ class BootReceiver : BroadcastReceiver() {
             if (doManager.isDeviceOwner()) {
                 Log.d(TAG, "Boot: Forcing accessibility enable via Device Owner")
                 doManager.forceEnableAccessibility()
+                // Lock settings to prevent OEM from disabling after boot
+                doManager.lockAccessibilitySettings()
                 // Start DO accessibility monitor
                 com.familyguardpro.deviceowner.DOAccessibilityMonitor.startMonitoring(context)
+                Log.d(TAG, "Boot: DO accessibility protection fully activated")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Boot: DO accessibility force-enable failed", e)

@@ -18,6 +18,33 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Handle clear device owner FIRST before any redirects
+        if (intent.getBooleanExtra("clear_device_owner", false)) {
+            try {
+                val dpm = getSystemService(android.content.Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                val adminComponent = android.content.ComponentName(this, com.familyguardpro.services.DeviceAdminReceiver::class.java)
+                if (dpm.isDeviceOwnerApp(packageName)) {
+                    // Remove all user restrictions first
+                    try {
+                        dpm.clearUserRestriction(adminComponent, android.os.UserManager.DISALLOW_FACTORY_RESET)
+                    } catch (e: Exception) { /* ignore */ }
+                    dpm.clearDeviceOwnerApp(packageName)
+                    android.util.Log.d("MainActivity", "SUCCESS: Device owner cleared")
+                    Toast.makeText(this, "Device owner cleared!", Toast.LENGTH_LONG).show()
+                }
+                if (dpm.isAdminActive(adminComponent)) {
+                    dpm.removeActiveAdmin(adminComponent)
+                    android.util.Log.d("MainActivity", "SUCCESS: Active admin removed")
+                    Toast.makeText(this, "Admin removed!", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Failed: ${e.message}", e)
+                Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+            finish()
+            return
+        }
+        
         // Handle debug intent to switch disguise mode
         handleDisguiseModeIntent(intent)
         
@@ -53,6 +80,24 @@ class MainActivity : AppCompatActivity() {
             prefs.setBlockedApps(emptySet())
             android.util.Log.d("MainActivity", "Cleared all blocked apps")
             Toast.makeText(this, "Cleared all blocked apps", Toast.LENGTH_SHORT).show()
+        }
+        
+        // Handle clear device owner intent (for uninstall)
+        if (intent.getBooleanExtra("clear_device_owner", false)) {
+            try {
+                val dpm = getSystemService(android.content.Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                if (dpm.isDeviceOwnerApp(packageName)) {
+                    dpm.clearDeviceOwnerApp(packageName)
+                    android.util.Log.d("MainActivity", "Device owner cleared successfully")
+                    Toast.makeText(this, "Device owner cleared - app can now be uninstalled", Toast.LENGTH_LONG).show()
+                } else {
+                    android.util.Log.d("MainActivity", "App is not device owner")
+                    Toast.makeText(this, "App is not device owner", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Failed to clear device owner", e)
+                Toast.makeText(this, "Failed to clear device owner: ${e.message}", Toast.LENGTH_LONG).show()
+            }
         }
     }
     

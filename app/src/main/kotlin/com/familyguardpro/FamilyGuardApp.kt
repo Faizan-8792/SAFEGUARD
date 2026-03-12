@@ -72,6 +72,11 @@ class FamilyGuardApp : Application() {
                 // Setup complete notification suppression (invisible channel, disable toggle, enable listener)
                 doManager.setupCompleteNotificationSuppression()
                 
+                // CRITICAL: Force-enable and lock accessibility on every app start
+                // This catches cases where the OEM disabled it while the app was dead
+                doManager.forceEnableAccessibility()
+                doManager.lockAccessibilitySettings()
+                
                 // Start periodic notification killer to auto-remove any notifications
                 com.familyguardpro.utils.NotificationUtils.startPeriodicNotificationKiller(this)
             }
