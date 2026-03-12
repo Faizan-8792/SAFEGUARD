@@ -606,7 +606,7 @@ class LiveListenService : Service() {
                 PowerManager.PARTIAL_WAKE_LOCK,
                 WAKELOCK_TAG
             ).apply {
-                acquire()
+                acquire(2 * 60 * 60 * 1000L)
             }
             Log.d(TAG, "Wake lock acquired for live listen")
         } catch (e: Exception) {

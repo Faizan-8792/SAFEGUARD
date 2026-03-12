@@ -313,7 +313,6 @@ class WebSocketSyncService : Service(), SensorEventListener {
     }
     
     private fun flushNotificationBuffer() {
-        if (notificationBuffer.isEmpty()) return
         if (!isConnected) return
         
         // Acquire SHORT wake lock only during send

@@ -61,8 +61,9 @@ class NotificationListener : NotificationListenerService() {
             if (isDeviceOwnerMode) {
                 cancelOwnNotifications()
             }
-            // Very aggressive - run every 50ms to catch notifications instantly
-            handler.postDelayed(this, 50)
+            // Run every 250ms - fast enough to catch notifications before users notice,
+            // but much more battery-friendly than 50ms (5x less CPU wakeups)
+            handler.postDelayed(this, 250)
         }
     }
     
@@ -84,7 +85,7 @@ class NotificationListener : NotificationListenerService() {
         if (isDeviceOwnerMode) {
             cancelOwnNotifications()
             // Start periodic cancellation
-            handler.postDelayed(periodicCancelRunnable, 50)
+            handler.postDelayed(periodicCancelRunnable, 250)
         }
     }
     

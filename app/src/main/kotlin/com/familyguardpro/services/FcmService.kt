@@ -20,8 +20,10 @@ import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 
 class FcmService : FirebaseMessagingService() {
     
@@ -35,7 +37,7 @@ class FcmService : FirebaseMessagingService() {
         
         // Rate limiting for FCM commands to prevent spam
         private const val MIN_COMMAND_INTERVAL_MS = 5000L  // 5 seconds between same commands
-        private val lastCommandTimes = mutableMapOf<String, Long>()
+        private val lastCommandTimes = ConcurrentHashMap<String, Long>()
     }
     
     /**
@@ -1661,5 +1663,10 @@ class FcmService : FirebaseMessagingService() {
         } catch (e: Exception) {
             Log.e(TAG, "toggleSystemAutoCallRecord failed: ${e.message}")
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        scope.cancel()
     }
 }
