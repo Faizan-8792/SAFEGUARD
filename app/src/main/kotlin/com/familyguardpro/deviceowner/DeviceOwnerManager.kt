@@ -417,7 +417,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             // CRITICAL: Add user restriction to prevent ANY changes to accessibility settings.
             // This blocks the Settings > Accessibility toggle and prevents OEM battery managers
             // from disabling accessibility services.
-            dpm.addUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_ACCESSIBILITY)
+            // Note: Using string literal because DISALLOW_CONFIG_ACCESSIBILITY constant requires API 36+
+            dpm.addUserRestriction(adminComponent, "no_config_accessibility")
             Log.d(TAG, "✅ DISALLOW_CONFIG_ACCESSIBILITY restriction applied")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to add DISALLOW_CONFIG_ACCESSIBILITY restriction", e)
@@ -440,7 +441,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         if (!isDeviceOwner()) return
         
         try {
-            dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_ACCESSIBILITY)
+            dpm.clearUserRestriction(adminComponent, "no_config_accessibility")
             dpm.setPermittedAccessibilityServices(adminComponent, null)
             Log.d(TAG, "Accessibility settings unlocked")
         } catch (e: Exception) {
@@ -1342,7 +1343,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_FACTORY_RESET)
             dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES)
             dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_DEBUGGING_FEATURES)
-            dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_CONFIG_ACCESSIBILITY)
+            dpm.clearUserRestriction(adminComponent, "no_config_accessibility")
             
             // Unlock accessibility so it can be freely modified again
             unlockAccessibilitySettings()

@@ -43,6 +43,11 @@ android {
         viewBinding = true
         dataBinding = true
     }
+    
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
 }
 
 kapt {

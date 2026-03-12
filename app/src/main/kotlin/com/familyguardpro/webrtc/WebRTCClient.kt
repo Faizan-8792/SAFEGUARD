@@ -953,7 +953,7 @@ class WebRTCClient(
                 }
             }
             lastBytesSent = bytesSent
-            lastStatsTimestamp = timestamp
+            lastStatsTimestamp = timestamp.toLong()
             
             // Calculate packet loss percentage
             val totalPackets = packetsLost + packetsSent
