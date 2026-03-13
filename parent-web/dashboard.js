@@ -103,6 +103,11 @@ function getDeviceId(device) {
   return device?.id || device?._id;
 }
 
+function matchesDevice(device, incomingDeviceId) {
+  if (!device || !incomingDeviceId) return false;
+  return getDeviceId(device) === incomingDeviceId || device.deviceId === incomingDeviceId;
+}
+
 // DOM Elements
 const loginPage = document.getElementById('loginPage');
 const registerPage = document.getElementById('registerPage');
@@ -552,6 +557,9 @@ function showAccessibilityWarning(deviceId) {
 }
 
 function handleInstantNotification(deviceId, notification) {
+  const isForSelectedDevice = matchesDevice(selectedDevice, deviceId);
+  const messageText = notification?.content || notification?.text || '';
+
   // Play notification sound
   try {
     const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleP//');
@@ -562,19 +570,25 @@ function handleInstantNotification(deviceId, notification) {
   // Show desktop notification if permitted
   if (Notification.permission === 'granted') {
     new Notification(`${notification.appName || 'Notification'}`, {
-      body: `${notification.title || ''}\n${notification.text || ''}`,
+      body: `${notification.title || ''}\n${messageText}`,
       icon: './icon.png',
       tag: `notif-${Date.now()}`
     });
   }
   
   // Show in-app toast
-  showToast(`📱 ${notification.appName}: ${notification.title || notification.text}`, 'info', 5000);
+  showToast(`📱 ${notification.appName}: ${notification.title || messageText}`, 'info', 5000);
   
-  // If on notifications page, refresh list
+  // If on notifications page for the same device, refresh list
   const notifPage = document.getElementById('notificationsPage');
-  if (notifPage && !notifPage.classList.contains('hidden')) {
+  if (isForSelectedDevice && notifPage && !notifPage.classList.contains('hidden')) {
     loadNotifications();
+  }
+
+  // Refresh recent activity when dashboard is open for the same device
+  const dashboardPage = document.getElementById('dashboardPage');
+  if (isForSelectedDevice && dashboardPage && !dashboardPage.classList.contains('hidden')) {
+    loadRecentNotifications();
   }
   
   // Update dashboard notification count
@@ -583,7 +597,7 @@ function handleInstantNotification(deviceId, notification) {
 
 function handleInstantLocation(deviceId, location) {
   // Update map if on location page
-  if (selectedDevice && getDeviceId(selectedDevice) === deviceId) {
+  if (matchesDevice(selectedDevice, deviceId)) {
     const locationPage = document.getElementById('locationPage');
     if (locationPage && !locationPage.classList.contains('hidden')) {
       updateMapWithLocation(location);
@@ -680,7 +694,7 @@ function handleDevicePaired(device) {
 // Handle permission status change from child device
 function handlePermissionChanged(deviceId, permission, status) {
   // Only update if it's for the selected device
-  if (!selectedDevice || getDeviceId(selectedDevice) !== deviceId) return;
+  if (!matchesDevice(selectedDevice, deviceId)) return;
   
   // Find the permission item element
   const permItem = document.querySelector(`.permission-item[data-permission="${permission}"]`);
@@ -1691,8 +1705,8 @@ async function loadRecentNotifications() {
           <i class="fas fa-bell"></i>
         </div>
         <div class="activity-info">
-          <h4>${notif.appName || notif.packageName}</h4>
-          <p>${notif.content || notif.title || 'No content'}</p>
+          <h4>${escapeHtml(notif.appName || notif.packageName || 'Unknown')}</h4>
+          <p>${escapeHtml(notif.content || notif.text || notif.title || 'No content')}</p>
         </div>
         <span class="activity-time">${formatTime(notif.timestamp)}</span>
       </div>
@@ -1722,7 +1736,9 @@ async function loadNotifications(filter = 'all', append = false) {
   }
   
   try {
-    let endpoint = `/devices/${getDeviceId(selectedDevice)}/notifications?limit=50&page=${notificationsCurrentPage}`;
+    const limit = 50;
+    const skip = (notificationsCurrentPage - 1) * limit;
+    let endpoint = `/devices/${getDeviceId(selectedDevice)}/notifications?limit=${limit}&page=${notificationsCurrentPage}&skip=${skip}`;
     if (filter !== 'all') {
       endpoint += `&app=${filter}`;
     }
@@ -1751,9 +1767,9 @@ async function loadNotifications(filter = 'all', append = false) {
           ${getAppIcon(notif.packageName)}
         </div>
         <div class="content">
-          <h4>${notif.appName || notif.packageName}</h4>
-          ${notif.title ? `<p class="title">${notif.title}</p>` : ''}
-          <p>${notif.content || 'No content'}</p>
+          <h4>${escapeHtml(notif.appName || notif.packageName || 'Unknown')}</h4>
+          ${notif.title ? `<p class="title">${escapeHtml(notif.title)}</p>` : ''}
+          <p>${escapeHtml(notif.content || notif.text || 'No content')}</p>
         </div>
         <span class="time">${formatTime(notif.timestamp)}</span>
       </div>

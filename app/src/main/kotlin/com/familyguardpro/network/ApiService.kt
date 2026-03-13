@@ -226,6 +226,7 @@ data class LocationItem(
 
 data class NotificationItem(
     val packageName: String,
+    val appName: String? = null,
     val title: String?,
     val content: String?,
     val timestamp: Long

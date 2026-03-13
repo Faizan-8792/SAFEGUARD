@@ -535,33 +535,55 @@ router.delete('/:deviceId', protect, async (req, res) => {
 // Get device notifications
 router.get('/:deviceId/notifications', protect, async (req, res) => {
   try {
-    const { limit = 50, skip = 0, app } = req.query;
+    const { limit = 50, skip, page, app } = req.query;
 
-    const device = await Device.findOne({
-      _id: req.params.deviceId,
-      owner: req.user._id
-    });
+    let device = null;
+
+    try {
+      device = await Device.findOne({
+        _id: req.params.deviceId,
+        owner: req.user._id
+      });
+    } catch (e) {
+      // Not a valid ObjectId, try Android deviceId below
+    }
+
+    if (!device) {
+      device = await Device.findOne({
+        deviceId: req.params.deviceId,
+        owner: req.user._id
+      });
+    }
 
     if (!device) {
       return res.status(404).json({ error: 'Device not found' });
     }
+
+    const safeLimit = Math.max(parseInt(limit, 10) || 50, 1);
+    const requestedPage = Math.max(parseInt(page, 10) || 1, 1);
+    const safeSkip = skip !== undefined
+      ? Math.max(parseInt(skip, 10) || 0, 0)
+      : (requestedPage - 1) * safeLimit;
 
     const query = { deviceId: device.deviceId };
     if (app) query.packageName = new RegExp(app, 'i');
 
     const notifications = await Notification.find(query)
       .sort({ timestamp: -1 })
-      .skip(parseInt(skip))
-      .limit(parseInt(limit));
+      .skip(safeSkip)
+      .limit(safeLimit);
 
     const total = await Notification.countDocuments(query);
 
     res.json({
       success: true,
       total,
+      page: requestedPage,
+      limit: safeLimit,
       notifications
     });
   } catch (error) {
+    console.error('Failed to fetch notifications:', error);
     res.status(500).json({ error: 'Failed to fetch notifications' });
   }
 });

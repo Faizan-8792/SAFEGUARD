@@ -1526,6 +1526,14 @@ const startServer = () => {
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/familyguard')
 .then(async () => {
   console.log('Connected to MongoDB');
+
+  try {
+    await Notification.syncIndexes();
+    console.log('✅ Notification indexes synced');
+  } catch (indexErr) {
+    console.error('Notification index sync error:', indexErr.message);
+  }
+
   startServer();
   
   // Run social media duplicate cleanup on startup

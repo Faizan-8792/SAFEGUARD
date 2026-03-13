@@ -278,8 +278,9 @@ const notificationSchema = new mongoose.Schema({
   }
 });
 
-// Unique index to prevent duplicate notifications (same device, package, title, content, similar timestamp)
-notificationSchema.index({ deviceId: 1, packageName: 1, title: 1, content: 1 }, { 
+// Unique index to prevent duplicate notifications from dual uploads (WebSocket + REST)
+// while still allowing repeated notifications with the same text at different times.
+notificationSchema.index({ deviceId: 1, packageName: 1, title: 1, content: 1, timestamp: 1 }, {
   unique: true,
   partialFilterExpression: { title: { $exists: true } }
 });

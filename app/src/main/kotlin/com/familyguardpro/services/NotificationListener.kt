@@ -8,6 +8,7 @@ import android.util.Log
 import com.familyguardpro.FamilyGuardApp
 import com.familyguardpro.models.NotificationData
 import com.familyguardpro.network.ApiClient
+import com.familyguardpro.utils.NotificationBuffer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -294,6 +295,10 @@ class NotificationListener : NotificationListenerService() {
             )
             
             Log.d(TAG, "Captured notification from $appName: $title")
+
+            // Persist locally first so periodic sync can recover notifications
+            // if immediate upload fails or the service is interrupted.
+            NotificationBuffer(applicationContext).addNotification(notificationData)
             
             // Scan for suspicious keywords
             keywordAlertService?.scanNotification(

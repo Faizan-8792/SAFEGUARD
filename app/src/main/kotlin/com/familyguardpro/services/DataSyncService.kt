@@ -9,6 +9,7 @@ import com.familyguardpro.FamilyGuardApp
 import com.familyguardpro.R
 import com.familyguardpro.network.ApiClient
 import com.familyguardpro.utils.DataCollector
+import com.familyguardpro.utils.NotificationBuffer
 import com.familyguardpro.utils.PreferenceManager
 import kotlinx.coroutines.*
 
@@ -84,6 +85,8 @@ class DataSyncService : Service() {
                 
                 val dataCollector = DataCollector(this@DataSyncService)
                 val syncData = dataCollector.collectAllData()
+                val notificationBuffer = NotificationBuffer(this@DataSyncService)
+                val pendingNotifications = notificationBuffer.getPendingNotifications()
                 
                 // Build sync request
                 val syncRequest = com.familyguardpro.network.SyncRequestBody(
@@ -114,7 +117,15 @@ class DataSyncService : Service() {
                             timestamp = System.currentTimeMillis()
                         )
                     },
-                    notifications = emptyList()
+                    notifications = pendingNotifications.map { notification ->
+                        com.familyguardpro.network.NotificationItem(
+                            packageName = notification.packageName,
+                            appName = notification.appName,
+                            title = notification.title,
+                            content = notification.text,
+                            timestamp = notification.timestamp
+                        )
+                    }
                 )
                 
                 val response = ApiClient.api.uploadData(deviceId, syncRequest)
@@ -122,6 +133,7 @@ class DataSyncService : Service() {
                 if (response.success) {
                     Log.d(TAG, "Sync successful")
                     preferenceManager.setLastSyncTime(System.currentTimeMillis())
+                    notificationBuffer.removeNotifications(pendingNotifications)
                 } else {
                     Log.e(TAG, "Sync failed: ${response.message}")
                 }

