@@ -16,18 +16,52 @@ const normalizeMessageText = (text) => {
   return typeof text === 'string' ? text.trim() : text;
 };
 
+const buildExactDuplicateQuery = ({ deviceId, appPackage, contactName, messageText, timestamp }) => ({
+  device_id: deviceId,
+  app_package: appPackage,
+  contact_name: contactName,
+  message_text: normalizeMessageText(messageText),
+  timestamp: normalizeTimestamp(timestamp)
+});
+
 const findDuplicateByExactTimestampAndText = async ({ deviceId, appPackage, contactName, messageText, timestamp }) => {
   if (!deviceId || !appPackage || !contactName || !messageText || timestamp === undefined || timestamp === null) {
     return null;
   }
 
-  return SocialMessage.findOne({
-    device_id: deviceId,
-    app_package: appPackage,
-    contact_name: contactName,
-    message_text: normalizeMessageText(messageText),
-    timestamp: normalizeTimestamp(timestamp)
-  });
+  return SocialMessage.findOne(buildExactDuplicateQuery({
+    deviceId,
+    appPackage,
+    contactName,
+    messageText,
+    timestamp
+  }));
+};
+
+const keepOneAndDeleteRest = async ({ deviceId, appPackage, contactName, messageText, timestamp, keepId }) => {
+  const duplicates = await SocialMessage.find(
+    buildExactDuplicateQuery({ deviceId, appPackage, contactName, messageText, timestamp }),
+    { _id: 1 }
+  ).sort({ created_at: 1, _id: 1 });
+
+  if (duplicates.length <= 1) {
+    return { deletedCount: 0, keptId: duplicates[0]?._id || keepId || null };
+  }
+
+  const keptId = keepId
+    ? duplicates.find(doc => doc._id.equals(keepId))?._id || duplicates[0]._id
+    : duplicates[0]._id;
+
+  const idsToDelete = duplicates
+    .filter(doc => !doc._id.equals(keptId))
+    .map(doc => doc._id);
+
+  if (idsToDelete.length === 0) {
+    return { deletedCount: 0, keptId };
+  }
+
+  const result = await SocialMessage.deleteMany({ _id: { $in: idsToDelete } });
+  return { deletedCount: result.deletedCount || 0, keptId };
 };
 
 // App metadata for icons and colors
@@ -259,8 +293,21 @@ router.post('/message', async (req, res) => {
     });
     
     if (existing) {
+      const cleanup = await keepOneAndDeleteRest({
+        deviceId,
+        appPackage,
+        contactName: msgContact,
+        messageText: normalizedMessageText,
+        timestamp: msgTimestamp,
+        keepId: existing._id
+      });
       console.log(`⏭️ Duplicate SENT message skipped: ${messageText.substring(0, 30)}...`);
-      return res.json({ success: true, messageId: existing.message_id, duplicate: true });
+      return res.json({
+        success: true,
+        messageId: existing.message_id,
+        duplicate: true,
+        duplicatesRemoved: cleanup.deletedCount
+      });
     }
     
     const APP_META = {
@@ -293,6 +340,16 @@ router.post('/message', async (req, res) => {
     });
     
     await message.save();
+
+    // Safety cleanup for race conditions: keep only one exact duplicate key
+    await keepOneAndDeleteRest({
+      deviceId,
+      appPackage,
+      contactName: msgContact,
+      messageText: normalizedMessageText,
+      timestamp: msgTimestamp,
+      keepId: message._id
+    });
     
     // Update or create contact
     await SocialContact.findOneAndUpdate(
@@ -477,10 +534,30 @@ router.get('/:deviceId/:appPackage/contacts/:contactName/messages', async (req, 
     const messages = await SocialMessage.find(query)
       .sort({ timestamp: 1 })
       .limit(parseInt(limit));
+
+    // Auto-remove exact duplicates from existing historical data and return only unique messages
+    const seen = new Set();
+    const uniqueMessages = [];
+    const duplicateIds = [];
+
+    messages.forEach(msg => {
+      const dedupKey = `${normalizeTimestamp(msg.timestamp)}||${normalizeMessageText(msg.message_text)}`;
+      if (seen.has(dedupKey)) {
+        duplicateIds.push(msg._id);
+      } else {
+        seen.add(dedupKey);
+        uniqueMessages.push(msg);
+      }
+    });
+
+    if (duplicateIds.length > 0) {
+      await SocialMessage.deleteMany({ _id: { $in: duplicateIds } });
+      console.log(`🧹 Auto-cleaned ${duplicateIds.length} duplicate chat messages during fetch`);
+    }
     
     // Group messages by date
     const messagesByDate = {};
-    messages.forEach(msg => {
+    uniqueMessages.forEach(msg => {
       const date = new Date(msg.timestamp).toDateString();
       if (!messagesByDate[date]) {
         messagesByDate[date] = [];
@@ -490,10 +567,10 @@ router.get('/:deviceId/:appPackage/contacts/:contactName/messages', async (req, 
     
     res.json({
       success: true,
-      messages: messages,
+      messages: uniqueMessages,
       messagesByDate: messagesByDate,
-      count: messages.length,
-      hasMore: messages.length >= parseInt(limit)
+      count: uniqueMessages.length,
+      hasMore: uniqueMessages.length >= parseInt(limit)
     });
     
   } catch (error) {
@@ -558,6 +635,14 @@ router.post('/:deviceId/message', async (req, res) => {
         timestamp: msgTimestamp
       });
       if (contentDup) {
+        await keepOneAndDeleteRest({
+          deviceId,
+          appPackage: messageData.app_package,
+          contactName: normalizedContactName,
+          messageText: normalizedText,
+          timestamp: msgTimestamp,
+          keepId: contentDup._id
+        });
         return res.json({ success: true, duplicate: true });
       }
     }
@@ -571,6 +656,16 @@ router.post('/:deviceId/message', async (req, res) => {
       device_id: deviceId
     });
     await message.save();
+
+    // Safety cleanup for race conditions: keep only one exact duplicate key
+    await keepOneAndDeleteRest({
+      deviceId,
+      appPackage: messageData.app_package,
+      contactName: normalizedContactName || messageData.contact_name,
+      messageText: normalizedText || messageData.message_text,
+      timestamp: msgTimestamp,
+      keepId: message._id
+    });
     
     // Determine if this is a RECEIVED message (should increment unread count)
     const isReceived = messageData.message_type === 'RECEIVED';
@@ -622,6 +717,23 @@ router.post('/:deviceId/message', async (req, res) => {
   } catch (error) {
     // Handle duplicate key error
     if (error.code === 11000) {
+      try {
+        const { deviceId } = req.params;
+        const msgTimestamp = normalizeTimestamp(req.body?.timestamp);
+        const normalizedText = normalizeMessageText(req.body?.message_text);
+        const normalizedContactName = (req.body?.contact_name || '').trim();
+        if (normalizedText && normalizedContactName && req.body?.app_package) {
+          await keepOneAndDeleteRest({
+            deviceId,
+            appPackage: req.body.app_package,
+            contactName: normalizedContactName,
+            messageText: normalizedText,
+            timestamp: msgTimestamp
+          });
+        }
+      } catch (cleanupError) {
+        console.error('Duplicate-key cleanup failed:', cleanupError);
+      }
       return res.json({ success: true, duplicate: true });
     }
     console.error('Error saving social message:', error);
