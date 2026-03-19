@@ -15,15 +15,14 @@ const normalizeNotificationTimestamp = (value) => {
 };
 
 const normalizeNotificationMessage = (content, title) => {
-  if (typeof content === 'string' && content.trim()) return content.trim();
-  if (typeof title === 'string') return title.trim();
+  if (typeof content === 'string' && content.length > 0) return content;
+  if (typeof title === 'string') return title;
   return '';
 };
 
-const buildNotificationDedupeHash = ({ deviceId, packageName, title, content, timestamp }) => {
-  const normalizedTimestamp = normalizeNotificationTimestamp(timestamp).getTime();
+const buildNotificationDedupeHash = ({ deviceId, packageName, title, content }) => {
   const normalizedMessage = normalizeNotificationMessage(content, title);
-  const raw = `${deviceId || ''}||${packageName || ''}||${normalizedTimestamp}||${normalizedMessage}`;
+  const raw = `${deviceId || ''}||${packageName || ''}||${normalizedMessage}`;
   return crypto.createHash('sha1').update(raw).digest('hex');
 };
 
@@ -44,8 +43,7 @@ const normalizeNotificationDoc = (deviceId, notification = {}) => {
       deviceId,
       packageName: notification.packageName,
       title: normalizedTitle,
-      content: normalizedContent,
-      timestamp: normalizedTimestamp
+      content: normalizedContent
     })
   };
 };
@@ -66,7 +64,10 @@ const upsertNotifications = async (docs) => {
   const operations = docs.map(doc => ({
     updateOne: {
       filter: { dedupeHash: doc.dedupeHash },
-      update: { $setOnInsert: doc },
+      update: {
+        $setOnInsert: doc,
+        $min: { timestamp: doc.timestamp }
+      },
       upsert: true
     }
   }));
@@ -359,7 +360,7 @@ router.post('/notification', async (req, res) => {
   }
 });
 
-// Cleanup duplicate notifications using exact key: device + package + timestamp + message
+// Cleanup duplicate notifications using exact text key: device + package + message
 router.post('/notifications/cleanup-duplicates', async (req, res) => {
   try {
     const { deviceId } = req.body || {};
@@ -371,12 +372,10 @@ router.post('/notifications/cleanup-duplicates', async (req, res) => {
           _id: {
             deviceId: '$deviceId',
             packageName: '$packageName',
-            timestamp: '$timestamp',
             message: { $ifNull: ['$content', '$title'] }
           },
           count: { $sum: 1 },
-          docs: { $push: '$_id' },
-          firstDoc: { $first: '$_id' }
+          docs: { $push: { _id: '$_id', timestamp: '$timestamp' } }
         }
       },
       { $match: { count: { $gt: 1 } } }
@@ -386,10 +385,25 @@ router.post('/notifications/cleanup-duplicates', async (req, res) => {
 
     let deletedCount = 0;
     for (const dup of duplicates) {
-      const idsToDelete = dup.docs.filter(id => !id.equals(dup.firstDoc));
+      const orderedDocs = (dup.docs || []).sort((a, b) => {
+        const aTs = new Date(a.timestamp || 0).getTime();
+        const bTs = new Date(b.timestamp || 0).getTime();
+        return aTs - bTs;
+      });
+      const keptId = orderedDocs[0]?._id;
+      const idsToDelete = orderedDocs
+        .slice(1)
+        .map(doc => doc._id)
+        .filter(Boolean);
+
       if (idsToDelete.length > 0) {
         const result = await Notification.deleteMany({ _id: { $in: idsToDelete } });
         deletedCount += result.deletedCount;
+      }
+
+      if (keptId) {
+        const earliestTs = orderedDocs[0]?.timestamp ? new Date(orderedDocs[0].timestamp) : new Date();
+        await Notification.updateOne({ _id: keptId }, { $set: { timestamp: earliestTs } });
       }
     }
 

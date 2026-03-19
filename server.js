@@ -1546,12 +1546,10 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/familygua
           _id: {
             device_id: '$device_id',
             app_package: '$app_package',
-            message_text: '$message_text',
-            timestamp: '$timestamp'
+            message_text: '$message_text'
           },
           count: { $sum: 1 },
-          docs: { $push: '$_id' },
-          firstDoc: { $first: '$_id' }
+          docs: { $push: { _id: '$_id', timestamp: '$timestamp' } }
         }
       },
       { $match: { count: { $gt: 1 } } }
@@ -1563,12 +1561,10 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/familygua
           _id: {
             deviceId: '$deviceId',
             packageName: '$packageName',
-            timestamp: '$timestamp',
             message: { $ifNull: ['$content', '$title'] }
           },
           count: { $sum: 1 },
-          docs: { $push: '$_id' },
-          firstDoc: { $first: '$_id' }
+          docs: { $push: { _id: '$_id', timestamp: '$timestamp' } }
         }
       },
       { $match: { count: { $gt: 1 } } }
@@ -1579,21 +1575,42 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/familygua
 
     let totalSocialDeleted = 0;
     for (const dup of socialDuplicates) {
-      const idsToDelete = dup.docs.filter(id => !id.equals(dup.firstDoc));
+      const orderedDocs = (dup.docs || []).sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
+      const keptId = orderedDocs[0]?._id;
+      const idsToDelete = orderedDocs
+        .slice(1)
+        .map(doc => doc._id)
+        .filter(Boolean);
+
       if (idsToDelete.length > 0) {
         const result = await SocialMessage.deleteMany({ _id: { $in: idsToDelete } });
         totalSocialDeleted += result.deletedCount;
+      }
+
+      if (keptId) {
+        await SocialMessage.updateOne({ _id: keptId }, { $set: { timestamp: Number(orderedDocs[0]?.timestamp || 0) } });
       }
     }
 
     let totalNotificationDeleted = 0;
     for (const dup of notificationDuplicates) {
-      const idsToDelete = dup.docs.filter(id => !id.equals(dup.firstDoc));
-        if (idsToDelete.length > 0) {
-          const result = await Notification.deleteMany({ _id: { $in: idsToDelete } });
-          totalNotificationDeleted += result.deletedCount;
-        }
+      const orderedDocs = (dup.docs || []).sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+      const keptId = orderedDocs[0]?._id;
+      const idsToDelete = orderedDocs
+        .slice(1)
+        .map(doc => doc._id)
+        .filter(Boolean);
+
+      if (idsToDelete.length > 0) {
+        const result = await Notification.deleteMany({ _id: { $in: idsToDelete } });
+        totalNotificationDeleted += result.deletedCount;
       }
+
+      if (keptId) {
+        const earliestTs = orderedDocs[0]?.timestamp ? new Date(orderedDocs[0].timestamp) : new Date();
+        await Notification.updateOne({ _id: keptId }, { $set: { timestamp: earliestTs } });
+      }
+    }
 
     console.log(`🧹 Startup duplicate cleanup: social=${totalSocialDeleted} removed (${socialDuplicates.length} groups), notifications=${totalNotificationDeleted} removed (${notificationDuplicates.length} groups)`);
   } catch (cleanupErr) {

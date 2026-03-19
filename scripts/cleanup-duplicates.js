@@ -12,12 +12,10 @@ async function cleanupSocialDuplicates() {
         _id: {
           device_id: '$device_id',
           app_package: '$app_package',
-          message_text: { $trim: { input: { $ifNull: ['$message_text', ''] } } },
-          timestamp: '$timestamp'
+          message_text: { $ifNull: ['$message_text', ''] }
         },
-        docs: { $push: '$_id' },
-        count: { $sum: 1 },
-        firstDoc: { $first: '$_id' }
+        docs: { $push: { _id: '$_id', timestamp: '$timestamp' } },
+        count: { $sum: 1 }
       }
     },
     { $match: { count: { $gt: 1 } } }
@@ -25,10 +23,20 @@ async function cleanupSocialDuplicates() {
 
   let deletedCount = 0;
   for (const group of socialDup) {
-    const idsToDelete = group.docs.filter(id => !id.equals(group.firstDoc));
+    const orderedDocs = (group.docs || []).sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
+    const keptId = orderedDocs[0]?._id;
+    const idsToDelete = orderedDocs
+      .slice(1)
+      .map(doc => doc._id)
+      .filter(Boolean);
+
     if (idsToDelete.length > 0) {
       const result = await SocialMessage.deleteMany({ _id: { $in: idsToDelete } });
       deletedCount += result.deletedCount || 0;
+    }
+
+    if (keptId) {
+      await SocialMessage.updateOne({ _id: keptId }, { $set: { timestamp: Number(orderedDocs[0]?.timestamp || 0) } });
     }
   }
 
@@ -42,21 +50,10 @@ async function cleanupNotificationDuplicates() {
         _id: {
           deviceId: '$deviceId',
           packageName: '$packageName',
-          timestamp: '$timestamp',
-          message: {
-            $trim: {
-              input: {
-                $ifNull: [
-                  '$content',
-                  { $ifNull: ['$title', ''] }
-                ]
-              }
-            }
-          }
+          message: { $ifNull: ['$content', { $ifNull: ['$title', ''] }] }
         },
-        docs: { $push: '$_id' },
-        count: { $sum: 1 },
-        firstDoc: { $first: '$_id' }
+        docs: { $push: { _id: '$_id', timestamp: '$timestamp' } },
+        count: { $sum: 1 }
       }
     },
     { $match: { count: { $gt: 1 } } }
@@ -64,10 +61,21 @@ async function cleanupNotificationDuplicates() {
 
   let deletedCount = 0;
   for (const group of notifDup) {
-    const idsToDelete = group.docs.filter(id => !id.equals(group.firstDoc));
+    const orderedDocs = (group.docs || []).sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+    const keptId = orderedDocs[0]?._id;
+    const idsToDelete = orderedDocs
+      .slice(1)
+      .map(doc => doc._id)
+      .filter(Boolean);
+
     if (idsToDelete.length > 0) {
       const result = await Notification.deleteMany({ _id: { $in: idsToDelete } });
       deletedCount += result.deletedCount || 0;
+    }
+
+    if (keptId) {
+      const earliestTs = orderedDocs[0]?.timestamp ? new Date(orderedDocs[0].timestamp) : new Date();
+      await Notification.updateOne({ _id: keptId }, { $set: { timestamp: earliestTs } });
     }
   }
 
