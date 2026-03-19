@@ -695,8 +695,7 @@ const socialMessageSchema = new mongoose.Schema({
   },
   timestamp: {
     type: Number,
-    required: true,
-    index: true
+    required: true
   },
   message_type: {
     type: String,
@@ -717,8 +716,7 @@ const socialMessageSchema = new mongoose.Schema({
   sender_in_group: String,
   // Content hash for deduplication (auto-generated in pre-save hook)
   contentHash: {
-    type: String,
-    index: true
+    type: String
   },
   // Timestamps
   created_at: {
@@ -731,13 +729,14 @@ const socialMessageSchema = new mongoose.Schema({
 socialMessageSchema.index({ device_id: 1, app_package: 1, contact_name: 1, timestamp: 1 });
 socialMessageSchema.index({ device_id: 1, timestamp: -1 });
 
-// Content-based dedup index: prevents identical messages within the same 3-second bucket
-// Uses a pre-save hook to generate a content hash for dedup
+// Content-based dedup index: prevents identical messages with the same
+// device/app/contact/text/timestamp key.
+// Uses a pre-save hook to generate a stable content hash for dedup.
 socialMessageSchema.pre('save', function(next) {
   if (!this.contentHash) {
-    // Round timestamp to nearest 3-second bucket for dedup grouping
-    const tsBucket = Math.floor((this.timestamp || Date.now()) / 3000);
-    const raw = `${this.device_id}||${this.app_package}||${this.contact_name}||${this.message_text}||${tsBucket}`;
+    const normalizedTimestamp = Number(this.timestamp || Date.now());
+    const normalizedText = typeof this.message_text === 'string' ? this.message_text.trim() : this.message_text;
+    const raw = `${this.device_id}||${this.app_package}||${this.contact_name}||${normalizedText}||${normalizedTimestamp}`;
     // Simple hash - use built-in crypto
     const crypto = require('crypto');
     this.contentHash = crypto.createHash('md5').update(raw).digest('hex');

@@ -7980,6 +7980,24 @@ let socialMessages = [];
 let selectedSocialApp = null;
 let selectedSocialContact = null;
 
+function getSocialMessageDedupKey(message) {
+  const appPackage = message?.app_package || '';
+  const contactName = message?.contact_name || '';
+  const text = (message?.message_text || '').trim();
+  const timestamp = Number(message?.timestamp || 0);
+  return `${appPackage}||${contactName}||${text}||${timestamp}`;
+}
+
+function dedupeSocialMessages(messages) {
+  const seen = new Set();
+  return (messages || []).filter(message => {
+    const key = getSocialMessageDedupKey(message);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 // App metadata for icons and colors
 const SOCIAL_APP_METADATA = {
   'com.whatsapp': { name: 'WhatsApp', icon: 'fab fa-whatsapp', color: '#25D366', emoji: '💚' },
@@ -8395,7 +8413,7 @@ async function loadSocialMessages(deviceId, appPackage, contactName) {
     if (!response.ok) throw new Error('Failed to fetch messages');
     
     const data = await response.json();
-    socialMessages = data.messages || [];
+    socialMessages = dedupeSocialMessages(data.messages || []);
     
     if (socialMessages.length === 0) {
       chatMessages.innerHTML = '<div class="empty-chat-state"><i class="fas fa-comment-slash"></i><p>No messages yet</p></div>';
@@ -8698,13 +8716,9 @@ function handleRealtimeSocialMessage(message) {
   // Client-side dedup: check if same message already exists in current view
   if (selectedSocialApp === message.app_package && 
       selectedSocialContact === message.contact_name) {
-    // Check for duplicate in currently loaded messages (same text within 3 seconds)
-    const isDup = socialMessages.some(m => 
-      m.message_text === message.message_text && 
-      m.contact_name === message.contact_name &&
-      m.app_package === message.app_package &&
-      Math.abs((m.timestamp || 0) - (message.timestamp || 0)) < 3000
-    );
+    // Check for duplicate in currently loaded messages (same timestamp + same text)
+    const incomingKey = getSocialMessageDedupKey(message);
+    const isDup = socialMessages.some(m => getSocialMessageDedupKey(m) === incomingKey);
     
     if (!isDup) {
       socialMessages.push(message);

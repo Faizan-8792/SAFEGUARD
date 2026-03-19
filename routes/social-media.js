@@ -7,6 +7,29 @@ const express = require('express');
 const router = express.Router();
 const { SocialMessage, SocialContact } = require('../models');
 
+const normalizeTimestamp = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : Date.now();
+};
+
+const normalizeMessageText = (text) => {
+  return typeof text === 'string' ? text.trim() : text;
+};
+
+const findDuplicateByExactTimestampAndText = async ({ deviceId, appPackage, contactName, messageText, timestamp }) => {
+  if (!deviceId || !appPackage || !contactName || !messageText || timestamp === undefined || timestamp === null) {
+    return null;
+  }
+
+  return SocialMessage.findOne({
+    device_id: deviceId,
+    app_package: appPackage,
+    contact_name: contactName,
+    message_text: normalizeMessageText(messageText),
+    timestamp: normalizeTimestamp(timestamp)
+  });
+};
+
 // App metadata for icons and colors
 const APP_METADATA = {
   'com.whatsapp': { name: 'WhatsApp', icon: '💚', color: '#25D366' },
@@ -30,7 +53,7 @@ router.post('/cleanup-duplicates', async (req, res) => {
   try {
     const { deviceId } = req.body;
     
-    // Find all messages grouped by content
+    // Find all messages grouped by exact duplicate key
     const pipeline = [
       ...(deviceId ? [{ $match: { device_id: deviceId } }] : []),
       {
@@ -40,8 +63,7 @@ router.post('/cleanup-duplicates', async (req, res) => {
             app_package: '$app_package',
             contact_name: '$contact_name',
             message_text: '$message_text',
-            // Round timestamp to nearest second for grouping
-            timestamp_second: { $subtract: ['$timestamp', { $mod: ['$timestamp', 1000] }] }
+            timestamp: '$timestamp'
           },
           count: { $sum: 1 },
           docs: { $push: '$_id' },
@@ -216,17 +238,24 @@ router.post('/message', async (req, res) => {
       });
     }
     
-    const msgTimestamp = timestamp || Date.now();
+    const msgTimestamp = normalizeTimestamp(timestamp);
     const msgContact = contactName || 'Unknown';
+    const normalizedMessageText = normalizeMessageText(messageText);
+
+    if (!normalizedMessageText) {
+      return res.status(400).json({
+        success: false,
+        error: 'messageText cannot be empty'
+      });
+    }
     
-    // Check for duplicate (same content within 3 seconds - standardized across all paths)
-    const timestampWindow = 3000;
-    const existing = await SocialMessage.findOne({
-      device_id: deviceId,
-      app_package: appPackage,
-      contact_name: msgContact,
-      message_text: messageText,
-      timestamp: { $gte: msgTimestamp - timestampWindow, $lte: msgTimestamp + timestampWindow }
+    // Duplicate detection rule: same timestamp + same message text (scoped by device/app/contact)
+    const existing = await findDuplicateByExactTimestampAndText({
+      deviceId,
+      appPackage,
+      contactName: msgContact,
+      messageText: normalizedMessageText,
+      timestamp: msgTimestamp
     });
     
     if (existing) {
@@ -254,7 +283,7 @@ router.post('/message', async (req, res) => {
       app_name: appName || APP_META[appPackage]?.name || 'Unknown',
       contact_name: msgContact,
       contact_identifier: contactIdentifier || msgContact,
-      message_text: messageText,
+      message_text: normalizedMessageText,
       timestamp: msgTimestamp,
       message_type: messageType || 'SENT',
       is_group_chat: isGroupChat || false,
@@ -275,7 +304,7 @@ router.post('/message', async (req, res) => {
       {
         $set: {
           contact_identifier: contactIdentifier || msgContact,
-          last_message_text: messageText,
+          last_message_text: normalizedMessageText,
           last_message_time: msgTimestamp,
           last_message_type: messageType || 'SENT'
         },
@@ -284,7 +313,7 @@ router.post('/message', async (req, res) => {
       { upsert: true, new: true }
     );
     
-    console.log(`📤 SENT message saved: ${appPackage} -> ${msgContact}: "${messageText.substring(0, 30)}..."`);
+    console.log(`📤 SENT message saved: ${appPackage} -> ${msgContact}: "${normalizedMessageText.substring(0, 30)}..."`);
     
     res.json({
       success: true,
@@ -509,6 +538,9 @@ router.post('/:deviceId/message', async (req, res) => {
   try {
     const { deviceId } = req.params;
     const messageData = req.body;
+    const msgTimestamp = normalizeTimestamp(messageData.timestamp);
+    const normalizedText = normalizeMessageText(messageData.message_text);
+    const normalizedContactName = (messageData.contact_name || '').trim();
     
     // Check for duplicate using message_id
     const existing = await SocialMessage.findOne({ message_id: messageData.message_id });
@@ -516,16 +548,14 @@ router.post('/:deviceId/message', async (req, res) => {
       return res.json({ success: true, duplicate: true });
     }
     
-    // Also check for content-based duplicate (same text, contact, app within 3 seconds - standardized)
-    if (messageData.message_text && messageData.contact_name && messageData.app_package) {
-      const timestampWindow = 3000;
-      const msgTs = messageData.timestamp || Date.now();
-      const contentDup = await SocialMessage.findOne({
-        device_id: deviceId,
-        app_package: messageData.app_package,
-        contact_name: messageData.contact_name,
-        message_text: messageData.message_text,
-        timestamp: { $gte: msgTs - timestampWindow, $lte: msgTs + timestampWindow }
+    // Duplicate detection rule: same timestamp + same message text (scoped by device/app/contact)
+    if (normalizedText && normalizedContactName && messageData.app_package) {
+      const contentDup = await findDuplicateByExactTimestampAndText({
+        deviceId,
+        appPackage: messageData.app_package,
+        contactName: normalizedContactName,
+        messageText: normalizedText,
+        timestamp: msgTimestamp
       });
       if (contentDup) {
         return res.json({ success: true, duplicate: true });
@@ -535,6 +565,9 @@ router.post('/:deviceId/message', async (req, res) => {
     // Save message
     const message = new SocialMessage({
       ...messageData,
+      timestamp: msgTimestamp,
+      message_text: normalizedText || messageData.message_text,
+      contact_name: normalizedContactName || messageData.contact_name,
       device_id: deviceId
     });
     await message.save();
@@ -547,13 +580,13 @@ router.post('/:deviceId/message', async (req, res) => {
       {
         device_id: deviceId,
         app_package: messageData.app_package,
-        contact_name: messageData.contact_name
+        contact_name: normalizedContactName || messageData.contact_name
       },
       {
         $set: {
           contact_identifier: messageData.contact_identifier,
-          last_message_time: messageData.timestamp,
-          last_message_text: messageData.message_text,
+          last_message_time: msgTimestamp,
+          last_message_text: normalizedText || messageData.message_text,
           last_message_type: messageData.message_type,
           updated_at: new Date()
         },
@@ -575,7 +608,7 @@ router.post('/:deviceId/message', async (req, res) => {
         {
           device_id: deviceId,
           app_package: messageData.app_package,
-          contact_name: messageData.contact_name,
+          contact_name: normalizedContactName || messageData.contact_name,
           profile_photo: { $exists: false }
         },
         { $set: { profile_photo: messageData.profile_photo } }
