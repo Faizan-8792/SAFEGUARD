@@ -1,5 +1,15 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+
+const buildNotificationDedupeHash = (doc) => {
+  const timestampMs = new Date(doc.timestamp || Date.now()).getTime();
+  const normalizedContent = typeof doc.content === 'string' && doc.content.trim()
+    ? doc.content.trim()
+    : (typeof doc.title === 'string' ? doc.title.trim() : '');
+  const raw = `${doc.deviceId || ''}||${doc.packageName || ''}||${timestampMs}||${normalizedContent}`;
+  return crypto.createHash('sha1').update(raw).digest('hex');
+};
 
 // User Schema (Parents)
 const userSchema = new mongoose.Schema({
@@ -275,6 +285,9 @@ const notificationSchema = new mongoose.Schema({
   timestamp: {
     type: Date,
     default: Date.now
+  },
+  dedupeHash: {
+    type: String
   }
 });
 
@@ -283,6 +296,26 @@ const notificationSchema = new mongoose.Schema({
 notificationSchema.index({ deviceId: 1, packageName: 1, title: 1, content: 1, timestamp: 1 }, {
   unique: true,
   partialFilterExpression: { title: { $exists: true } }
+});
+notificationSchema.index({ dedupeHash: 1 }, { unique: true, sparse: true });
+
+notificationSchema.pre('save', function(next) {
+  if (!this.dedupeHash) {
+    this.dedupeHash = buildNotificationDedupeHash(this);
+  }
+  next();
+});
+
+notificationSchema.pre('insertMany', function(next, docs) {
+  docs.forEach(doc => {
+    if (!doc.timestamp) {
+      doc.timestamp = new Date();
+    }
+    if (!doc.dedupeHash) {
+      doc.dedupeHash = buildNotificationDedupeHash(doc);
+    }
+  });
+  next();
 });
 
 // Auto-delete after 48 hours
@@ -737,8 +770,6 @@ socialMessageSchema.pre('save', function(next) {
     const normalizedTimestamp = Number(this.timestamp || Date.now());
     const normalizedText = typeof this.message_text === 'string' ? this.message_text.trim() : this.message_text;
     const raw = `${this.device_id}||${this.app_package}||${this.contact_name}||${normalizedText}||${normalizedTimestamp}`;
-    // Simple hash - use built-in crypto
-    const crypto = require('crypto');
     this.contentHash = crypto.createHash('md5').update(raw).digest('hex');
   }
   next();

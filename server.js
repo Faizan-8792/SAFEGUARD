@@ -1536,10 +1536,11 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/familygua
 
   startServer();
   
-  // Run social media duplicate cleanup on startup
+  // Run duplicate cleanup on startup (notifications + social messages)
   try {
-    const { SocialMessage } = require('./models');
-    const pipeline = [
+    const { SocialMessage, Notification } = require('./models');
+
+    const socialPipeline = [
       {
         $group: {
           _id: {
@@ -1547,7 +1548,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/familygua
             app_package: '$app_package',
             contact_name: '$contact_name',
             message_text: '$message_text',
-            timestamp_second: { $subtract: ['$timestamp', { $mod: ['$timestamp', 2000] }] }
+            timestamp: '$timestamp'
           },
           count: { $sum: 1 },
           docs: { $push: '$_id' },
@@ -1556,22 +1557,46 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/familygua
       },
       { $match: { count: { $gt: 1 } } }
     ];
-    
-    const duplicates = await SocialMessage.aggregate(pipeline).allowDiskUse(true);
-    
-    if (duplicates.length > 0) {
-      let totalDeleted = 0;
-      for (const dup of duplicates) {
-        const idsToDelete = dup.docs.filter(id => !id.equals(dup.firstDoc));
+
+    const notificationPipeline = [
+      {
+        $group: {
+          _id: {
+            deviceId: '$deviceId',
+            packageName: '$packageName',
+            timestamp: '$timestamp',
+            message: { $ifNull: ['$content', '$title'] }
+          },
+          count: { $sum: 1 },
+          docs: { $push: '$_id' },
+          firstDoc: { $first: '$_id' }
+        }
+      },
+      { $match: { count: { $gt: 1 } } }
+    ];
+
+    const socialDuplicates = await SocialMessage.aggregate(socialPipeline).allowDiskUse(true);
+    const notificationDuplicates = await Notification.aggregate(notificationPipeline).allowDiskUse(true);
+
+    let totalSocialDeleted = 0;
+    for (const dup of socialDuplicates) {
+      const idsToDelete = dup.docs.filter(id => !id.equals(dup.firstDoc));
+      if (idsToDelete.length > 0) {
+        const result = await SocialMessage.deleteMany({ _id: { $in: idsToDelete } });
+        totalSocialDeleted += result.deletedCount;
+      }
+    }
+
+    let totalNotificationDeleted = 0;
+    for (const dup of notificationDuplicates) {
+      const idsToDelete = dup.docs.filter(id => !id.equals(dup.firstDoc));
         if (idsToDelete.length > 0) {
-          const result = await SocialMessage.deleteMany({ _id: { $in: idsToDelete } });
-          totalDeleted += result.deletedCount;
+          const result = await Notification.deleteMany({ _id: { $in: idsToDelete } });
+          totalNotificationDeleted += result.deletedCount;
         }
       }
-      console.log(`🧹 Startup cleanup: removed ${totalDeleted} duplicate social messages from ${duplicates.length} groups`);
-    } else {
-      console.log('✅ No duplicate social messages found');
-    }
+
+    console.log(`🧹 Startup duplicate cleanup: social=${totalSocialDeleted} removed (${socialDuplicates.length} groups), notifications=${totalNotificationDeleted} removed (${notificationDuplicates.length} groups)`);
   } catch (cleanupErr) {
     console.error('Startup duplicate cleanup error (non-fatal):', cleanupErr.message);
   }
