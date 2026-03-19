@@ -573,6 +573,27 @@ router.get('/:deviceId/notifications', protect, async (req, res) => {
       .skip(safeSkip)
       .limit(safeLimit);
 
+    const seenKeys = new Set();
+    const duplicateIds = [];
+    const uniqueNotifications = [];
+
+    notifications.forEach(notification => {
+      const timestampMs = new Date(notification.timestamp || Date.now()).getTime();
+      const normalizedText = ((notification.content || notification.title || '') + '').trim();
+      const dedupeKey = `${notification.deviceId}||${notification.packageName || ''}||${timestampMs}||${normalizedText}`;
+
+      if (seenKeys.has(dedupeKey)) {
+        duplicateIds.push(notification._id);
+      } else {
+        seenKeys.add(dedupeKey);
+        uniqueNotifications.push(notification);
+      }
+    });
+
+    if (duplicateIds.length > 0) {
+      await Notification.deleteMany({ _id: { $in: duplicateIds } });
+    }
+
     const total = await Notification.countDocuments(query);
 
     res.json({
@@ -580,7 +601,7 @@ router.get('/:deviceId/notifications', protect, async (req, res) => {
       total,
       page: requestedPage,
       limit: safeLimit,
-      notifications
+      notifications: uniqueNotifications
     });
   } catch (error) {
     console.error('Failed to fetch notifications:', error);

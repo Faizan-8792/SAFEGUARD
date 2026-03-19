@@ -763,13 +763,13 @@ socialMessageSchema.index({ device_id: 1, app_package: 1, contact_name: 1, times
 socialMessageSchema.index({ device_id: 1, timestamp: -1 });
 
 // Content-based dedup index: prevents identical messages with the same
-// device/app/contact/text/timestamp key.
+// device/app/text/timestamp key.
 // Uses a pre-save hook to generate a stable content hash for dedup.
 socialMessageSchema.pre('save', function(next) {
   if (!this.contentHash) {
     const normalizedTimestamp = Number(this.timestamp || Date.now());
     const normalizedText = typeof this.message_text === 'string' ? this.message_text.trim() : this.message_text;
-    const raw = `${this.device_id}||${this.app_package}||${this.contact_name}||${normalizedText}||${normalizedTimestamp}`;
+    const raw = `${this.device_id}||${this.app_package}||${normalizedText}||${normalizedTimestamp}`;
     this.contentHash = crypto.createHash('md5').update(raw).digest('hex');
   }
   next();

@@ -1,6 +1,9 @@
 require('dotenv').config();
+const dns = require('dns');
 const mongoose = require('mongoose');
 const { SocialMessage, Notification } = require('../models');
+
+dns.setServers(['8.8.8.8', '8.8.4.4']);
 
 async function cleanupSocialDuplicates() {
   const socialDup = await SocialMessage.aggregate([
@@ -9,8 +12,7 @@ async function cleanupSocialDuplicates() {
         _id: {
           device_id: '$device_id',
           app_package: '$app_package',
-          contact_name: '$contact_name',
-          message_text: '$message_text',
+          message_text: { $trim: { input: { $ifNull: ['$message_text', ''] } } },
           timestamp: '$timestamp'
         },
         docs: { $push: '$_id' },
@@ -41,7 +43,16 @@ async function cleanupNotificationDuplicates() {
           deviceId: '$deviceId',
           packageName: '$packageName',
           timestamp: '$timestamp',
-          message: { $ifNull: ['$content', '$title'] }
+          message: {
+            $trim: {
+              input: {
+                $ifNull: [
+                  '$content',
+                  { $ifNull: ['$title', ''] }
+                ]
+              }
+            }
+          }
         },
         docs: { $push: '$_id' },
         count: { $sum: 1 },

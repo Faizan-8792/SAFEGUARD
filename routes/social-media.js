@@ -16,31 +16,29 @@ const normalizeMessageText = (text) => {
   return typeof text === 'string' ? text.trim() : text;
 };
 
-const buildExactDuplicateQuery = ({ deviceId, appPackage, contactName, messageText, timestamp }) => ({
+const buildExactDuplicateQuery = ({ deviceId, appPackage, messageText, timestamp }) => ({
   device_id: deviceId,
   app_package: appPackage,
-  contact_name: contactName,
   message_text: normalizeMessageText(messageText),
   timestamp: normalizeTimestamp(timestamp)
 });
 
-const findDuplicateByExactTimestampAndText = async ({ deviceId, appPackage, contactName, messageText, timestamp }) => {
-  if (!deviceId || !appPackage || !contactName || !messageText || timestamp === undefined || timestamp === null) {
+const findDuplicateByExactTimestampAndText = async ({ deviceId, appPackage, messageText, timestamp }) => {
+  if (!deviceId || !appPackage || !messageText || timestamp === undefined || timestamp === null) {
     return null;
   }
 
   return SocialMessage.findOne(buildExactDuplicateQuery({
     deviceId,
     appPackage,
-    contactName,
     messageText,
     timestamp
   }));
 };
 
-const keepOneAndDeleteRest = async ({ deviceId, appPackage, contactName, messageText, timestamp, keepId }) => {
+const keepOneAndDeleteRest = async ({ deviceId, appPackage, messageText, timestamp, keepId }) => {
   const duplicates = await SocialMessage.find(
-    buildExactDuplicateQuery({ deviceId, appPackage, contactName, messageText, timestamp }),
+    buildExactDuplicateQuery({ deviceId, appPackage, messageText, timestamp }),
     { _id: 1 }
   ).sort({ created_at: 1, _id: 1 });
 
@@ -95,7 +93,6 @@ router.post('/cleanup-duplicates', async (req, res) => {
           _id: {
             device_id: '$device_id',
             app_package: '$app_package',
-            contact_name: '$contact_name',
             message_text: '$message_text',
             timestamp: '$timestamp'
           },
@@ -287,7 +284,6 @@ router.post('/message', async (req, res) => {
     const existing = await findDuplicateByExactTimestampAndText({
       deviceId,
       appPackage,
-      contactName: msgContact,
       messageText: normalizedMessageText,
       timestamp: msgTimestamp
     });
@@ -296,7 +292,6 @@ router.post('/message', async (req, res) => {
       const cleanup = await keepOneAndDeleteRest({
         deviceId,
         appPackage,
-        contactName: msgContact,
         messageText: normalizedMessageText,
         timestamp: msgTimestamp,
         keepId: existing._id
@@ -345,7 +340,6 @@ router.post('/message', async (req, res) => {
     await keepOneAndDeleteRest({
       deviceId,
       appPackage,
-      contactName: msgContact,
       messageText: normalizedMessageText,
       timestamp: msgTimestamp,
       keepId: message._id
@@ -630,7 +624,6 @@ router.post('/:deviceId/message', async (req, res) => {
       const contentDup = await findDuplicateByExactTimestampAndText({
         deviceId,
         appPackage: messageData.app_package,
-        contactName: normalizedContactName,
         messageText: normalizedText,
         timestamp: msgTimestamp
       });
@@ -638,7 +631,6 @@ router.post('/:deviceId/message', async (req, res) => {
         await keepOneAndDeleteRest({
           deviceId,
           appPackage: messageData.app_package,
-          contactName: normalizedContactName,
           messageText: normalizedText,
           timestamp: msgTimestamp,
           keepId: contentDup._id
@@ -661,7 +653,6 @@ router.post('/:deviceId/message', async (req, res) => {
     await keepOneAndDeleteRest({
       deviceId,
       appPackage: messageData.app_package,
-      contactName: normalizedContactName || messageData.contact_name,
       messageText: normalizedText || messageData.message_text,
       timestamp: msgTimestamp,
       keepId: message._id
@@ -726,7 +717,6 @@ router.post('/:deviceId/message', async (req, res) => {
           await keepOneAndDeleteRest({
             deviceId,
             appPackage: req.body.app_package,
-            contactName: normalizedContactName,
             messageText: normalizedText,
             timestamp: msgTimestamp
           });
@@ -870,10 +860,28 @@ router.get('/:deviceId/recent', async (req, res) => {
     const messages = await SocialMessage.find({ device_id: deviceId })
       .sort({ timestamp: -1 })
       .limit(parseInt(limit));
+
+    const seenKeys = new Set();
+    const duplicateIds = [];
+    const uniqueMessages = [];
+
+    messages.forEach(msg => {
+      const dedupeKey = `${msg.device_id}||${msg.app_package}||${normalizeTimestamp(msg.timestamp)}||${normalizeMessageText(msg.message_text)}`;
+      if (seenKeys.has(dedupeKey)) {
+        duplicateIds.push(msg._id);
+      } else {
+        seenKeys.add(dedupeKey);
+        uniqueMessages.push(msg);
+      }
+    });
+
+    if (duplicateIds.length > 0) {
+      await SocialMessage.deleteMany({ _id: { $in: duplicateIds } });
+    }
     
     res.json({
       success: true,
-      messages: messages
+      messages: uniqueMessages
     });
     
   } catch (error) {

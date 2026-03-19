@@ -1546,7 +1546,6 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/familygua
           _id: {
             device_id: '$device_id',
             app_package: '$app_package',
-            contact_name: '$contact_name',
             message_text: '$message_text',
             timestamp: '$timestamp'
           },
