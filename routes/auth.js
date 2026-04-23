@@ -13,6 +13,8 @@ const isValidEmail = (email) => {
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const maskEmail = (email) => {
   const normalizedEmail = normalizeEmail(email);
   const [localPart = '', domain = ''] = normalizedEmail.split('@');
@@ -29,20 +31,9 @@ const findUserByEmail = async (email) => {
     return user;
   }
 
-  // Fallback for legacy/manual records stored without lowercase/trim normalization.
+  // Fallback for legacy/manual records stored with mixed casing or stray spaces.
   return User.findOne({
-    $expr: {
-      $eq: [
-        {
-          $toLower: {
-            $trim: {
-              input: { $ifNull: ['$email', ''] }
-            }
-          }
-        },
-        normalizedEmail
-      ]
-    }
+    email: new RegExp(`^\\s*${escapeRegex(normalizedEmail)}\\s*$`, 'i')
   });
 };
 
