@@ -1,11 +1,34 @@
 require('dotenv').config();
 
-// Use Google DNS for MongoDB SRV resolution (fixes local router DNS issues)
 const dns = require('dns');
-dns.setServers(['8.8.8.8', '8.8.4.4']);
+const mongoose = require('mongoose');
+
+// Avoid query buffering when MongoDB is unavailable so failures surface immediately.
+mongoose.set('bufferCommands', false);
+
+const mongoReadyStates = {
+  0: 'disconnected',
+  1: 'connected',
+  2: 'connecting',
+  3: 'disconnecting'
+};
+
+const getMongoState = () => mongoReadyStates[mongoose.connection.readyState] || 'unknown';
+const isMongoConnected = () => mongoose.connection.readyState === 1;
+
+// Only override DNS locally unless explicitly enabled.
+const shouldUseGoogleDnsForMongo =
+  process.env.MONGODB_USE_GOOGLE_DNS === 'true' ||
+  (!['production', 'staging'].includes(process.env.NODE_ENV) && process.env.MONGODB_USE_GOOGLE_DNS !== 'false');
+
+if (shouldUseGoogleDnsForMongo) {
+  dns.setServers(['8.8.8.8', '8.8.4.4']);
+  console.log('Using Google DNS for MongoDB SRV resolution');
+} else {
+  console.log('Using system DNS for MongoDB resolution');
+}
 
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
@@ -159,9 +182,16 @@ app.get('/api/apk-checksum', (req, res) => {
   });
 });
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
+  const mongoState = getMongoState();
+  const isHealthy = isMongoConnected();
+
+  res.status(isHealthy ? 200 : 503).json({
+    status: isHealthy ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
+    mongo: {
+      state: mongoState,
+      dbName: mongoose.connection.name || null
+    },
     firebase: {
       initialized: admin.apps.length > 0,
       projectId: process.env.FIREBASE_PROJECT_ID ? 'set' : 'not set'
@@ -203,6 +233,26 @@ const authLimiter = rateLimit({
 
 // Apply general limiter to all API routes
 app.use('/api/', generalLimiter);
+
+// Fail fast when MongoDB is unavailable instead of buffering requests for 10s.
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health') {
+    return next();
+  }
+
+  if (isMongoConnected()) {
+    return next();
+  }
+
+  return res.status(503).json({
+    success: false,
+    error: {
+      code: 'SRV_DB_UNAVAILABLE',
+      message: 'Service temporarily unavailable',
+      detail: 'Database connection is not ready. Please try again in a moment'
+    }
+  });
+});
 
 // Apply stricter limiter only to auth routes
 app.use('/api/auth/login', authLimiter);
@@ -1523,10 +1573,32 @@ const startServer = () => {
   });
 };
 
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/familyguard')
-.then(async () => {
-  console.log(`Connected to MongoDB (${mongoose.connection.name})`);
+mongoose.connection.on('connected', () => {
+  console.log(`MongoDB connected (${mongoose.connection.name})`);
+});
 
+mongoose.connection.on('error', (error) => {
+  console.error('MongoDB connection event error:', error.message);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('MongoDB disconnected');
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('MongoDB reconnected');
+});
+
+const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/familyguard';
+const mongoConnectOptions = {
+  serverSelectionTimeoutMS: parseInt(process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS, 10) || 10000,
+  connectTimeoutMS: parseInt(process.env.MONGO_CONNECT_TIMEOUT_MS, 10) || 10000,
+  socketTimeoutMS: parseInt(process.env.MONGO_SOCKET_TIMEOUT_MS, 10) || 45000,
+  maxPoolSize: parseInt(process.env.MONGO_MAX_POOL_SIZE, 10) || 10
+};
+
+mongoose.connect(mongoUri, mongoConnectOptions)
+.then(async () => {
   try {
     await Notification.syncIndexes();
     console.log('✅ Notification indexes synced');
@@ -1619,8 +1691,8 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/familygua
 })
 .catch((error) => {
   console.error('MongoDB connection error:', error);
-  console.warn('⚠️ Starting server WITHOUT MongoDB - some features will be unavailable');
-  startServer();
+  console.error('Server startup aborted because MongoDB is unavailable');
+  process.exit(1);
 });
 
 // Graceful shutdown
