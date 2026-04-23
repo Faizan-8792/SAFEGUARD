@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^cd \"c:\\\\Users\\\\saifu\\\\OneDrive\\\\Desktop\\\\FamilyGuard app\"; \\.\\\\gradlew assembleDebug --warning-mode=none 2>&1 \\| Select-Object -First 50$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

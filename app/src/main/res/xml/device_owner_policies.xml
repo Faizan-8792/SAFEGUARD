@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Device Owner policies XML - Extended device admin policies for DO mode.
+    This file augments the existing device_admin.xml when the app runs as Device Owner.
+    
+    Note: The existing device_admin.xml is NOT modified. This file is only
+    referenced programmatically for documentation/configuration purposes.
+    The actual DO policies are set via DevicePolicyManager API calls.
+-->
+<device-owner xmlns:android="http://schemas.android.com/apk/res/android">
+    
+    <!-- 
+        Policies applied when running as Device Owner:
+        
+        1. APP HIDING
+           - API: DevicePolicyManager.setApplicationHidden()
+           - Hides app from launcher and Settings > Apps
+           - More powerful than component enable/disable
+           
+        2. UNINSTALL PROTECTION
+           - API: DevicePolicyManager.setUninstallBlocked()
+           - Prevents removal via Settings, Play Store, or ADB
+           - Only removable by removing Device Owner first
+           
+        3. FACTORY RESET PROTECTION
+           - API: DevicePolicyManager.addUserRestriction(DISALLOW_FACTORY_RESET)
+           - Blocks factory reset from Settings and recovery
+           - PIN stored locally for authorized parent override
+           
+        4. ACCESSIBILITY AUTO-RECOVERY
+           - API: DevicePolicyManager.setPermittedAccessibilityServices()
+           - API: Settings.Secure.putString(ENABLED_ACCESSIBILITY_SERVICES)
+           - DO can write to Secure Settings to re-enable accessibility
+           - ContentObserver monitors for changes, auto-recovers within 2s
+           
+        5. PERMISSION GRANT STATE  
+           - API: DevicePolicyManager.setPermissionGrantState()
+           - Grants runtime permissions without user interaction
+           - All 15+ permissions granted silently on provisioning
+           
+        6. SILENT APP MANAGEMENT
+           - API: PackageInstaller with SessionParams.USER_ACTION_NOT_REQUIRED
+           - Install APKs from URL without user confirmation
+           - Uninstall apps without user confirmation
+           
+        OEM OPTIMIZATIONS:
+           - API: DevicePolicyManager.setGlobalSetting()
+           - API: DevicePolicyManager.setSecureSetting()
+           - Disable adaptive battery, WiFi sleep, etc.
+           - OEM-specific autostart/battery saver whitelisting
+    -->
+    
+    <uses-policies>
+        <!-- Standard Device Admin policies (shared with device_admin.xml) -->
+        <limit-password />
+        <watch-login />
+        <reset-password />
+        <force-lock />
+        <wipe-data />
+        <expire-password />
+        <disable-camera />
+        <disable-keyguard-features />
+        
+        <!-- Device Owner exclusive policy indicators -->
+        <!-- Note: These are enforced via API, not via XML declarations -->
+    </uses-policies>
+    
+</device-owner>

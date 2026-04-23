@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="32dp"
+    android:background="@color/white">
+
+    <!-- Progress spinner -->
+    <ProgressBar
+        android:id="@+id/provisioningProgress"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_marginBottom="24dp"
+        android:indeterminate="true" />
+
+    <!-- Status text -->
+    <TextView
+        android:id="@+id/tvProvisioningStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Setting up Device Owner mode..."
+        android:textSize="18sp"
+        android:textAlignment="center"
+        android:textColor="@color/black"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Please wait while we configure enhanced monitoring.\nThis may take a moment."
+        android:textSize="14sp"
+        android:textAlignment="center"
+        android:textColor="#888888"
+        android:lineSpacingExtra="4dp" />
+</LinearLayout>

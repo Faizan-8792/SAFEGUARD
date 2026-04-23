@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout android:background="@color/background" android:layout_width="fill_parent" android:layout_height="fill_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <com.google.android.material.appbar.MaterialToolbar android:id="@+id/toolbar" android:background="@color/surface" android:layout_width="fill_parent" android:layout_height="?actionBarSize" app:layout_constraintTop_toTopOf="parent" app:menu="@menu/menu_call_history" app:navigationIcon="@drawable/ic_notification" app:title="@string/call_history" app:titleTextColor="@color/text_primary" />
+    <com.google.android.material.card.MaterialCardView android:id="@+id/cardSummary" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_margin="16.0dip" app:cardBackgroundColor="@color/surface" app:cardCornerRadius="16.0dip" app:cardElevation="0.0dip" app:layout_constraintTop_toBottomOf="@id/toolbar">
+        <LinearLayout android:orientation="horizontal" android:padding="20.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content">
+            <LinearLayout android:gravity="center" android:orientation="vertical" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0">
+                <TextView android:textSize="28.0sp" android:textStyle="bold" android:textColor="@color/primary" android:id="@+id/tvTotalCalls" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0" />
+                <TextView android:textSize="12.0sp" android:textColor="@color/text_secondary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/total_calls" />
+            </LinearLayout>
+            <View android:background="@color/divider" android:layout_width="1.0dip" android:layout_height="fill_parent" />
+            <LinearLayout android:gravity="center" android:orientation="vertical" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0">
+                <TextView android:textSize="28.0sp" android:textStyle="bold" android:textColor="@color/success" android:id="@+id/tvIncoming" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0" />
+                <TextView android:textSize="12.0sp" android:textColor="@color/text_secondary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/incoming" />
+            </LinearLayout>
+            <View android:background="@color/divider" android:layout_width="1.0dip" android:layout_height="fill_parent" />
+            <LinearLayout android:gravity="center" android:orientation="vertical" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0">
+                <TextView android:textSize="28.0sp" android:textStyle="bold" android:textColor="@color/warning" android:id="@+id/tvOutgoing" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0" />
+                <TextView android:textSize="12.0sp" android:textColor="@color/text_secondary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/outgoing" />
+            </LinearLayout>
+            <View android:background="@color/divider" android:layout_width="1.0dip" android:layout_height="fill_parent" />
+            <LinearLayout android:gravity="center" android:orientation="vertical" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0">
+                <TextView android:textSize="28.0sp" android:textStyle="bold" android:textColor="@color/error" android:id="@+id/tvMissed" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0" />
+                <TextView android:textSize="12.0sp" android:textColor="@color/text_secondary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/missed" />
+            </LinearLayout>
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+    <com.google.android.material.button.MaterialButton android:textColor="@color/error" android:id="@+id/btnDeleteAll" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginTop="8.0dip" android:text="@string/delete_all_call_logs" android:layout_marginHorizontal="16.0dip" app:cornerRadius="12.0dip" app:icon="@drawable/ic_notification" app:iconTint="@color/error" app:layout_constraintTop_toBottomOf="@id/cardSummary" app:strokeColor="@color/error" style="@style/Widget.Material3.Button.OutlinedButton" />
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout android:id="@+id/swipeRefresh" android:layout_width="fill_parent" android:layout_height="0.0dip" android:layout_marginTop="8.0dip" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintTop_toBottomOf="@id/btnDeleteAll">
+        <FrameLayout android:layout_width="fill_parent" android:layout_height="fill_parent">
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/rvCallLogs" android:padding="12.0dip" android:clipToPadding="false" android:layout_width="fill_parent" android:layout_height="fill_parent" />
+            <LinearLayout android:gravity="center" android:orientation="vertical" android:id="@+id/llEmptyState" android:visibility="gone" android:layout_width="fill_parent" android:layout_height="fill_parent">
+                <ImageView android:layout_width="100.0dip" android:layout_height="100.0dip" android:src="@drawable/ic_notification" android:alpha="0.5" app:tint="@color/text_secondary" />
+                <TextView android:textSize="16.0sp" android:textColor="@color/text_secondary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16.0dip" android:text="@string/no_call_logs" />
+            </LinearLayout>
+        </FrameLayout>
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+    <ProgressBar android:id="@+id/progressBar" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
+</androidx.constraintlayout.widget.ConstraintLayout>

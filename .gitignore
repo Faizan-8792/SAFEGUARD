@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+*.log
+
+# Android build artifacts
+.gradle/
+.idea/
+app/build/
+build/
+*.aab
+*.apk
+local.properties
+apktool.jar
+apk_decompiled/
+
+# Allow hosted APK for QR provisioning
+!downloads/
+!downloads/familyguard.apk
+
+# Android generated
+android/
+
+# IDE
+*.iml
+.DS_Store
+Thumbs.db
+
+# Test/debug artifacts
+*.txt
+*.xml
+!app/**/*.xml
+*.png
+!parent-web/**
+*.mp3
+*.m4a
+backend/
